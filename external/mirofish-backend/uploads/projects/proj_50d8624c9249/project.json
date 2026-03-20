@@ -1,0 +1,379 @@
+{
+  "project_id": "proj_50d8624c9249",
+  "name": "Unnamed Project",
+  "status": "graph_completed",
+  "created_at": "2026-03-17T12:46:55.777748",
+  "updated_at": "2026-03-17T12:51:36.770628",
+  "files": [
+    {
+      "filename": "[The_AI_Report(2025-8)]_재난_발생_예방을_위한_AI_활용_사례_및_시사점.pdf",
+      "size": 628993
+    }
+  ],
+  "total_text_length": 17961,
+  "ontology": {
+    "entity_types": [
+      {
+        "name": "GovernmentAgency",
+        "description": "National ministries or agencies that create policies and regulations",
+        "attributes": [
+          {
+            "name": "agency_name",
+            "type": "text",
+            "description": "Official name of the agency"
+          },
+          {
+            "name": "jurisdiction",
+            "type": "text",
+            "description": "Scope of authority (e.g., national, regional)"
+          }
+        ],
+        "examples": [
+          "Ministry of Science and ICT",
+          "Ministry of Environment"
+        ]
+      },
+      {
+        "name": "ResearchInstitute",
+        "description": "Public or private research institutes developing AI and disaster tech",
+        "attributes": [
+          {
+            "name": "institute_name",
+            "type": "text",
+            "description": "Official institute name"
+          },
+          {
+            "name": "focus_area",
+            "type": "text",
+            "description": "Primary research domain (e.g., AI, disaster safety)"
+          }
+        ],
+        "examples": [
+          "Korea Institute of Intelligent Information Society (NIA)",
+          "Electronics and Telecommunications Research Institute (ETRI)"
+        ]
+      },
+      {
+        "name": "CityGovernment",
+        "description": "Local municipal administrations that operate disaster response systems",
+        "attributes": [
+          {
+            "name": "city_name",
+            "type": "text",
+            "description": "Name of the city"
+          },
+          {
+            "name": "region",
+            "type": "text",
+            "description": "Administrative region or province"
+          }
+        ],
+        "examples": [
+          "Daegu City Government",
+          "Sejong City Government"
+        ]
+      },
+      {
+        "name": "DisasterManagementCenter",
+        "description": "Dedicated centers coordinating national or regional disaster management",
+        "attributes": [
+          {
+            "name": "center_name",
+            "type": "text",
+            "description": "Official name of the center"
+          },
+          {
+            "name": "operating_body",
+            "type": "text",
+            "description": "Organization that runs the center"
+          }
+        ],
+        "examples": [
+          "National Disaster Safety System",
+          "National Disaster Management Center"
+        ]
+      },
+      {
+        "name": "MediaOutlet",
+        "description": "News organizations that publish reports on AI and disaster issues",
+        "attributes": [
+          {
+            "name": "outlet_name",
+            "type": "text",
+            "description": "Name of the media outlet"
+          },
+          {
+            "name": "medium",
+            "type": "text",
+            "description": "Type of media (e.g., newspaper, online news)"
+          }
+        ],
+        "examples": [
+          "Korean Economic Daily",
+          "Financial News"
+        ]
+      },
+      {
+        "name": "PrivateCompany",
+        "description": "Commercial firms providing AI solutions or disaster‑related technologies",
+        "attributes": [
+          {
+            "name": "company_name",
+            "type": "text",
+            "description": "Legal name of the company"
+          },
+          {
+            "name": "product_focus",
+            "type": "text",
+            "description": "Main AI‑based product or service"
+          }
+        ],
+        "examples": [
+          "AI Solutions Co.",
+          "DroneVision Ltd."
+        ]
+      },
+      {
+        "name": "InternationalOrganization",
+        "description": "Global bodies that issue guidelines or data used for disaster AI",
+        "attributes": [
+          {
+            "name": "org_name",
+            "type": "text",
+            "description": "Official name of the organization"
+          },
+          {
+            "name": "role",
+            "type": "text",
+            "description": "Primary function (e.g., data provider, standards body)"
+          }
+        ],
+        "examples": [
+          "UN Office for Disaster Risk Reduction (UNDRR)",
+          "Intergovernmental Panel on Climate Change (IPCC)"
+        ]
+      },
+      {
+        "name": "EmergencyService",
+        "description": "Public safety agencies that act during disaster response",
+        "attributes": [
+          {
+            "name": "service_name",
+            "type": "text",
+            "description": "Name of the emergency service"
+          },
+          {
+            "name": "service_type",
+            "type": "text",
+            "description": "Category such as fire, police, medical"
+          }
+        ],
+        "examples": [
+          "Korea Fire Department",
+          "National Police Agency"
+        ]
+      },
+      {
+        "name": "Person",
+        "description": "Individual humans who can post, comment, or share on social media",
+        "attributes": [
+          {
+            "name": "full_name",
+            "type": "text",
+            "description": "Complete personal name"
+          },
+          {
+            "name": "position",
+            "type": "text",
+            "description": "Job title or role (e.g., researcher, official)"
+          }
+        ],
+        "examples": [
+          "Jang Se‑yoon",
+          "Kim Hyun‑woo (journalist)"
+        ]
+      },
+      {
+        "name": "Organization",
+        "description": "General category for any organization not covered by specific types",
+        "attributes": [
+          {
+            "name": "org_name",
+            "type": "text",
+            "description": "Official organization name"
+          },
+          {
+            "name": "sector",
+            "type": "text",
+            "description": "Industry or public sector classification"
+          }
+        ],
+        "examples": [
+          "Korea Disaster Safety Institute",
+          "Local Community Association"
+        ]
+      }
+    ],
+    "edge_types": [
+      {
+        "name": "COMMENTS_ON",
+        "description": "A person or organization posts a comment about a report or event",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "Person",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "Organization",
+            "target": "MediaOutlet"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "SHARES",
+        "description": "An entity reposts or shares content from another entity",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "MediaOutlet"
+          },
+          {
+            "source": "Organization",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "Person",
+            "target": "InternationalOrganization"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "MENTIONS",
+        "description": "An entity mentions another entity in a social media post",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "Organization",
+            "target": "PrivateCompany"
+          },
+          {
+            "source": "Person",
+            "target": "EmergencyService"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "REPORTS_ON",
+        "description": "Media outlet publishes a report about a disaster‑related AI initiative",
+        "source_targets": [
+          {
+            "source": "MediaOutlet",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "MediaOutlet",
+            "target": "CityGovernment"
+          },
+          {
+            "source": "MediaOutlet",
+            "target": "InternationalOrganization"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "COLLABORATES_WITH",
+        "description": "Two entities cooperate on AI disaster‑management projects",
+        "source_targets": [
+          {
+            "source": "ResearchInstitute",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "PrivateCompany",
+            "target": "CityGovernment"
+          },
+          {
+            "source": "InternationalOrganization",
+            "target": "ResearchInstitute"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "REGULATES",
+        "description": "A government agency issues regulations that affect another entity",
+        "source_targets": [
+          {
+            "source": "GovernmentAgency",
+            "target": "PrivateCompany"
+          },
+          {
+            "source": "GovernmentAgency",
+            "target": "EmergencyService"
+          },
+          {
+            "source": "GovernmentAgency",
+            "target": "Organization"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "SUPPORTS",
+        "description": "An entity publicly endorses a disaster‑AI program or policy",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "DisasterManagementCenter"
+          },
+          {
+            "source": "Organization",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "GovernmentAgency",
+            "target": "CityGovernment"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "OPPOSES",
+        "description": "An entity expresses criticism or opposition to a policy or technology",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "PrivateCompany"
+          },
+          {
+            "source": "Organization",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "MediaOutlet",
+            "target": "GovernmentAgency"
+          }
+        ],
+        "attributes": []
+      }
+    ]
+  },
+  "analysis_summary": "문서에서는 재난 예방·대응에 AI를 적용하는 다양한 주체가 등장한다. 중앙부처·정부기관, 연구기관(NIA·ETRI 등), 지방자치단체(대구·세종·부산), 재난관리센터, 민간 기업·AI 솔루션 제공업체, 국제기구(UNDRR·IPCC·NOAA) 그리고 언론 매체가 핵심 역할을 한다. 또한 연구원·공무원·언론인 등 개인도 의견을 발표한다. 이러한 실체들을 기반으로 8개의 구체 엔티티 유형과 범용 Person·Organization을 정의하고, 댓글, 공유, 언급, 보도, 협업, 규제, 지지·반대 등 소셜 미디어 상호작용을 반영한 관계 유형을 설계하였다.",
+  "graph_id": "mirofish_21ea27b45cd14e4f",
+  "graph_build_task_id": "e963c794-364b-4b2f-8f3b-88d9ad84e272",
+  "simulation_requirement": "대한민국에서 재난 발생 AI의 적용 가능성",
+  "chunk_size": 500,
+  "chunk_overlap": 50,
+  "error": null
+}

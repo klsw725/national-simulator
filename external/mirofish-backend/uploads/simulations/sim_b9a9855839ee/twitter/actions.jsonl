@@ -1,0 +1,164 @@
+{"timestamp": "2026-03-20T08:08:16.506284", "event_type": "simulation_start", "platform": "twitter", "total_rounds": 144, "agents_count": 106}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506376", "event_type": "round_start", "simulated_hour": 0}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506437", "agent_id": 1, "agent_name": "과학기술정보통신부", "action_type": "CREATE_POST", "action_args": {"content": "과학기술정보통신부는 2026년 AI 재난관리 종합계획을 발표했습니다. AI 기반 조기경보·예측 시스템을 전국 재난 현장에 확대 적용하고, 데이터 표준화와 개인정보 보호 방안을 동시에 추진하겠다고 밝혔습니다."}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506489", "agent_id": 0, "agent_name": "한국지능정보사회진흥원", "action_type": "CREATE_POST", "action_args": {"content": "국립재난안전연구원은 최근 발표한 논문에서 AI 기반 지진 조기경보 모델이 기존 관측망 대비 30% 빠른 감지율을 기록했다고 보고했습니다. 실시간 데이터와 머신러닝 융합을 통한 정확도 향상이 기대됩니다."}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506529", "agent_id": 20, "agent_name": "Google", "action_type": "CREATE_POST", "action_args": {"content": "Google은 한국 클라우드 파트너와 협력해 재난 데이터 통합 AI 플랫폼을 출시했습니다. 실시간 위성·기상·사회관계망 데이터를 분석해 재난 발생 가능성을 사전에 알리는 서비스이며, 국내 기업들의 활용을 지원합니다."}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506567", "agent_id": 27, "agent_name": "대구시", "action_type": "CREATE_POST", "action_args": {"content": "대구시는 AI 홍수예보시스템을 도입해 강우량 급증 시 실시간으로 위험 구역을 예측하고, 주민에게 모바일 알림을 전송합니다. 이번 시범 운영으로 2025년 여름 홍수 피해를 40% 감소시키는 목표를 세웠습니다."}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506601", "agent_id": 21, "agent_name": "소방", "action_type": "CREATE_POST", "action_args": {"content": "소방당국은 산림 지역에 AI 기반 화재 감시 드론을 시험 운용합니다. 드론이 실시간 영상 분석으로 화재 징후를 탐지하면 즉시 현장에 파견해 초기 진압을 가능하게 합니다."}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506636", "agent_id": 28, "agent_name": "한국경제", "action_type": "CREATE_POST", "action_args": {"content": "한국경제=기자 김민수: \"AI 재난 대응 기술이 빠르게 도입되는 가운데, 시민들은 데이터 수집과 프라이버시 침해에 대한 우려를 표하고 있다. 전문가들은 투명한 데이터 관리와 법적 규제 마련이 필요하다고 주장한다.\""}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506670", "agent_id": 3, "agent_name": "황 종 성", "action_type": "CREATE_POST", "action_args": {"content": "장세윤 연구원(한국지능정보사회진흥원 AI 정책실) – \"AI 모델의 신뢰성을 높이기 위해서는 공공·민간 데이터의 개방과 표준화가 필수적입니다. 이를 통해 재난 상황에서도 정확하고 공정한 의사결정이 가능해집니다.\""}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.506707", "agent_id": 6, "agent_name": "UNDRR", "action_type": "CREATE_POST", "action_args": {"content": "UNDRR(유엔 재난 위험 감소 사무국)은 2026년 글로벌 AI 재난 위험 감소 가이드라인을 발표했습니다. 한국 정부와 연구기관이 이 가이드라인을 채택해 국제 표준에 부합하는 AI 재난 관리 체계를 구축할 것을 권고했습니다."}, "result": null, "success": true}
+{"round": 0, "timestamp": "2026-03-20T08:08:16.846882", "event_type": "round_end", "actions_count": 8}
+{"round": 1, "timestamp": "2026-03-20T08:08:16.847076", "event_type": "round_start", "simulated_hour": 0}
+{"round": 1, "timestamp": "2026-03-20T08:08:16.847115", "event_type": "round_end", "actions_count": 0}
+{"round": 2, "timestamp": "2026-03-20T08:08:16.847199", "event_type": "round_start", "simulated_hour": 1}
+{"round": 2, "timestamp": "2026-03-20T08:08:16.847229", "event_type": "round_end", "actions_count": 0}
+{"round": 3, "timestamp": "2026-03-20T08:08:16.847308", "event_type": "round_start", "simulated_hour": 2}
+{"round": 3, "timestamp": "2026-03-20T08:08:16.847336", "event_type": "round_end", "actions_count": 0}
+{"round": 4, "timestamp": "2026-03-20T08:08:16.847429", "event_type": "round_start", "simulated_hour": 3}
+{"round": 4, "timestamp": "2026-03-20T08:08:16.847457", "event_type": "round_end", "actions_count": 0}
+{"round": 5, "timestamp": "2026-03-20T08:08:16.847535", "event_type": "round_start", "simulated_hour": 4}
+{"round": 5, "timestamp": "2026-03-20T08:08:16.847562", "event_type": "round_end", "actions_count": 0}
+{"round": 6, "timestamp": "2026-03-20T08:08:16.847640", "event_type": "round_start", "simulated_hour": 5}
+{"round": 6, "timestamp": "2026-03-20T08:08:16.847670", "event_type": "round_end", "actions_count": 0}
+{"round": 7, "timestamp": "2026-03-20T08:08:16.847973", "event_type": "round_start", "simulated_hour": 6}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.915280", "agent_id": 1, "agent_name": "과학기술정보통신부", "action_type": "CREATE_POST", "action_args": {"content": "과학기술정보통신부는 2026년 AI 재난관리 종합계획을 발표했습니다. AI 기반 조기경보·예측 시스템을 전국 재난 현장에 확대 적용하고, 데이터 표준화와 개인정보 보호 방안을 동시에 추진하겠다고 밝혔습니다.", "post_id": 1}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.915531", "agent_id": 0, "agent_name": "한국지능정보사회진흥원", "action_type": "CREATE_POST", "action_args": {"content": "국립재난안전연구원은 최근 발표한 논문에서 AI 기반 지진 조기경보 모델이 기존 관측망 대비 30% 빠른 감지율을 기록했다고 보고했습니다. 실시간 데이터와 머신러닝 융합을 통한 정확도 향상이 기대됩니다.", "post_id": 2}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.915665", "agent_id": 20, "agent_name": "Google", "action_type": "CREATE_POST", "action_args": {"content": "Google은 한국 클라우드 파트너와 협력해 재난 데이터 통합 AI 플랫폼을 출시했습니다. 실시간 위성·기상·사회관계망 데이터를 분석해 재난 발생 가능성을 사전에 알리는 서비스이며, 국내 기업들의 활용을 지원합니다.", "post_id": 3}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.915771", "agent_id": 27, "agent_name": "대구시", "action_type": "CREATE_POST", "action_args": {"content": "대구시는 AI 홍수예보시스템을 도입해 강우량 급증 시 실시간으로 위험 구역을 예측하고, 주민에게 모바일 알림을 전송합니다. 이번 시범 운영으로 2025년 여름 홍수 피해를 40% 감소시키는 목표를 세웠습니다.", "post_id": 4}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.915871", "agent_id": 21, "agent_name": "소방", "action_type": "CREATE_POST", "action_args": {"content": "소방당국은 산림 지역에 AI 기반 화재 감시 드론을 시험 운용합니다. 드론이 실시간 영상 분석으로 화재 징후를 탐지하면 즉시 현장에 파견해 초기 진압을 가능하게 합니다.", "post_id": 5}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.915966", "agent_id": 28, "agent_name": "한국경제", "action_type": "CREATE_POST", "action_args": {"content": "한국경제=기자 김민수: \"AI 재난 대응 기술이 빠르게 도입되는 가운데, 시민들은 데이터 수집과 프라이버시 침해에 대한 우려를 표하고 있다. 전문가들은 투명한 데이터 관리와 법적 규제 마련이 필요하다고 주장한다.\"", "post_id": 6}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.916073", "agent_id": 3, "agent_name": "황 종 성", "action_type": "CREATE_POST", "action_args": {"content": "장세윤 연구원(한국지능정보사회진흥원 AI 정책실) – \"AI 모델의 신뢰성을 높이기 위해서는 공공·민간 데이터의 개방과 표준화가 필수적입니다. 이를 통해 재난 상황에서도 정확하고 공정한 의사결정이 가능해집니다.\"", "post_id": 7}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.916167", "agent_id": 6, "agent_name": "UNDRR", "action_type": "CREATE_POST", "action_args": {"content": "UNDRR(유엔 재난 위험 감소 사무국)은 2026년 글로벌 AI 재난 위험 감소 가이드라인을 발표했습니다. 한국 정부와 연구기관이 이 가이드라인을 채택해 국제 표준에 부합하는 AI 재난 관리 체계를 구축할 것을 권고했습니다.", "post_id": 8}, "result": null, "success": true}
+{"round": 7, "timestamp": "2026-03-20T08:09:32.916260", "event_type": "round_end", "actions_count": 8}
+{"round": 8, "timestamp": "2026-03-20T08:09:32.916463", "event_type": "round_start", "simulated_hour": 7}
+{"round": 8, "timestamp": "2026-03-20T08:09:32.916492", "event_type": "round_end", "actions_count": 0}
+{"round": 9, "timestamp": "2026-03-20T08:09:32.916584", "event_type": "round_start", "simulated_hour": 8}
+{"round": 9, "timestamp": "2026-03-20T08:09:44.453102", "event_type": "round_end", "actions_count": 0}
+{"round": 10, "timestamp": "2026-03-20T08:09:44.453424", "event_type": "round_start", "simulated_hour": 9}
+{"round": 10, "timestamp": "2026-03-20T08:10:01.145327", "event_type": "round_end", "actions_count": 0}
+{"round": 11, "timestamp": "2026-03-20T08:10:01.145684", "event_type": "round_start", "simulated_hour": 10}
+{"round": 11, "timestamp": "2026-03-20T08:10:21.370430", "event_type": "round_end", "actions_count": 0}
+{"round": 12, "timestamp": "2026-03-20T08:10:21.370856", "event_type": "round_start", "simulated_hour": 11}
+{"round": 12, "timestamp": "2026-03-20T08:10:45.405358", "event_type": "round_end", "actions_count": 0}
+{"round": 13, "timestamp": "2026-03-20T08:10:45.405839", "event_type": "round_start", "simulated_hour": 12}
+{"round": 13, "timestamp": "2026-03-20T08:11:08.238816", "event_type": "round_end", "actions_count": 0}
+{"round": 14, "timestamp": "2026-03-20T08:11:08.239272", "event_type": "round_start", "simulated_hour": 13}
+{"round": 14, "timestamp": "2026-03-20T08:11:28.913480", "event_type": "round_end", "actions_count": 0}
+{"round": 15, "timestamp": "2026-03-20T08:11:28.913727", "event_type": "round_start", "simulated_hour": 14}
+{"round": 15, "timestamp": "2026-03-20T08:11:58.034187", "event_type": "round_end", "actions_count": 0}
+{"round": 16, "timestamp": "2026-03-20T08:11:58.034953", "event_type": "round_start", "simulated_hour": 15}
+{"round": 16, "timestamp": "2026-03-20T08:12:11.238140", "event_type": "round_end", "actions_count": 0}
+{"round": 17, "timestamp": "2026-03-20T08:12:11.238579", "event_type": "round_start", "simulated_hour": 16}
+{"round": 17, "timestamp": "2026-03-20T08:12:37.193346", "event_type": "round_end", "actions_count": 0}
+{"round": 18, "timestamp": "2026-03-20T08:12:37.193737", "event_type": "round_start", "simulated_hour": 17}
+{"round": 18, "timestamp": "2026-03-20T08:13:04.987690", "event_type": "round_end", "actions_count": 0}
+{"round": 19, "timestamp": "2026-03-20T08:13:04.988088", "event_type": "round_start", "simulated_hour": 18}
+{"round": 19, "timestamp": "2026-03-20T08:13:23.568015", "event_type": "round_end", "actions_count": 0}
+{"round": 20, "timestamp": "2026-03-20T08:13:23.568581", "event_type": "round_start", "simulated_hour": 19}
+{"round": 20, "timestamp": "2026-03-20T08:13:43.392458", "event_type": "round_end", "actions_count": 0}
+{"round": 21, "timestamp": "2026-03-20T08:13:43.392879", "event_type": "round_start", "simulated_hour": 20}
+{"round": 21, "timestamp": "2026-03-20T08:13:58.903499", "event_type": "round_end", "actions_count": 0}
+{"round": 22, "timestamp": "2026-03-20T08:13:58.903963", "event_type": "round_start", "simulated_hour": 21}
+{"round": 22, "timestamp": "2026-03-20T08:14:18.860103", "event_type": "round_end", "actions_count": 0}
+{"round": 23, "timestamp": "2026-03-20T08:14:18.860439", "event_type": "round_start", "simulated_hour": 22}
+{"round": 23, "timestamp": "2026-03-20T08:14:37.388987", "event_type": "round_end", "actions_count": 0}
+{"round": 24, "timestamp": "2026-03-20T08:14:37.389176", "event_type": "round_start", "simulated_hour": 23}
+{"round": 24, "timestamp": "2026-03-20T08:14:50.938616", "event_type": "round_end", "actions_count": 0}
+{"round": 25, "timestamp": "2026-03-20T08:14:50.939124", "event_type": "round_start", "simulated_hour": 0}
+{"round": 25, "timestamp": "2026-03-20T08:14:50.939179", "event_type": "round_end", "actions_count": 0}
+{"round": 26, "timestamp": "2026-03-20T08:14:50.939268", "event_type": "round_start", "simulated_hour": 1}
+{"round": 26, "timestamp": "2026-03-20T08:14:50.939298", "event_type": "round_end", "actions_count": 0}
+{"round": 27, "timestamp": "2026-03-20T08:14:50.942396", "event_type": "round_start", "simulated_hour": 2}
+{"round": 27, "timestamp": "2026-03-20T08:14:50.942561", "event_type": "round_end", "actions_count": 0}
+{"round": 28, "timestamp": "2026-03-20T08:14:50.942674", "event_type": "round_start", "simulated_hour": 3}
+{"round": 28, "timestamp": "2026-03-20T08:14:50.942704", "event_type": "round_end", "actions_count": 0}
+{"round": 29, "timestamp": "2026-03-20T08:14:50.942783", "event_type": "round_start", "simulated_hour": 4}
+{"round": 29, "timestamp": "2026-03-20T08:14:50.942811", "event_type": "round_end", "actions_count": 0}
+{"round": 30, "timestamp": "2026-03-20T08:14:50.942893", "event_type": "round_start", "simulated_hour": 5}
+{"round": 30, "timestamp": "2026-03-20T08:14:50.942920", "event_type": "round_end", "actions_count": 0}
+{"round": 31, "timestamp": "2026-03-20T08:14:50.942998", "event_type": "round_start", "simulated_hour": 6}
+{"round": 31, "timestamp": "2026-03-20T08:14:50.943036", "event_type": "round_end", "actions_count": 0}
+{"round": 32, "timestamp": "2026-03-20T08:14:50.943153", "event_type": "round_start", "simulated_hour": 7}
+{"round": 32, "timestamp": "2026-03-20T08:14:58.867532", "event_type": "round_end", "actions_count": 0}
+{"round": 33, "timestamp": "2026-03-20T08:14:58.867826", "event_type": "round_start", "simulated_hour": 8}
+{"round": 33, "timestamp": "2026-03-20T08:15:13.005054", "event_type": "round_end", "actions_count": 0}
+{"round": 34, "timestamp": "2026-03-20T08:15:13.005546", "event_type": "round_start", "simulated_hour": 9}
+{"round": 34, "timestamp": "2026-03-20T08:15:39.044508", "event_type": "round_end", "actions_count": 0}
+{"round": 35, "timestamp": "2026-03-20T08:15:39.045147", "event_type": "round_start", "simulated_hour": 10}
+{"round": 35, "timestamp": "2026-03-20T08:16:14.320902", "event_type": "round_end", "actions_count": 0}
+{"round": 36, "timestamp": "2026-03-20T08:16:14.321521", "event_type": "round_start", "simulated_hour": 11}
+{"round": 36, "timestamp": "2026-03-20T08:16:55.065452", "event_type": "round_end", "actions_count": 0}
+{"round": 37, "timestamp": "2026-03-20T08:16:55.065806", "event_type": "round_start", "simulated_hour": 12}
+{"round": 37, "timestamp": "2026-03-20T08:17:35.038019", "event_type": "round_end", "actions_count": 0}
+{"round": 38, "timestamp": "2026-03-20T08:17:35.038575", "event_type": "round_start", "simulated_hour": 13}
+{"round": 38, "timestamp": "2026-03-20T08:18:09.426281", "event_type": "round_end", "actions_count": 0}
+{"round": 39, "timestamp": "2026-03-20T08:18:09.426752", "event_type": "round_start", "simulated_hour": 14}
+{"round": 39, "timestamp": "2026-03-20T08:18:56.313616", "event_type": "round_end", "actions_count": 0}
+{"round": 40, "timestamp": "2026-03-20T08:18:56.313973", "event_type": "round_start", "simulated_hour": 15}
+{"round": 40, "timestamp": "2026-03-20T08:19:33.420930", "event_type": "round_end", "actions_count": 0}
+{"round": 41, "timestamp": "2026-03-20T08:19:33.421712", "event_type": "round_start", "simulated_hour": 16}
+{"round": 41, "timestamp": "2026-03-20T08:20:14.777624", "event_type": "round_end", "actions_count": 0}
+{"round": 42, "timestamp": "2026-03-20T08:20:14.778017", "event_type": "round_start", "simulated_hour": 17}
+{"round": 42, "timestamp": "2026-03-20T08:20:58.827167", "event_type": "round_end", "actions_count": 0}
+{"round": 43, "timestamp": "2026-03-20T08:20:58.827557", "event_type": "round_start", "simulated_hour": 18}
+{"round": 43, "timestamp": "2026-03-20T08:21:32.644225", "event_type": "round_end", "actions_count": 0}
+{"round": 44, "timestamp": "2026-03-20T08:21:32.644573", "event_type": "round_start", "simulated_hour": 19}
+{"round": 44, "timestamp": "2026-03-20T08:22:01.405512", "event_type": "round_end", "actions_count": 0}
+{"round": 45, "timestamp": "2026-03-20T08:22:01.405886", "event_type": "round_start", "simulated_hour": 20}
+{"round": 45, "timestamp": "2026-03-20T08:22:34.143624", "event_type": "round_end", "actions_count": 0}
+{"round": 46, "timestamp": "2026-03-20T08:22:34.143967", "event_type": "round_start", "simulated_hour": 21}
+{"round": 46, "timestamp": "2026-03-20T08:23:05.466985", "event_type": "round_end", "actions_count": 0}
+{"round": 47, "timestamp": "2026-03-20T08:23:05.467445", "event_type": "round_start", "simulated_hour": 22}
+{"round": 47, "timestamp": "2026-03-20T08:23:39.237208", "event_type": "round_end", "actions_count": 0}
+{"round": 48, "timestamp": "2026-03-20T08:23:39.237688", "event_type": "round_start", "simulated_hour": 23}
+{"round": 48, "timestamp": "2026-03-20T08:24:00.600439", "event_type": "round_end", "actions_count": 0}
+{"round": 49, "timestamp": "2026-03-20T08:24:00.600805", "event_type": "round_start", "simulated_hour": 0}
+{"round": 49, "timestamp": "2026-03-20T08:24:00.600852", "event_type": "round_end", "actions_count": 0}
+{"round": 50, "timestamp": "2026-03-20T08:24:00.600937", "event_type": "round_start", "simulated_hour": 1}
+{"round": 50, "timestamp": "2026-03-20T08:24:00.600967", "event_type": "round_end", "actions_count": 0}
+{"round": 51, "timestamp": "2026-03-20T08:24:00.601050", "event_type": "round_start", "simulated_hour": 2}
+{"round": 51, "timestamp": "2026-03-20T08:24:00.601078", "event_type": "round_end", "actions_count": 0}
+{"round": 52, "timestamp": "2026-03-20T08:24:00.601156", "event_type": "round_start", "simulated_hour": 3}
+{"round": 52, "timestamp": "2026-03-20T08:24:00.601184", "event_type": "round_end", "actions_count": 0}
+{"round": 53, "timestamp": "2026-03-20T08:24:00.601262", "event_type": "round_start", "simulated_hour": 4}
+{"round": 53, "timestamp": "2026-03-20T08:24:00.601289", "event_type": "round_end", "actions_count": 0}
+{"round": 54, "timestamp": "2026-03-20T08:24:00.601367", "event_type": "round_start", "simulated_hour": 5}
+{"round": 54, "timestamp": "2026-03-20T08:24:00.601394", "event_type": "round_end", "actions_count": 0}
+{"round": 55, "timestamp": "2026-03-20T08:24:00.601475", "event_type": "round_start", "simulated_hour": 6}
+{"round": 55, "timestamp": "2026-03-20T08:24:00.601504", "event_type": "round_end", "actions_count": 0}
+{"round": 56, "timestamp": "2026-03-20T08:24:00.601585", "event_type": "round_start", "simulated_hour": 7}
+{"round": 56, "timestamp": "2026-03-20T08:24:00.601612", "event_type": "round_end", "actions_count": 0}
+{"round": 57, "timestamp": "2026-03-20T08:24:00.601720", "event_type": "round_start", "simulated_hour": 8}
+{"round": 57, "timestamp": "2026-03-20T08:24:13.618614", "event_type": "round_end", "actions_count": 0}
+{"round": 58, "timestamp": "2026-03-20T08:24:13.618859", "event_type": "round_start", "simulated_hour": 9}
+{"round": 58, "timestamp": "2026-03-20T08:24:43.076468", "event_type": "round_end", "actions_count": 0}
+{"round": 59, "timestamp": "2026-03-20T08:24:43.076825", "event_type": "round_start", "simulated_hour": 10}
+{"round": 59, "timestamp": "2026-03-20T08:25:37.828660", "event_type": "round_end", "actions_count": 0}
+{"round": 60, "timestamp": "2026-03-20T08:25:37.829081", "event_type": "round_start", "simulated_hour": 11}
+{"round": 60, "timestamp": "2026-03-20T08:26:36.837080", "event_type": "round_end", "actions_count": 0}
+{"round": 61, "timestamp": "2026-03-20T08:26:36.837875", "event_type": "round_start", "simulated_hour": 12}
+{"round": 61, "timestamp": "2026-03-20T08:27:15.898845", "event_type": "round_end", "actions_count": 0}
+{"round": 62, "timestamp": "2026-03-20T08:27:15.899272", "event_type": "round_start", "simulated_hour": 13}
+{"round": 62, "timestamp": "2026-03-20T08:28:20.284363", "event_type": "round_end", "actions_count": 0}
+{"round": 63, "timestamp": "2026-03-20T08:28:20.284780", "event_type": "round_start", "simulated_hour": 14}
+{"round": 63, "timestamp": "2026-03-20T08:29:20.407611", "event_type": "round_end", "actions_count": 0}
+{"round": 64, "timestamp": "2026-03-20T08:29:20.408020", "event_type": "round_start", "simulated_hour": 15}
+{"round": 64, "timestamp": "2026-03-20T08:30:09.852268", "event_type": "round_end", "actions_count": 0}
+{"round": 65, "timestamp": "2026-03-20T08:30:09.852799", "event_type": "round_start", "simulated_hour": 16}
+{"round": 65, "timestamp": "2026-03-20T08:31:13.717277", "event_type": "round_end", "actions_count": 0}
+{"round": 66, "timestamp": "2026-03-20T08:31:13.717622", "event_type": "round_start", "simulated_hour": 17}
+{"round": 66, "timestamp": "2026-03-20T08:32:11.414600", "event_type": "round_end", "actions_count": 0}
+{"round": 67, "timestamp": "2026-03-20T08:32:11.415075", "event_type": "round_start", "simulated_hour": 18}
+{"round": 67, "timestamp": "2026-03-20T08:33:04.787699", "event_type": "round_end", "actions_count": 0}
+{"round": 68, "timestamp": "2026-03-20T08:33:04.788200", "event_type": "round_start", "simulated_hour": 19}
+{"round": 68, "timestamp": "2026-03-20T08:34:00.022615", "event_type": "round_end", "actions_count": 0}
+{"round": 69, "timestamp": "2026-03-20T08:34:00.023032", "event_type": "round_start", "simulated_hour": 20}
+{"round": 69, "timestamp": "2026-03-20T08:34:20.091409", "event_type": "round_end", "actions_count": 0}
+{"round": 70, "timestamp": "2026-03-20T08:34:20.091835", "event_type": "round_start", "simulated_hour": 21}
+{"round": 70, "timestamp": "2026-03-20T08:35:14.046930", "event_type": "round_end", "actions_count": 0}
+{"round": 71, "timestamp": "2026-03-20T08:35:14.047321", "event_type": "round_start", "simulated_hour": 22}
+{"round": 71, "timestamp": "2026-03-20T08:36:06.486537", "event_type": "round_end", "actions_count": 0}
+{"round": 72, "timestamp": "2026-03-20T08:36:06.486922", "event_type": "round_start", "simulated_hour": 23}
+{"round": 72, "timestamp": "2026-03-20T08:36:49.150163", "event_type": "round_end", "actions_count": 0}
+{"timestamp": "2026-03-20T08:36:49.150346", "event_type": "simulation_end", "platform": "twitter", "total_rounds": 72, "total_actions": 16}

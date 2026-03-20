@@ -17,7 +17,7 @@ services:
   gateway:
     build: ./backend
     ports:
-      - "4000:4000"
+      - "8090:4000"
     env_file: .env
     environment:
       - SHADOWBROKER_URL=http://shadowbroker:8000

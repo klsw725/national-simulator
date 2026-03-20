@@ -9,8 +9,6 @@
 ## 아키텍처 지뢰
 
 - **MVP-SPEC.md의 외부 API 엔드포인트는 실제와 다르다.** 스펙에 적힌 ShadowBroker 엔드포인트(`/api/ships`, `/api/geopolitics` 등)는 실재하지 않는다. 실제 SB API는 `/api/live-data`, `/api/live-data/fast`, `/api/live-data/slow`, `/api/viewport` 등이다. MiroFish도 마찬가지: 스펙의 `/api/ontology/generate`는 실제로 `/api/graph/ontology/generate`이고, `/api/simulation/run`은 `/api/simulation/start`이며, `/api/profiles/generate`는 `/api/simulation/generate-profiles`이다. **구현 전에 반드시 소스 프로젝트의 실제 라우트를 확인할 것.**
-- **소스 프로젝트는 절대 수정하지 않는다.** ShadowBroker(`/home/swlee/Shadowbroker`)와 MiroFish(`/home/swlee/mirofish-ko`)는 HTTP API로만 호출한다. 직접 Python import 금지, 소스 코드 수정 금지.
-- **ShadowBroker 경로의 대문자 S.** `/home/swlee/Shadowbroker`이다 (`shadowbroker`가 아님). Linux에서 대소문자를 틀리면 조용히 실패한다.
 
 ## 설정 지뢰
 
