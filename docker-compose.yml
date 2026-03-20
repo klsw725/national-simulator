@@ -19,6 +19,9 @@ services:
     ports:
       - "4000:4000"
     env_file: .env
+    environment:
+      - SHADOWBROKER_URL=http://shadowbroker:8000
+      - MIROFISH_URL=http://mirofish:5001
     depends_on:
       - shadowbroker
       - mirofish
