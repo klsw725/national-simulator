@@ -1,10 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDataPolling } from "@/hooks/useDataPolling";
 import { buildShipsGeoJSON } from "@/components/map/geoJSONBuilders";
 import type { BackendStatus } from "@/types/dashboard";
+import { Crosshair } from "lucide-react";
+import SimulationPanel from "@/components/simulation/SimulationPanel";
 
 const MaplibreViewer = dynamic(
   () => import("@/components/map/MaplibreViewer"),
@@ -63,11 +65,42 @@ function StatusIndicator({ status }: { status: BackendStatus }) {
 export default function HomePage() {
   const { ships, backendStatus } = useDataPolling();
   const shipsGeoJSON = useMemo(() => buildShipsGeoJSON(ships), [ships]);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   return (
     <main style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <StatusIndicator status={backendStatus} />
       <MaplibreViewer shipsGeoJSON={shipsGeoJSON} />
+
+      {/* Simulation panel */}
+      <SimulationPanel open={panelOpen} onClose={() => setPanelOpen(false)} />
+
+      {/* Floating toggle button */}
+      {!panelOpen && (
+        <button
+          onClick={() => setPanelOpen(true)}
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            zIndex: 15,
+            width: 48,
+            height: 48,
+            borderRadius: "50%",
+            background: "var(--accent-cyan)",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 2px 12px rgba(34, 211, 238, 0.3)",
+            transition: "transform 0.15s, box-shadow 0.15s",
+          }}
+          title="시뮬레이션 패널 열기"
+        >
+          <Crosshair size={22} color="var(--bg-primary)" />
+        </button>
+      )}
     </main>
   );
 }
