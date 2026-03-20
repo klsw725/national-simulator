@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Scenario, ScenarioFormData, PipelineStatus } from "@/types/simulation";
+import type { Scenario, ScenarioFormData, PipelineStatus, SimulationAction } from "@/types/simulation";
 import * as api from "@/lib/gatewayApi";
 
 const POLL_INTERVAL = 5_000;
@@ -12,10 +12,14 @@ export interface UseSimulationReturn {
   pipelineStatus: PipelineStatus | null;
   isRunning: boolean;
   error: string | null;
+  simulationGeoJSON: GeoJSON.FeatureCollection | null;
+  simulationResults: SimulationAction[];
+  reportMarkdown: string;
   createAndRun: (data: ScenarioFormData) => Promise<void>;
   deleteScenario: (id: string) => Promise<void>;
   selectScenario: (scenario: Scenario) => void;
   loadScenarios: () => Promise<void>;
+  loadResults: (scenarioId: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -25,9 +29,38 @@ export function useSimulation(): UseSimulationReturn {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [simulationGeoJSON, setSimulationGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [simulationResults, setSimulationResults] = useState<SimulationAction[]>([]);
+  const [reportMarkdown, setReportMarkdown] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
+
+  const loadResults = useCallback(async (scenarioId: string) => {
+    try {
+      const [geoRes, resultsRes, reportRes] = await Promise.allSettled([
+        api.getGeoJSON(scenarioId),
+        api.getResults(scenarioId),
+        api.getReport(scenarioId),
+      ]);
+
+      if (geoRes.status === "fulfilled" && geoRes.value) {
+        setSimulationGeoJSON(geoRes.value as GeoJSON.FeatureCollection);
+      }
+
+      if (resultsRes.status === "fulfilled" && resultsRes.value) {
+        const data = resultsRes.value as { results?: { actions?: SimulationAction[] } };
+        setSimulationResults(data.results?.actions ?? []);
+      }
+
+      if (reportRes.status === "fulfilled" && reportRes.value) {
+        const data = reportRes.value as { report?: string };
+        setReportMarkdown(data.report ?? "");
+      }
+    } catch {
+      // non-critical — results may not be ready
+    }
+  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -58,6 +91,9 @@ export function useSimulation(): UseSimulationReturn {
             stopPolling();
             setIsRunning(false);
             await loadScenarios();
+            if (st.status === "completed") {
+              await loadResults(scenarioId);
+            }
           }
         } catch {
           // keep polling on transient errors
@@ -67,7 +103,7 @@ export function useSimulation(): UseSimulationReturn {
       poll();
       pollRef.current = setInterval(poll, POLL_INTERVAL);
     },
-    [stopPolling, loadScenarios]
+    [stopPolling, loadScenarios, loadResults]
   );
 
   const createAndRun = useCallback(
@@ -117,6 +153,9 @@ export function useSimulation(): UseSimulationReturn {
       stopPolling();
       setActiveScenario(scenario);
       setError(null);
+      setSimulationGeoJSON(null);
+      setSimulationResults([]);
+      setReportMarkdown("");
 
       const isActive =
         scenario.status !== "completed" && scenario.status !== "failed" && scenario.status !== "created";
@@ -131,9 +170,12 @@ export function useSimulation(): UseSimulationReturn {
           seed_status: scenario.seed_status,
           simulation_status: scenario.simulation_status,
         });
+        if (scenario.status === "completed") {
+          loadResults(scenario.id);
+        }
       }
     },
-    [stopPolling, pollStatus]
+    [stopPolling, pollStatus, loadResults]
   );
 
   // Load scenarios on mount
@@ -152,10 +194,14 @@ export function useSimulation(): UseSimulationReturn {
     pipelineStatus,
     isRunning,
     error,
+    simulationGeoJSON,
+    simulationResults,
+    reportMarkdown,
     createAndRun,
     deleteScenario,
     selectScenario,
     loadScenarios,
+    loadResults,
     clearError,
   };
 }

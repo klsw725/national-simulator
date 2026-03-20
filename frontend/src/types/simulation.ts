@@ -32,3 +32,10 @@ export interface PipelineStatus {
   seed_status: string;
   simulation_status: string;
 }
+
+export interface SimulationAction {
+  agent_name: string;
+  action_type: string;
+  action_args: { content?: string; [key: string]: unknown };
+  round_num: number;
+}

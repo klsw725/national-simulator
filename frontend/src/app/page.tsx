@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useDataPolling } from "@/hooks/useDataPolling";
+import { useSimulation } from "@/hooks/useSimulation";
 import { buildShipsGeoJSON } from "@/components/map/geoJSONBuilders";
 import type { BackendStatus } from "@/types/dashboard";
 import { Crosshair } from "lucide-react";
@@ -65,17 +66,23 @@ function StatusIndicator({ status }: { status: BackendStatus }) {
 export default function HomePage() {
   const { ships, backendStatus } = useDataPolling();
   const shipsGeoJSON = useMemo(() => buildShipsGeoJSON(ships), [ships]);
+  const sim = useSimulation();
   const [panelOpen, setPanelOpen] = useState(false);
 
   return (
     <main style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <StatusIndicator status={backendStatus} />
-      <MaplibreViewer shipsGeoJSON={shipsGeoJSON} />
+      <MaplibreViewer
+        shipsGeoJSON={shipsGeoJSON}
+        simulationGeoJSON={sim.simulationGeoJSON}
+      />
 
-      {/* Simulation panel */}
-      <SimulationPanel open={panelOpen} onClose={() => setPanelOpen(false)} />
+      <SimulationPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        sim={sim}
+      />
 
-      {/* Floating toggle button */}
       {!panelOpen && (
         <button
           onClick={() => setPanelOpen(true)}

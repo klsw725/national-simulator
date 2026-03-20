@@ -2,29 +2,37 @@
 
 import { useState } from "react";
 import { X, AlertTriangle } from "lucide-react";
-import { useSimulation } from "@/hooks/useSimulation";
+import type { UseSimulationReturn } from "@/hooks/useSimulation";
 import ScenarioForm from "./ScenarioForm";
 import PipelineProgress from "./PipelineProgress";
 import ScenarioList from "./ScenarioList";
+import SimulationTimeline from "./SimulationTimeline";
+import ReportViewer from "./ReportViewer";
 
-type Tab = "create" | "progress" | "list";
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: "create", label: "새 시나리오" },
-  { key: "progress", label: "진행 상태" },
-  { key: "list", label: "시나리오 목록" },
-];
+type Tab = "create" | "progress" | "list" | "timeline" | "report";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  sim: UseSimulationReturn;
 }
 
-export default function SimulationPanel({ open, onClose }: Props) {
+export default function SimulationPanel({ open, onClose, sim }: Props) {
   const [tab, setTab] = useState<Tab>("create");
-  const sim = useSimulation();
 
   if (!open) return null;
+
+  const isCompleted = sim.pipelineStatus?.status === "completed";
+
+  const tabs: { key: Tab; label: string; show: boolean }[] = [
+    { key: "create", label: "새 시나리오", show: true },
+    { key: "progress", label: "진행 상태", show: true },
+    { key: "list", label: "목록", show: true },
+    { key: "timeline", label: "타임라인", show: isCompleted },
+    { key: "report", label: "리포트", show: isCompleted },
+  ];
+
+  const visibleTabs = tabs.filter((t) => t.show);
 
   return (
     <div
@@ -87,7 +95,7 @@ export default function SimulationPanel({ open, onClose }: Props) {
           flexShrink: 0,
         }}
       >
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -175,6 +183,14 @@ export default function SimulationPanel({ open, onClose }: Props) {
             }}
             onDelete={sim.deleteScenario}
           />
+        )}
+
+        {tab === "timeline" && (
+          <SimulationTimeline actions={sim.simulationResults} />
+        )}
+
+        {tab === "report" && (
+          <ReportViewer markdown={sim.reportMarkdown} />
         )}
       </div>
     </div>

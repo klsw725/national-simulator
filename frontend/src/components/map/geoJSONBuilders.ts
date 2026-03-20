@@ -36,3 +36,27 @@ export const EMPTY_FC: GeoJSON.FeatureCollection<GeoJSON.Point> = {
   type: "FeatureCollection",
   features: [],
 };
+
+export function buildSimulationActorsGeoJSON(
+  geojson?: GeoJSON.FeatureCollection | null
+): GeoJSON.FeatureCollection | null {
+  if (!geojson?.features?.length) return null;
+  return {
+    type: "FeatureCollection",
+    features: geojson.features.filter(
+      (f) => f.properties?.feature_type === "actor"
+    ),
+  };
+}
+
+export function buildSimulationRelationsGeoJSON(
+  geojson?: GeoJSON.FeatureCollection | null
+): GeoJSON.FeatureCollection | null {
+  if (!geojson?.features?.length) return null;
+  return {
+    type: "FeatureCollection",
+    features: geojson.features.filter(
+      (f) => f.properties?.feature_type === "relationship"
+    ),
+  };
+}
