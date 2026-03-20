@@ -4,10 +4,16 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useDataPolling } from "@/hooks/useDataPolling";
 import { useSimulation } from "@/hooks/useSimulation";
-import { buildShipsGeoJSON } from "@/components/map/geoJSONBuilders";
+import {
+  buildShipsGeoJSON,
+  buildMilitaryFlightsGeoJSON,
+  buildSatellitesGeoJSON,
+  buildMilitaryBasesGeoJSON,
+} from "@/components/map/geoJSONBuilders";
 import type { BackendStatus } from "@/types/dashboard";
 import { Crosshair } from "lucide-react";
 import SimulationPanel from "@/components/simulation/SimulationPanel";
+import LayerToggle, { type LayerVisibility } from "@/components/map/LayerToggle";
 
 const MaplibreViewer = dynamic(
   () => import("@/components/map/MaplibreViewer"),
@@ -63,19 +69,35 @@ function StatusIndicator({ status }: { status: BackendStatus }) {
   );
 }
 
+const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
+  ships: true,
+  militaryFlights: true,
+  satellites: true,
+  militaryBases: true,
+};
+
 export default function HomePage() {
-  const { ships, backendStatus } = useDataPolling();
+  const { ships, militaryFlights, satellites, militaryBases, backendStatus } = useDataPolling();
   const shipsGeoJSON = useMemo(() => buildShipsGeoJSON(ships), [ships]);
+  const militaryFlightsGeoJSON = useMemo(() => buildMilitaryFlightsGeoJSON(militaryFlights), [militaryFlights]);
+  const satellitesGeoJSON = useMemo(() => buildSatellitesGeoJSON(satellites), [satellites]);
+  const militaryBasesGeoJSON = useMemo(() => buildMilitaryBasesGeoJSON(militaryBases), [militaryBases]);
   const sim = useSimulation();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(DEFAULT_LAYER_VISIBILITY);
 
   return (
     <main style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <StatusIndicator status={backendStatus} />
       <MaplibreViewer
         shipsGeoJSON={shipsGeoJSON}
+        militaryFlightsGeoJSON={militaryFlightsGeoJSON}
+        satellitesGeoJSON={satellitesGeoJSON}
+        militaryBasesGeoJSON={militaryBasesGeoJSON}
         simulationGeoJSON={sim.simulationGeoJSON}
+        layerVisibility={layerVisibility}
       />
+      <LayerToggle visibility={layerVisibility} onChange={setLayerVisibility} />
 
       <SimulationPanel
         open={panelOpen}

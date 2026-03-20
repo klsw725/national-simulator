@@ -17,10 +17,56 @@ import {
   buildSimulationActorsGeoJSON,
   buildSimulationRelationsGeoJSON,
 } from "./geoJSONBuilders";
+import type { LayerVisibility } from "./LayerToggle";
 
 interface MaplibreViewerProps {
   shipsGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
+  militaryFlightsGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
+  satellitesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
+  militaryBasesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
   simulationGeoJSON?: GeoJSON.FeatureCollection | null;
+  layerVisibility: LayerVisibility;
+}
+
+interface ShipPopupData {
+  lng: number;
+  lat: number;
+  name: string;
+  type: string;
+  mmsi: string;
+  sog: number;
+  country: string;
+}
+
+interface FlightPopupData {
+  lng: number;
+  lat: number;
+  callsign: string;
+  country: string;
+  force: string;
+  military_type: string;
+  model: string;
+  alt: number;
+  speed_knots: number;
+}
+
+interface SatellitePopupData {
+  lng: number;
+  lat: number;
+  name: string;
+  country: string;
+  mission: string;
+  sat_type: string;
+  alt_km: number;
+}
+
+interface BasePopupData {
+  lng: number;
+  lat: number;
+  name: string;
+  country: string;
+  branch: string;
+  operator: string;
 }
 
 interface ActorPopupData {
@@ -47,10 +93,18 @@ const EMPTY_GEOJSON: GeoJSON.FeatureCollection = {
 
 export default function MaplibreViewer({
   shipsGeoJSON,
+  militaryFlightsGeoJSON,
+  satellitesGeoJSON,
+  militaryBasesGeoJSON,
   simulationGeoJSON,
+  layerVisibility,
 }: MaplibreViewerProps) {
   const mapRef = useRef<MapRef>(null);
   const [popup, setPopup] = useState<ActorPopupData | null>(null);
+  const [shipPopup, setShipPopup] = useState<ShipPopupData | null>(null);
+  const [flightPopup, setFlightPopup] = useState<FlightPopupData | null>(null);
+  const [satPopup, setSatPopup] = useState<SatellitePopupData | null>(null);
+  const [basePopup, setBasePopup] = useState<BasePopupData | null>(null);
 
   const actorsGeoJSON = useMemo(
     () => buildSimulationActorsGeoJSON(simulationGeoJSON) ?? EMPTY_GEOJSON,
@@ -63,6 +117,9 @@ export default function MaplibreViewer({
   );
 
   useImperativeSource(mapRef.current, "ships", shipsGeoJSON);
+  useImperativeSource(mapRef.current, "military-flights", militaryFlightsGeoJSON);
+  useImperativeSource(mapRef.current, "satellites", satellitesGeoJSON);
+  useImperativeSource(mapRef.current, "military-bases", militaryBasesGeoJSON);
   useImperativeSource(mapRef.current, "simulation-actors", actorsGeoJSON);
   useImperativeSource(mapRef.current, "simulation-relations", relationsGeoJSON);
 
@@ -110,22 +167,76 @@ export default function MaplibreViewer({
 
   const onMove = useCallback((_evt: ViewStateChangeEvent) => {}, []);
 
-  const onActorClick = useCallback((e: MapLayerMouseEvent) => {
+  const clearPopups = useCallback(() => {
+    setPopup(null);
+    setShipPopup(null);
+    setFlightPopup(null);
+    setSatPopup(null);
+    setBasePopup(null);
+  }, []);
+
+  const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
     if (!feature || !feature.properties) return;
 
+    const layerId = feature.layer?.id;
     const coords = (feature.geometry as GeoJSON.Point).coordinates;
-    setPopup({
-      lng: coords[0],
-      lat: coords[1],
-      actor: feature.properties.actor ?? "",
-      stance: feature.properties.stance ?? "",
-      tension_level: Number(feature.properties.tension_level) || 0,
-      key_statement: feature.properties.key_statement ?? "",
-      post_count: Number(feature.properties.post_count) || 0,
-      color: feature.properties.color ?? "var(--accent-cyan)",
-    });
-  }, []);
+    clearPopups();
+
+    if (layerId === "ship-icons") {
+      setShipPopup({
+        lng: coords[0],
+        lat: coords[1],
+        name: feature.properties.name ?? "Unknown",
+        type: feature.properties.type ?? "unknown",
+        mmsi: feature.properties.id ?? "",
+        sog: Number(feature.properties.sog) || 0,
+        country: feature.properties.country ?? "",
+      });
+    } else if (layerId === "military-flights-layer") {
+      setFlightPopup({
+        lng: coords[0],
+        lat: coords[1],
+        callsign: feature.properties.callsign ?? "",
+        country: feature.properties.country ?? "",
+        force: feature.properties.force ?? "",
+        military_type: feature.properties.military_type ?? "",
+        model: feature.properties.model ?? "",
+        alt: Number(feature.properties.alt) || 0,
+        speed_knots: Number(feature.properties.speed_knots) || 0,
+      });
+    } else if (layerId === "satellites-layer") {
+      setSatPopup({
+        lng: coords[0],
+        lat: coords[1],
+        name: feature.properties.name ?? "",
+        country: feature.properties.country ?? "",
+        mission: feature.properties.mission ?? "",
+        sat_type: feature.properties.sat_type ?? "",
+        alt_km: Number(feature.properties.alt_km) || 0,
+      });
+    } else if (layerId === "military-bases-layer") {
+      setBasePopup({
+        lng: coords[0],
+        lat: coords[1],
+        name: feature.properties.name ?? "",
+        country: feature.properties.country ?? "",
+        branch: feature.properties.branch ?? "",
+        operator: feature.properties.operator ?? "",
+      });
+    } else if (layerId === "simulation-actors-layer") {
+      setPopup({
+        lng: coords[0],
+        lat: coords[1],
+        actor: feature.properties.actor ?? "",
+        stance: feature.properties.stance ?? "",
+        tension_level: Number(feature.properties.tension_level) || 0,
+        key_statement: feature.properties.key_statement ?? "",
+        post_count: Number(feature.properties.post_count) || 0,
+        color: feature.properties.color ?? "var(--accent-cyan)",
+      });
+    }
+  }, [clearPopups]);
 
   const stanceColor = (stance: string) => {
     const s = stance.toLowerCase();
@@ -144,8 +255,14 @@ export default function MaplibreViewer({
       mapStyle={darkStyle}
       onLoad={onLoad}
       onMove={onMove}
-      onClick={onActorClick}
-      interactiveLayerIds={["simulation-actors-layer"]}
+      onClick={onMapClick}
+      interactiveLayerIds={[
+        "ship-icons",
+        "military-flights-layer",
+        "satellites-layer",
+        "military-bases-layer",
+        "simulation-actors-layer",
+      ]}
       attributionControl={false}
     >
       {/* Ships */}
@@ -161,6 +278,7 @@ export default function MaplibreViewer({
           id="ship-clusters"
           type="circle"
           filter={["has", "point_count"]}
+          layout={{ visibility: layerVisibility.ships ? "visible" : "none" }}
           paint={{
             "circle-color": "#3b82f6",
             "circle-radius": [
@@ -184,6 +302,7 @@ export default function MaplibreViewer({
           layout={{
             "text-field": "{point_count_abbreviated}",
             "text-size": 11,
+            visibility: layerVisibility.ships ? "visible" : "none",
           }}
           paint={{
             "text-color": "#ffffff",
@@ -199,6 +318,115 @@ export default function MaplibreViewer({
             "icon-rotate": ["get", "rotation"],
             "icon-rotation-alignment": "map",
             "icon-allow-overlap": true,
+            visibility: layerVisibility.ships ? "visible" : "none",
+          }}
+        />
+      </Source>
+
+      {/* Military Flights */}
+      <Source
+        id="military-flights"
+        type="geojson"
+        data={militaryFlightsGeoJSON ?? EMPTY_FC}
+      >
+        <Layer
+          id="military-flights-layer"
+          type="circle"
+          layout={{ visibility: layerVisibility.militaryFlights ? "visible" : "none" }}
+          paint={{
+            "circle-radius": 5,
+            "circle-color": "#f97316",
+            "circle-opacity": 0.9,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(249,115,22,0.4)",
+          }}
+        />
+        <Layer
+          id="military-flights-label"
+          type="symbol"
+          layout={{
+            "text-field": ["get", "callsign"],
+            "text-size": 10,
+            "text-offset": [0, 1.4],
+            "text-anchor": "top",
+            visibility: layerVisibility.militaryFlights ? "visible" : "none",
+          }}
+          paint={{
+            "text-color": "#f97316",
+            "text-halo-color": "#000000",
+            "text-halo-width": 1,
+          }}
+        />
+      </Source>
+
+      {/* Satellites */}
+      <Source
+        id="satellites"
+        type="geojson"
+        data={satellitesGeoJSON ?? EMPTY_FC}
+      >
+        <Layer
+          id="satellites-layer"
+          type="circle"
+          layout={{ visibility: layerVisibility.satellites ? "visible" : "none" }}
+          paint={{
+            "circle-radius": 4,
+            "circle-color": "#a855f7",
+            "circle-opacity": 0.85,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(168,85,247,0.4)",
+          }}
+        />
+        <Layer
+          id="satellites-label"
+          type="symbol"
+          layout={{
+            "text-field": ["get", "name"],
+            "text-size": 10,
+            "text-offset": [0, 1.3],
+            "text-anchor": "top",
+            visibility: layerVisibility.satellites ? "visible" : "none",
+          }}
+          paint={{
+            "text-color": "#a855f7",
+            "text-halo-color": "#000000",
+            "text-halo-width": 1,
+          }}
+        />
+      </Source>
+
+      {/* Military Bases */}
+      <Source
+        id="military-bases"
+        type="geojson"
+        data={militaryBasesGeoJSON ?? EMPTY_FC}
+      >
+        <Layer
+          id="military-bases-layer"
+          type="circle"
+          layout={{ visibility: layerVisibility.militaryBases ? "visible" : "none" }}
+          paint={{
+            "circle-radius": 7,
+            "circle-color": "#ef4444",
+            "circle-opacity": 0.8,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "rgba(239,68,68,0.3)",
+          }}
+        />
+        <Layer
+          id="military-bases-label"
+          type="symbol"
+          layout={{
+            "text-field": ["get", "name"],
+            "text-size": 10,
+            "text-offset": [0, 1.5],
+            "text-anchor": "top",
+            visibility: layerVisibility.militaryBases ? "visible" : "none",
+          }}
+          paint={{
+            "text-color": "#ef4444",
+            "text-halo-color": "#000000",
+            "text-halo-width": 1,
           }}
         />
       </Source>
@@ -373,6 +601,277 @@ export default function MaplibreViewer({
                 {popup.key_statement}
               </div>
             )}
+          </div>
+        </Popup>
+      )}
+
+      {shipPopup && (
+        <Popup
+          longitude={shipPopup.lng}
+          latitude={shipPopup.lat}
+          onClose={() => setShipPopup(null)}
+          closeButton={true}
+          closeOnClick={false}
+          anchor="bottom"
+          offset={20}
+          style={{ zIndex: 30 }}
+        >
+          <div
+            style={{
+              background: "rgb(12, 14, 18)",
+              color: "#f3f4f6",
+              padding: 12,
+              borderRadius: 6,
+              minWidth: 180,
+              maxWidth: 260,
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 14,
+                marginBottom: 6,
+                color: "#22d3ee",
+              }}
+            >
+              {shipPopup.name}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: shipPopup.type === "military_vessel" ? "#facc15" : "#3b82f6",
+                  color: "#000",
+                  textTransform: "uppercase",
+                }}
+              >
+                {shipPopup.type.replace(/_/g, " ")}
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>MMSI</span>
+                <span>{shipPopup.mmsi}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>SOG</span>
+                <span>{shipPopup.sog.toFixed(1)} kn</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+                <span>{shipPopup.country || "Unknown"}</span>
+              </div>
+            </div>
+          </div>
+        </Popup>
+      )}
+
+      {flightPopup && (
+        <Popup
+          longitude={flightPopup.lng}
+          latitude={flightPopup.lat}
+          onClose={() => setFlightPopup(null)}
+          closeButton={true}
+          closeOnClick={false}
+          anchor="bottom"
+          offset={20}
+          style={{ zIndex: 30 }}
+        >
+          <div
+            style={{
+              background: "rgb(12, 14, 18)",
+              color: "#f3f4f6",
+              padding: 12,
+              borderRadius: 6,
+              minWidth: 180,
+              maxWidth: 260,
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 14,
+                marginBottom: 6,
+                color: "#f97316",
+              }}
+            >
+              {flightPopup.callsign}
+            </div>
+            {flightPopup.force && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span
+                  style={{
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    background: "#f97316",
+                    color: "#000",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {flightPopup.force}
+                </span>
+                {flightPopup.military_type && (
+                  <span style={{ color: "rgb(107, 114, 128)", fontSize: 11 }}>
+                    {flightPopup.military_type}
+                  </span>
+                )}
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
+                <span>{flightPopup.model || "Unknown"}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
+                <span>{flightPopup.alt.toLocaleString()} ft</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
+                <span>{flightPopup.speed_knots.toFixed(0)} kn</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+                <span>{flightPopup.country || "Unknown"}</span>
+              </div>
+            </div>
+          </div>
+        </Popup>
+      )}
+
+      {satPopup && (
+        <Popup
+          longitude={satPopup.lng}
+          latitude={satPopup.lat}
+          onClose={() => setSatPopup(null)}
+          closeButton={true}
+          closeOnClick={false}
+          anchor="bottom"
+          offset={20}
+          style={{ zIndex: 30 }}
+        >
+          <div
+            style={{
+              background: "rgb(12, 14, 18)",
+              color: "#f3f4f6",
+              padding: 12,
+              borderRadius: 6,
+              minWidth: 180,
+              maxWidth: 260,
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 14,
+                marginBottom: 6,
+                color: "#a855f7",
+              }}
+            >
+              {satPopup.name}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: "#a855f7",
+                  color: "#000",
+                  textTransform: "uppercase",
+                }}
+              >
+                {satPopup.sat_type}
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Mission</span>
+                <span>{satPopup.mission || "Unknown"}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
+                <span>{satPopup.alt_km.toLocaleString()} km</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+                <span>{satPopup.country || "Unknown"}</span>
+              </div>
+            </div>
+          </div>
+        </Popup>
+      )}
+
+      {basePopup && (
+        <Popup
+          longitude={basePopup.lng}
+          latitude={basePopup.lat}
+          onClose={() => setBasePopup(null)}
+          closeButton={true}
+          closeOnClick={false}
+          anchor="bottom"
+          offset={20}
+          style={{ zIndex: 30 }}
+        >
+          <div
+            style={{
+              background: "rgb(12, 14, 18)",
+              color: "#f3f4f6",
+              padding: 12,
+              borderRadius: 6,
+              minWidth: 180,
+              maxWidth: 260,
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 14,
+                marginBottom: 6,
+                color: "#ef4444",
+              }}
+            >
+              {basePopup.name}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: "#ef4444",
+                  color: "#000",
+                  textTransform: "uppercase",
+                }}
+              >
+                {basePopup.branch}
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Operator</span>
+                <span>{basePopup.operator || "Unknown"}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+                <span>{basePopup.country || "Unknown"}</span>
+              </div>
+            </div>
           </div>
         </Popup>
       )}

@@ -1,4 +1,21 @@
 services:
+  dozerdb:
+    image: graphstack/dozerdb:5.26.3.0
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/mirofish
+      - NEO4J_PLUGINS=["apoc", "n10s"]
+      - dbms.security.procedures.unrestricted=apoc.*,n10s.*
+      - dbms.security.procedures.allowlist=apoc.*,n10s.*
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+    volumes:
+      - dozerdb-data:/data
+      - dozerdb-logs:/logs
+    restart: unless-stopped
+
   shadowbroker:
     build:
       context: ./external/Shadowbroker-backend
@@ -13,11 +30,16 @@ services:
     ports:
       - "5001:5001"
     env_file: ./external/mirofish-backend/.env
+    environment:
+      - USE_LOCAL_GRAPH=true
+      - DOZERDB_URI=bolt://dozerdb:7687
+    depends_on:
+      - dozerdb
 
   gateway:
     build: ./backend
     ports:
-      - "8090:4000"
+      - "4000:4000"
     env_file: .env
     environment:
       - SHADOWBROKER_URL=http://shadowbroker:8000
@@ -25,3 +47,16 @@ services:
     depends_on:
       - shadowbroker
       - mirofish
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8090:3000"
+    environment:
+      - GATEWAY_URL=http://gateway:4000
+    depends_on:
+      - gateway
+
+volumes:
+  dozerdb-data:
+  dozerdb-logs:

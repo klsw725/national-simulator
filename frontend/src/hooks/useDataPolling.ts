@@ -1,19 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BackendStatus, Ship } from "@/types/dashboard";
+import type {
+  BackendStatus,
+  Ship,
+  Flight,
+  Satellite,
+  MilitaryBase,
+} from "@/types/dashboard";
 
 const FAST_INTERVAL = 15_000;
 const SLOW_INTERVAL = 120_000;
 
 interface PollingResult {
   ships: Ship[];
+  militaryFlights: Flight[];
+  satellites: Satellite[];
+  militaryBases: MilitaryBase[];
   gdelt: unknown[];
   backendStatus: BackendStatus;
 }
 
 export function useDataPolling(): PollingResult {
   const [ships, setShips] = useState<Ship[]>([]);
+  const [militaryFlights, setMilitaryFlights] = useState<Flight[]>([]);
+  const [satellites, setSatellites] = useState<Satellite[]>([]);
+  const [militaryBases, setMilitaryBases] = useState<MilitaryBase[]>([]);
   const [gdelt, setGdelt] = useState<unknown[]>([]);
   const [backendStatus, setBackendStatus] =
     useState<BackendStatus>("connecting");
@@ -42,6 +54,8 @@ export function useDataPolling(): PollingResult {
       const data = await res.json();
       const shipList: Ship[] = data.ships ?? data.data?.ships ?? [];
       setShips(shipList);
+      setMilitaryFlights(data.military_flights ?? []);
+      setSatellites(data.satellites ?? []);
       setBackendStatus("connected");
     } catch {
       setBackendStatus("disconnected");
@@ -62,6 +76,7 @@ export function useDataPolling(): PollingResult {
 
       const data = await res.json();
       setGdelt(data.gdelt ?? data.data?.gdelt ?? []);
+      setMilitaryBases(data.military_bases ?? []);
     } catch {
       // slow poll failure is non-critical
     }
@@ -80,5 +95,5 @@ export function useDataPolling(): PollingResult {
     };
   }, [pollFast, pollSlow]);
 
-  return { ships, gdelt, backendStatus };
+  return { ships, militaryFlights, satellites, militaryBases, gdelt, backendStatus };
 }
