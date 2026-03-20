@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #000000;
+  --bg-secondary: rgb(5, 5, 8);
+  --bg-tertiary: rgb(12, 14, 18);
+  --text-primary: rgb(243, 244, 246);
+  --text-secondary: rgb(34, 211, 238);
+  --text-muted: rgb(107, 114, 128);
+  --border-primary: rgb(10, 12, 15);
+  --border-secondary: rgb(30, 34, 40);
+  --accent-cyan: rgb(34, 211, 238);
+  --accent-yellow: rgb(250, 204, 21);
+  --accent-red: rgb(239, 68, 68);
+  --status-connected: rgb(34, 197, 94);
+  --status-disconnected: rgb(239, 68, 68);
+  --status-connecting: rgb(234, 179, 8);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
