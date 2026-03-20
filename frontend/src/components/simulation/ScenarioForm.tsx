@@ -2,13 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
-import type { ScenarioFormData } from "@/types/simulation";
+import type { ScenarioFormData, PipelineMode } from "@/types/simulation";
 
 const REGION_PRESETS: { label: string; name: string; bbox: [number, number, number, number] }[] = [
   { label: "South China Sea", name: "South China Sea", bbox: [108, 5, 121, 23] },
   { label: "Taiwan Strait", name: "Taiwan Strait", bbox: [117, 22, 122, 26] },
   { label: "East China Sea", name: "East China Sea", bbox: [122, 25, 132, 35] },
   { label: "Korean Peninsula", name: "Korean Peninsula", bbox: [124, 33, 132, 43] },
+  { label: "Strait of Hormuz", name: "Strait of Hormuz", bbox: [54, 24, 58, 28] },
 ];
 
 interface Props {
@@ -22,6 +23,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
   const [question, setQuestion] = useState("");
   const [maxRounds, setMaxRounds] = useState(10);
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<PipelineMode>("auto");
 
   const region = REGION_PRESETS[regionIdx];
 
@@ -37,6 +39,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
         question: question.trim(),
         max_rounds: maxRounds,
         data_sources: ["ships", "flights", "satellites"],
+        mode,
       });
     } finally {
       setSubmitting(false);
@@ -152,7 +155,43 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
         </div>
       </div>
 
-      {/* Submit */}
+      <div>
+        <label style={labelStyle}>파이프라인 모드</label>
+        <div
+          style={{
+            display: "flex",
+            background: "var(--bg-primary)",
+            border: "1px solid var(--border-secondary)",
+            borderRadius: 4,
+            overflow: "hidden",
+          }}
+        >
+          {([
+            { value: "auto" as const, label: "자동 실행" },
+            { value: "checkpoint" as const, label: "단계별 검토" },
+          ]).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setMode(opt.value)}
+              style={{
+                flex: 1,
+                padding: "7px 12px",
+                background: mode === opt.value ? "var(--accent-cyan)" : "transparent",
+                color: mode === opt.value ? "var(--bg-primary)" : "var(--text-muted)",
+                border: "none",
+                fontSize: 12,
+                fontWeight: mode === opt.value ? 700 : 400,
+                cursor: "pointer",
+                transition: "background 0.15s, color 0.15s",
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <button
         type="submit"
         disabled={submitting || isRunning}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Scenario, ScenarioFormData, PipelineStatus, SimulationAction } from "@/types/simulation";
+import type { Scenario, ScenarioFormData, PipelineStatus, SimulationAction, PipelineMode, CheckpointData } from "@/types/simulation";
 import * as api from "@/lib/gatewayApi";
 
 const POLL_INTERVAL = 5_000;
@@ -15,12 +15,16 @@ export interface UseSimulationReturn {
   simulationGeoJSON: GeoJSON.FeatureCollection | null;
   simulationResults: SimulationAction[];
   reportMarkdown: string;
+  checkpointData: CheckpointData | null;
+  pipelineMode: PipelineMode;
   createAndRun: (data: ScenarioFormData) => Promise<void>;
   deleteScenario: (id: string) => Promise<void>;
   selectScenario: (scenario: Scenario) => void;
   loadScenarios: () => Promise<void>;
   loadResults: (scenarioId: string) => Promise<void>;
   clearError: () => void;
+  continueCheckpoint: (edits?: Record<string, unknown>) => Promise<void>;
+  setPipelineMode: (mode: PipelineMode) => void;
 }
 
 export function useSimulation(): UseSimulationReturn {
@@ -32,6 +36,8 @@ export function useSimulation(): UseSimulationReturn {
   const [simulationGeoJSON, setSimulationGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
   const [simulationResults, setSimulationResults] = useState<SimulationAction[]>([]);
   const [reportMarkdown, setReportMarkdown] = useState("");
+  const [checkpointData, setCheckpointData] = useState<CheckpointData | null>(null);
+  const [pipelineMode, setPipelineMode] = useState<PipelineMode>("auto");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
@@ -87,6 +93,14 @@ export function useSimulation(): UseSimulationReturn {
           const st = await api.getStatus(scenarioId);
           setPipelineStatus(st);
 
+          if (st.status.startsWith("checkpoint:")) {
+            stopPolling();
+            setIsRunning(false);
+            const cpData = await api.getCheckpoint(scenarioId);
+            setCheckpointData(cpData);
+            return;
+          }
+
           if (st.status === "completed" || st.status === "failed") {
             stopPolling();
             setIsRunning(false);
@@ -110,13 +124,17 @@ export function useSimulation(): UseSimulationReturn {
     async (data: ScenarioFormData) => {
       setError(null);
       setIsRunning(true);
+      setCheckpointData(null);
       setPipelineStatus({ status: "starting", seed_status: "pending", simulation_status: "pending" });
+
+      const mode = data.mode ?? "auto";
+      setPipelineMode(mode);
 
       try {
         const scenario = await api.createScenario(data);
         setActiveScenario(scenario);
         await api.generateSeed(scenario.id);
-        await api.startSimulation(scenario.id);
+        await api.startSimulation(scenario.id, mode);
         pollStatus(scenario.id);
         await loadScenarios();
       } catch (err) {
@@ -127,6 +145,27 @@ export function useSimulation(): UseSimulationReturn {
       }
     },
     [pollStatus, loadScenarios]
+  );
+
+  const continueCheckpoint = useCallback(
+    async (edits?: Record<string, unknown>) => {
+      const scenarioId = activeScenario?.id;
+      if (!scenarioId) return;
+
+      setError(null);
+      setCheckpointData(null);
+      setIsRunning(true);
+
+      try {
+        await api.continueSimulation(scenarioId, edits);
+        pollStatus(scenarioId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Continue failed";
+        setError(msg);
+        setIsRunning(false);
+      }
+    },
+    [activeScenario, pollStatus]
   );
 
   const deleteScenario = useCallback(
@@ -197,11 +236,15 @@ export function useSimulation(): UseSimulationReturn {
     simulationGeoJSON,
     simulationResults,
     reportMarkdown,
+    checkpointData,
+    pipelineMode,
     createAndRun,
     deleteScenario,
     selectScenario,
     loadScenarios,
     loadResults,
     clearError,
+    continueCheckpoint,
+    setPipelineMode,
   };
 }

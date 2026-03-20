@@ -13,12 +13,15 @@ export interface Scenario {
   updated_at: string;
 }
 
+export type PipelineMode = 'auto' | 'checkpoint';
+
 export interface ScenarioFormData {
   name: string;
   region: { bbox: [number, number, number, number]; name: string };
   question: string;
   max_rounds: number;
   data_sources: string[];
+  mode: PipelineMode;
 }
 
 export interface PipelineStep {
@@ -38,4 +41,14 @@ export interface SimulationAction {
   action_type: string;
   action_args: { content?: string; [key: string]: unknown };
   round_num: number;
+}
+
+export interface CheckpointData {
+  scenario_id: string;
+  result_id: string;
+  status: string;
+  step: string;      // "seed" | "ontology" | "graph" | "profiles" | "config"
+  editable: boolean;
+  data: Record<string, unknown> | null;
+  pipeline_mode: string;
 }

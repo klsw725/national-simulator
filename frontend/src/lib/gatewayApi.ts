@@ -1,4 +1,4 @@
-import type { Scenario, ScenarioFormData } from "@/types/simulation";
+import type { Scenario, ScenarioFormData, PipelineMode, CheckpointData } from "@/types/simulation";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -21,8 +21,7 @@ export function createScenario(
     headers: JSON_HEADERS,
     body: JSON.stringify({
       name: data.name,
-      region_bbox: data.region.bbox,
-      region_name: data.region.name,
+      region: { bbox: data.region.bbox, name: data.region.name },
       question: data.question,
       max_rounds: data.max_rounds,
       data_sources: data.data_sources,
@@ -53,11 +52,30 @@ export function generateSeed(
 }
 
 export function startSimulation(
-  scenarioId: string
-): Promise<{ status: string }> {
+  scenarioId: string,
+  mode: PipelineMode = "auto"
+): Promise<{ status: string; pipeline_mode: string }> {
   return fetchJSON(`/api/scenario/${scenarioId}/simulate`, {
     method: "POST",
     headers: JSON_HEADERS,
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export function getCheckpoint(
+  scenarioId: string
+): Promise<CheckpointData> {
+  return fetchJSON(`/api/scenario/${scenarioId}/checkpoint`);
+}
+
+export function continueSimulation(
+  scenarioId: string,
+  edits?: Record<string, unknown>
+): Promise<{ status: string }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/continue`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ edits: edits || null }),
   });
 }
 

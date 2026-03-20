@@ -5,6 +5,7 @@ import { X, AlertTriangle } from "lucide-react";
 import type { UseSimulationReturn } from "@/hooks/useSimulation";
 import ScenarioForm from "./ScenarioForm";
 import PipelineProgress from "./PipelineProgress";
+import CheckpointReview from "./CheckpointReview";
 import ScenarioList from "./ScenarioList";
 import SimulationTimeline from "./SimulationTimeline";
 import ReportViewer from "./ReportViewer";
@@ -23,6 +24,7 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
   if (!open) return null;
 
   const isCompleted = sim.pipelineStatus?.status === "completed";
+  const hasCheckpoint = sim.checkpointData !== null;
 
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: "create", label: "새 시나리오", show: true },
@@ -171,7 +173,22 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
           />
         )}
 
-        {tab === "progress" && <PipelineProgress pipelineStatus={sim.pipelineStatus} />}
+        {tab === "progress" && (
+          hasCheckpoint ? (
+            <CheckpointReview
+              checkpointData={sim.checkpointData!}
+              onContinue={sim.continueCheckpoint}
+              onCancel={() => setTab("list")}
+            />
+          ) : (
+            <PipelineProgress
+              pipelineStatus={sim.pipelineStatus}
+              onReview={() => {
+                if (hasCheckpoint) setTab("progress");
+              }}
+            />
+          )
+        )}
 
         {tab === "list" && (
           <ScenarioList
