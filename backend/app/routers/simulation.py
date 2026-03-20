@@ -275,14 +275,85 @@ async def get_simulation_results(
     )
 
 
-# --- PRD 5 스텁 (미구현) ---
+# ------------------------------------------------------------------
+# Result Projection endpoints (PRD 5)
+# ------------------------------------------------------------------
 
 
 @router.get("/{scenario_id}/geojson")
-async def get_geojson(scenario_id: str):
-    return _not_impl("PRD 5 (result-projection)")
+async def get_geojson(
+    scenario_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """시뮬레이션 결과를 GeoJSON FeatureCollection으로 반환한다."""
+    from app.services.result_projector import ResultProjector
+
+    cursor = await db.execute(
+        "SELECT * FROM simulation_results WHERE scenario_id = ? ORDER BY created_at DESC LIMIT 1",
+        (scenario_id,),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="No simulation found for this scenario")
+
+    if row["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Simulation not completed yet (status: {row['status']})",
+        )
+
+    # 캐시된 geojson이 있으면 반환
+    if row["geojson"]:
+        return json.loads(row["geojson"])
+
+    # 없으면 생성 후 캐시
+    results = json.loads(row["results"]) if row["results"] else {}
+
+    # 시나리오 bbox에서 fallback 중심점 계산
+    cursor2 = await db.execute(
+        "SELECT region_bbox FROM scenarios WHERE id = ?", (scenario_id,)
+    )
+    scn = await cursor2.fetchone()
+    fallback = None
+    if scn:
+        bbox = json.loads(scn["region_bbox"])
+        fallback = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+
+    projector = ResultProjector()
+    geojson = projector.project_to_geojson(results, fallback_center=fallback)
+
+    # DB에 캐시
+    await db.execute(
+        "UPDATE simulation_results SET geojson = ? WHERE id = ?",
+        (json.dumps(geojson, ensure_ascii=False), row["id"]),
+    )
+    await db.commit()
+
+    return geojson
 
 
 @router.get("/{scenario_id}/report")
-async def get_report(scenario_id: str):
-    return _not_impl("PRD 5 (result-projection)")
+async def get_report(
+    scenario_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """MiroFish 시뮬레이션 보고서를 반환한다."""
+    cursor = await db.execute(
+        "SELECT * FROM simulation_results WHERE scenario_id = ? ORDER BY created_at DESC LIMIT 1",
+        (scenario_id,),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="No simulation found for this scenario")
+
+    if row["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Simulation not completed yet (status: {row['status']})",
+        )
+
+    return {
+        "scenario_id": scenario_id,
+        "report": row["report"] or "",
+        "completed_at": row["completed_at"],
+    }
