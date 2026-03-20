@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.clients.mirofish import MiroFishClient
 from app.clients.shadowbroker import ShadowBrokerClient
 from app.config import settings
 from app.database import init_db
@@ -12,7 +13,9 @@ from app.routers import osint, scenario, simulation
 async def lifespan(app: FastAPI):
     await init_db()
     app.state.sb_client = ShadowBrokerClient(settings.shadowbroker_url)
+    app.state.mf_client = MiroFishClient(settings.mirofish_url)
     yield
+    await app.state.mf_client.close()
     await app.state.sb_client.close()
 
 
