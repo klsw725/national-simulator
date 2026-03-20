@@ -193,3 +193,4 @@ async def proxy_all_data():
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | PRD 초안 작성 |
+| 2026-03-20 | In Progress | M1~M4 구현 완료 (SB 클라이언트, OSINT 프록시, ETag, 에러 핸들링). M5 연동 검증 대기. |

@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.clients.shadowbroker import ShadowBrokerClient
 from app.config import settings
 from app.database import init_db
 from app.routers import osint, scenario, simulation
@@ -10,7 +11,9 @@ from app.routers import osint, scenario, simulation
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    app.state.sb_client = ShadowBrokerClient(settings.shadowbroker_url)
     yield
+    await app.state.sb_client.close()
 
 
 app = FastAPI(

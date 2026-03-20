@@ -1,0 +1,422 @@
+{
+  "project_id": "proj_d4a6a43e5ae1",
+  "name": "Unnamed Project",
+  "status": "failed",
+  "created_at": "2026-03-17T12:43:51.774727",
+  "updated_at": "2026-03-17T12:44:38.489456",
+  "files": [
+    {
+      "filename": "[The_AI_Report(2025-8)]_재난_발생_예방을_위한_AI_활용_사례_및_시사점.pdf",
+      "size": 628993
+    }
+  ],
+  "total_text_length": 17961,
+  "ontology": {
+    "entity_types": [
+      {
+        "name": "Researcher",
+        "description": "Individual conducting AI or disaster‑related research at institutes.",
+        "attributes": [
+          {
+            "name": "full_name",
+            "type": "text",
+            "description": "Researcher's full name"
+          },
+          {
+            "name": "title",
+            "type": "text",
+            "description": "Professional title or position"
+          },
+          {
+            "name": "affiliation",
+            "type": "text",
+            "description": "Institute or organization the researcher belongs to"
+          }
+        ],
+        "examples": [
+          "장세윤",
+          "홍길동"
+        ]
+      },
+      {
+        "name": "GovernmentAgency",
+        "description": "National ministry or agency responsible for policy and regulation.",
+        "attributes": [
+          {
+            "name": "org_name",
+            "type": "text",
+            "description": "Official name of the agency"
+          },
+          {
+            "name": "jurisdiction",
+            "type": "text",
+            "description": "Sector or area the agency oversees"
+          }
+        ],
+        "examples": [
+          "과학기술정보통신부",
+          "환경부"
+        ]
+      },
+      {
+        "name": "ResearchInstitute",
+        "description": "Public or private institute that produces research reports and patents.",
+        "attributes": [
+          {
+            "name": "institute_name",
+            "type": "text",
+            "description": "Name of the institute"
+          },
+          {
+            "name": "focus_area",
+            "type": "text",
+            "description": "Primary research domain"
+          }
+        ],
+        "examples": [
+          "한국지능정보사회진흥원(NIA)",
+          "한국과학기술정보연구원(KISTI)"
+        ]
+      },
+      {
+        "name": "Company",
+        "description": "Private sector firm developing AI‑based disaster solutions.",
+        "attributes": [
+          {
+            "name": "company_name",
+            "type": "text",
+            "description": "Legal name of the company"
+          },
+          {
+            "name": "industry",
+            "type": "text",
+            "description": "Business sector"
+          }
+        ],
+        "examples": [
+          "ETRI",
+          "삼성전자"
+        ]
+      },
+      {
+        "name": "MediaOutlet",
+        "description": "News organization that publishes articles or reports.",
+        "attributes": [
+          {
+            "name": "outlet_name",
+            "type": "text",
+            "description": "Name of the media outlet"
+          },
+          {
+            "name": "media_type",
+            "type": "text",
+            "description": "Type such as newspaper, TV, online"
+          }
+        ],
+        "examples": [
+          "한국경제",
+          "파이낸셜뉴스"
+        ]
+      },
+      {
+        "name": "University",
+        "description": "Higher‑education institution involved in AI research or training.",
+        "attributes": [
+          {
+            "name": "university_name",
+            "type": "text",
+            "description": "Official university name"
+          },
+          {
+            "name": "location",
+            "type": "text",
+            "description": "City or region of the campus"
+          }
+        ],
+        "examples": [
+          "서울대학교",
+          "카이스트"
+        ]
+      },
+      {
+        "name": "NGO",
+        "description": "Non‑governmental organization participating in disaster preparedness.",
+        "attributes": [
+          {
+            "name": "ngo_name",
+            "type": "text",
+            "description": "Name of the NGO"
+          },
+          {
+            "name": "mission",
+            "type": "text",
+            "description": "Core mission or focus area"
+          }
+        ],
+        "examples": [
+          "녹색연합",
+          "국제구호협회"
+        ]
+      },
+      {
+        "name": "SocialMediaPlatform",
+        "description": "Online service where accounts post, comment, and share content.",
+        "attributes": [
+          {
+            "name": "platform_name",
+            "type": "text",
+            "description": "Name of the platform"
+          },
+          {
+            "name": "owner",
+            "type": "text",
+            "description": "Entity that operates the platform"
+          }
+        ],
+        "examples": [
+          "Twitter",
+          "KakaoTalk"
+        ]
+      },
+      {
+        "name": "Person",
+        "description": "Any individual not covered by a more specific type.",
+        "attributes": [
+          {
+            "name": "full_name",
+            "type": "text",
+            "description": "Person's full name"
+          },
+          {
+            "name": "role",
+            "type": "text",
+            "description": "General role or occupation"
+          }
+        ],
+        "examples": [
+          "이민수",
+          "박지현"
+        ]
+      },
+      {
+        "name": "Organization",
+        "description": "Any organization not covered by a more specific type.",
+        "attributes": [
+          {
+            "name": "org_name",
+            "type": "text",
+            "description": "Organization's official name"
+          },
+          {
+            "name": "sector",
+            "type": "text",
+            "description": "Industry or public sector"
+          }
+        ],
+        "examples": [
+          "대한민국 지방자치단체연합",
+          "한국소방안전협회"
+        ]
+      }
+    ],
+    "edge_types": [
+      {
+        "name": "POSTS_ON",
+        "description": "Entity publishes a post on a social media platform.",
+        "source_targets": [
+          {
+            "source": "Researcher",
+            "target": "SocialMediaPlatform"
+          },
+          {
+            "source": "Person",
+            "target": "SocialMediaPlatform"
+          },
+          {
+            "source": "NGO",
+            "target": "SocialMediaPlatform"
+          },
+          {
+            "source": "Company",
+            "target": "SocialMediaPlatform"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "COMMENTS_ON",
+        "description": "Entity comments on a post made by another entity.",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "Person"
+          },
+          {
+            "source": "Researcher",
+            "target": "Researcher"
+          },
+          {
+            "source": "NGO",
+            "target": "Organization"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "SHARES",
+        "description": "Entity shares/reposts content originally posted by another entity.",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "Person"
+          },
+          {
+            "source": "Organization",
+            "target": "Organization"
+          },
+          {
+            "source": "MediaOutlet",
+            "target": "ResearchInstitute"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "WORKS_FOR",
+        "description": "Person or researcher is employed by an organization or institute.",
+        "source_targets": [
+          {
+            "source": "Researcher",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "Person",
+            "target": "Company"
+          },
+          {
+            "source": "Person",
+            "target": "GovernmentAgency"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "AFFILIATED_WITH",
+        "description": "Entity has formal affiliation or partnership with another organization.",
+        "source_targets": [
+          {
+            "source": "NGO",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "Company",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "University",
+            "target": "ResearchInstitute"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "REGULATES",
+        "description": "Government agency sets rules for a sector or organization.",
+        "source_targets": [
+          {
+            "source": "GovernmentAgency",
+            "target": "Company"
+          },
+          {
+            "source": "GovernmentAgency",
+            "target": "NGO"
+          },
+          {
+            "source": "GovernmentAgency",
+            "target": "SocialMediaPlatform"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "REPORTS_ON",
+        "description": "Media outlet publishes a report about a topic or entity.",
+        "source_targets": [
+          {
+            "source": "MediaOutlet",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "MediaOutlet",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "MediaOutlet",
+            "target": "Company"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "COLLABORATES_WITH",
+        "description": "Two entities cooperate on a project or initiative.",
+        "source_targets": [
+          {
+            "source": "ResearchInstitute",
+            "target": "Company"
+          },
+          {
+            "source": "University",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "NGO",
+            "target": "Company"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "SUPPORTS",
+        "description": "Entity publicly endorses a policy, technology, or initiative.",
+        "source_targets": [
+          {
+            "source": "Person",
+            "target": "ResearchInstitute"
+          },
+          {
+            "source": "NGO",
+            "target": "GovernmentAgency"
+          },
+          {
+            "source": "Company",
+            "target": "ResearchInstitute"
+          }
+        ],
+        "attributes": []
+      },
+      {
+        "name": "OPPOSES",
+        "description": "Entity publicly objects to a policy, technology, or action.",
+        "source_targets": [
+          {
+            "source": "NGO",
+            "target": "Company"
+          },
+          {
+            "source": "Person",
+            "target": "GovernmentAgency"
+          }
+        ],
+        "attributes": []
+      }
+    ]
+  },
+  "analysis_summary": "문서에서는 재난 예방·대응에 AI를 적용하는 다양한 주체가 등장한다. 연구원·전문가, 정부 부처·기관, 연구소·대학, 민간 기업, 언론 매체, NGO, 그리고 소셜미디어 플랫폼이 핵심 역할을 수행한다. 이를 기반으로 구체적인 엔티티 유형 8개와 범용 Person·Organization을 정의하고, 게시·댓글·공유·고용·제휴·규제·보도·협업·지지·반대 등 실제 소셜미디어 상호작용을 반영한 관계 유형을 설계하였다.",
+  "graph_id": null,
+  "graph_build_task_id": "83d904d8-f50b-4e4d-8c0b-e3332ca6c191",
+  "simulation_requirement": "대한민국에서 재난 발생 AI의 적용 가능성",
+  "chunk_size": 500,
+  "chunk_overlap": 50,
+  "error": "Couldn't connect to localhost:7687 (resolved to ()):\nFailed to establish connection to ResolvedIPv6Address(('::1', 7687, 0, 0)) (reason [Errno 111] Connection refused)\nFailed to establish connection to ResolvedIPv4Address(('127.0.0.1', 7687)) (reason [Errno 111] Connection refused)"
+}
