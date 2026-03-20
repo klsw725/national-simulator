@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS simulation_results (
     mirofish_project_id TEXT,
     status TEXT DEFAULT 'pending',
     platform TEXT DEFAULT 'twitter',
+    pipeline_mode TEXT DEFAULT 'auto',
+    checkpoint_data TEXT,
     results TEXT,
     geojson TEXT,
     report TEXT,

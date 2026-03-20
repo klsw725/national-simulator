@@ -9,7 +9,12 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import get_db
-from app.models.result import SimulationResultResponse
+from app.models.result import (
+    CheckpointResponse,
+    ContinueRequest,
+    SimulateRequest,
+    SimulationResultResponse,
+)
 from app.models.seed import SeedMetadata, SeedResponse
 from app.services.seed_generator import SeedGenerator
 from app.services.simulation_orchestrator import SimulationOrchestrator
@@ -142,9 +147,18 @@ async def start_simulation(
     scenario_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
+    body: SimulateRequest | None = None,
     db: aiosqlite.Connection = Depends(get_db),
 ):
-    """시뮬레이션 파이프라인을 백그라운드에서 시작한다."""
+    """시뮬레이션 파이프라인을 시작한다.
+
+    mode="auto": 기존 동작 (전부 자동, 백그라운드 실행)
+    mode="checkpoint": 첫 체크포인트(시드 검토)에서 일시정지
+    """
+    mode = (body.mode if body else "auto") or "auto"
+    if mode not in ("auto", "checkpoint"):
+        raise HTTPException(status_code=400, detail="mode must be 'auto' or 'checkpoint'")
+
     cursor = await db.execute(
         "SELECT * FROM scenarios WHERE id = ?", (scenario_id,)
     )
@@ -175,19 +189,40 @@ async def start_simulation(
     if not seed_row:
         raise HTTPException(status_code=400, detail="Seed document not found")
 
-    # MiroFish 상태 확인
+    result_id = f"simr_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    if mode == "checkpoint":
+        # checkpoint 모드: 시드 검토 단계에서 즉시 일시정지
+        await db.execute(
+            """INSERT INTO simulation_results
+               (id, scenario_id, status, platform, pipeline_mode, created_at)
+               VALUES (?, ?, 'checkpoint:seed', 'twitter', 'checkpoint', ?)""",
+            (result_id, scenario_id, now),
+        )
+        await db.execute(
+            "UPDATE scenarios SET simulation_status = 'checkpoint', status = 'checkpoint', updated_at = ? WHERE id = ?",
+            (now, scenario_id),
+        )
+        await db.commit()
+
+        return {
+            "scenario_id": scenario_id,
+            "result_id": result_id,
+            "status": "checkpoint:seed",
+            "pipeline_mode": "checkpoint",
+            "message": "Pipeline paused at seed review checkpoint",
+        }
+
+    # auto 모드: 기존 동작
     mf_client = request.app.state.mf_client
     if not await mf_client.health_check():
         raise HTTPException(status_code=503, detail="MiroFish service unavailable")
 
-    # simulation_results 레코드 생성
-    result_id = f"simr_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
-
     await db.execute(
         """INSERT INTO simulation_results
-           (id, scenario_id, status, platform, created_at)
-           VALUES (?, ?, 'starting', 'twitter', ?)""",
+           (id, scenario_id, status, platform, pipeline_mode, created_at)
+           VALUES (?, ?, 'starting', 'twitter', 'auto', ?)""",
         (result_id, scenario_id, now),
     )
     await db.execute(
@@ -196,7 +231,6 @@ async def start_simulation(
     )
     await db.commit()
 
-    # 백그라운드에서 파이프라인 실행
     orchestrator = SimulationOrchestrator(mf_client)
     background_tasks.add_task(
         orchestrator.run_pipeline,
@@ -211,7 +245,123 @@ async def start_simulation(
         "scenario_id": scenario_id,
         "result_id": result_id,
         "status": "starting",
+        "pipeline_mode": "auto",
         "message": "Simulation pipeline started in background",
+    }
+
+
+CHECKPOINT_STEPS = {
+    "checkpoint:seed": {"step": "seed", "editable": True},
+    "checkpoint:ontology": {"step": "ontology", "editable": False},
+    "checkpoint:graph": {"step": "graph", "editable": False},
+    "checkpoint:profiles": {"step": "profiles", "editable": False},
+    "checkpoint:config": {"step": "config", "editable": True},
+}
+
+
+@router.get("/{scenario_id}/checkpoint", response_model=CheckpointResponse)
+async def get_checkpoint(
+    scenario_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    cursor = await db.execute(
+        "SELECT * FROM simulation_results WHERE scenario_id = ? ORDER BY created_at DESC LIMIT 1",
+        (scenario_id,),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="No simulation found for this scenario")
+
+    status = row["status"]
+    if status not in CHECKPOINT_STEPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not at a checkpoint (current status: {status})",
+        )
+
+    step_info = CHECKPOINT_STEPS[status]
+    checkpoint_data = json.loads(row["checkpoint_data"]) if row["checkpoint_data"] else None
+
+    if status == "checkpoint:seed":
+        seed_cursor = await db.execute(
+            "SELECT text FROM seeds WHERE scenario_id = ? ORDER BY created_at DESC LIMIT 1",
+            (scenario_id,),
+        )
+        seed_row = await seed_cursor.fetchone()
+        checkpoint_data = {"seed_text": seed_row["text"]} if seed_row else None
+
+    if status == "checkpoint:config":
+        scn_cursor = await db.execute(
+            "SELECT max_rounds FROM scenarios WHERE id = ?", (scenario_id,)
+        )
+        scn_row = await scn_cursor.fetchone()
+        config = checkpoint_data or {}
+        config["max_rounds"] = scn_row["max_rounds"] if scn_row else 10
+        checkpoint_data = config
+
+    return CheckpointResponse(
+        scenario_id=scenario_id,
+        result_id=row["id"],
+        status=status,
+        step=step_info["step"],
+        editable=step_info["editable"],
+        data=checkpoint_data,
+    )
+
+
+@router.post("/{scenario_id}/continue", status_code=202)
+async def continue_pipeline(
+    scenario_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    body: ContinueRequest | None = None,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    cursor = await db.execute(
+        "SELECT * FROM simulation_results WHERE scenario_id = ? ORDER BY created_at DESC LIMIT 1",
+        (scenario_id,),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="No simulation found for this scenario")
+
+    status = row["status"]
+    if status not in CHECKPOINT_STEPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot continue — not at a checkpoint (current status: {status})",
+        )
+
+    if row["pipeline_mode"] != "checkpoint":
+        raise HTTPException(status_code=400, detail="Pipeline is not in checkpoint mode")
+
+    mf_client = request.app.state.mf_client
+    if status != "checkpoint:profiles" and not await mf_client.health_check():
+        raise HTTPException(status_code=503, detail="MiroFish service unavailable")
+
+    scn_cursor = await db.execute(
+        "SELECT max_rounds FROM scenarios WHERE id = ?", (scenario_id,)
+    )
+    scn_row = await scn_cursor.fetchone()
+    max_rounds = scn_row["max_rounds"] if scn_row else 10
+
+    orchestrator = SimulationOrchestrator(mf_client)
+    edits = body.edits if body else None
+
+    background_tasks.add_task(
+        orchestrator.run_from_checkpoint,
+        scenario_id=scenario_id,
+        result_id=row["id"],
+        db_path=settings.database_path,
+        max_rounds=max_rounds,
+        edits=edits,
+    )
+
+    return {
+        "scenario_id": scenario_id,
+        "result_id": row["id"],
+        "previous_status": status,
+        "message": "Continuing pipeline from checkpoint",
     }
 
 

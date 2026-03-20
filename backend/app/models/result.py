@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -13,3 +15,21 @@ class SimulationResultResponse(BaseModel):
     report: str | None = None
     created_at: str
     completed_at: str | None = None
+
+
+class CheckpointResponse(BaseModel):
+    scenario_id: str
+    result_id: str
+    status: str
+    step: str
+    editable: bool
+    data: dict[str, Any] | None = None
+    pipeline_mode: str = "checkpoint"
+
+
+class SimulateRequest(BaseModel):
+    mode: str = "auto"
+
+
+class ContinueRequest(BaseModel):
+    edits: dict[str, Any] | None = None

@@ -60,6 +60,323 @@ class SimulationOrchestrator:
     def __init__(self, mf_client: MiroFishClient):
         self.mf = mf_client
 
+    async def _step_ontology(
+        self,
+        scenario_id: str,
+        result_id: str,
+        seed_text: str,
+        db_path: str,
+    ) -> dict:
+        """Step 1: Ontology generation. Returns ontology_result with project_id."""
+        await self._update_status(db_path, scenario_id, result_id, "simulating:ontology")
+        logger.info("[%s] Step 1: Ontology generation", scenario_id)
+
+        ontology_result = await self.mf.generate_ontology(
+            seed_text=seed_text,
+            seed_filename="seed_document.md",
+            simulation_requirement=SIMULATION_REQUIREMENT,
+            project_name=f"osint-{scenario_id}",
+        )
+        project_id = ontology_result.get("project_id", "")
+        logger.info("[%s] Ontology done → project_id=%s", scenario_id, project_id)
+
+        await self._update_ids(db_path, result_id, project_id=project_id)
+        return ontology_result
+
+    async def _step_graph_build(
+        self,
+        scenario_id: str,
+        result_id: str,
+        project_id: str,
+        db_path: str,
+    ) -> None:
+        """Step 2: Graph build. Uses project_id from step 1."""
+        await self._update_status(db_path, scenario_id, result_id, "simulating:graph_build")
+        logger.info("[%s] Step 2: Graph build", scenario_id)
+
+        task_id = await self.mf.build_graph(project_id)
+        await self.mf.poll_until_done(
+            poll_fn=lambda: self.mf.get_task_status(task_id),
+            timeout=GRAPH_BUILD_TIMEOUT,
+            interval=POLL_INTERVAL,
+        )
+        logger.info("[%s] Graph build done", scenario_id)
+
+    async def _step_create_prepare(
+        self,
+        scenario_id: str,
+        result_id: str,
+        project_id: str,
+        db_path: str,
+    ) -> str:
+        """Step 3+4: Simulation create + prepare. Returns mf_simulation_id."""
+        await self._update_status(db_path, scenario_id, result_id, "simulating:create")
+        logger.info("[%s] Step 3: Simulation create", scenario_id)
+
+        sim_result = await self.mf.create_simulation(project_id)
+        mf_simulation_id = sim_result.get("simulation_id", "")
+        logger.info("[%s] Simulation created → id=%s", scenario_id, mf_simulation_id)
+
+        await self._update_ids(db_path, result_id, mf_simulation_id=mf_simulation_id)
+
+        await self._update_status(db_path, scenario_id, result_id, "simulating:prepare")
+        logger.info("[%s] Step 4: Simulation prepare", scenario_id)
+
+        prepare_task_id = await self.mf.prepare_simulation(mf_simulation_id)
+        if prepare_task_id:
+            await self.mf.poll_until_done(
+                poll_fn=lambda: self.mf.get_prepare_status(prepare_task_id),
+                timeout=PREPARE_TIMEOUT,
+                interval=POLL_INTERVAL,
+            )
+        logger.info("[%s] Prepare done", scenario_id)
+
+        return mf_simulation_id
+
+    async def _step_run_simulation(
+        self,
+        scenario_id: str,
+        result_id: str,
+        mf_simulation_id: str,
+        max_rounds: int,
+        db_path: str,
+    ) -> None:
+        """Step 5: Start simulation and poll until done."""
+        await self._update_status(db_path, scenario_id, result_id, "simulating:running")
+        logger.info("[%s] Step 5: Simulation start (max_rounds=%d)", scenario_id, max_rounds)
+
+        await self.mf.start_simulation(
+            mf_simulation_id, platform="twitter", max_rounds=max_rounds,
+        )
+        await self.mf.poll_until_done(
+            poll_fn=lambda: self.mf.get_run_status(mf_simulation_id),
+            timeout=RUN_TIMEOUT,
+            interval=POLL_INTERVAL,
+            status_key="runner_status",
+            done_values=("completed", "stopped"),
+        )
+        logger.info("[%s] Simulation run done", scenario_id)
+
+    async def _step_report(
+        self,
+        scenario_id: str,
+        result_id: str,
+        mf_simulation_id: str,
+        db_path: str,
+    ) -> None:
+        """Step 6: Generate report and poll until done."""
+        await self._update_status(db_path, scenario_id, result_id, "simulating:report")
+        logger.info("[%s] Step 6: Report generation", scenario_id)
+
+        report_task_id = await self.mf.generate_report(mf_simulation_id)
+        if report_task_id:
+            await self.mf.poll_until_done(
+                poll_fn=lambda: self.mf.get_report_status(report_task_id),
+                timeout=REPORT_TIMEOUT,
+                interval=POLL_INTERVAL,
+            )
+        logger.info("[%s] Report done", scenario_id)
+
+    async def _save_checkpoint_data(self, db_path: str, result_id: str, data: dict) -> None:
+        """Save intermediate result JSON to checkpoint_data column."""
+        db = await aiosqlite.connect(db_path)
+        try:
+            await db.execute(
+                "UPDATE simulation_results SET checkpoint_data = ? WHERE id = ?",
+                (json.dumps(data, ensure_ascii=False), result_id),
+            )
+            await db.commit()
+        finally:
+            await db.close()
+
+    async def _get_checkpoint_info(self, db_path: str, result_id: str) -> dict:
+        """Read current status, checkpoint_data, and MiroFish IDs from DB."""
+        db = await aiosqlite.connect(db_path)
+        try:
+            async with db.execute(
+                """SELECT status, checkpoint_data, mirofish_project_id, mirofish_simulation_id
+                   FROM simulation_results
+                   WHERE id = ?""",
+                (result_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        finally:
+            await db.close()
+
+        if not row:
+            raise ValueError(f"Simulation result not found: {result_id}")
+
+        raw_checkpoint_data = row[1] or "{}"
+        checkpoint_data: dict[str, Any] = {}
+        if isinstance(raw_checkpoint_data, str):
+            checkpoint_data = json.loads(raw_checkpoint_data)
+        elif isinstance(raw_checkpoint_data, dict):
+            checkpoint_data = raw_checkpoint_data
+
+        return {
+            "status": row[0] or "",
+            "checkpoint_data": checkpoint_data,
+            "mirofish_project_id": row[2] or "",
+            "mirofish_simulation_id": row[3] or "",
+        }
+
+    async def _apply_edits(
+        self,
+        db_path: str,
+        result_id: str,
+        current_status: str,
+        edits: dict,
+    ) -> None:
+        """Apply user edits based on checkpoint type.
+        - checkpoint:seed → update seed text in seeds table
+        - checkpoint:config → update max_rounds in scenarios table
+        """
+        if not edits:
+            return
+
+        db = await aiosqlite.connect(db_path)
+        try:
+            if current_status == "checkpoint:seed" and (
+                "seed_text" in edits or "text" in edits
+            ):
+                seed_text = edits.get("seed_text", edits.get("text", ""))
+                async with db.execute(
+                    "SELECT scenario_id FROM simulation_results WHERE id = ?",
+                    (result_id,),
+                ) as cursor:
+                    row = await cursor.fetchone()
+                if row and row[0]:
+                    scenario_id = row[0]
+                    await db.execute(
+                        """UPDATE seeds
+                           SET text = ?
+                           WHERE scenario_id = ?
+                             AND id = (
+                                 SELECT id FROM seeds
+                                 WHERE scenario_id = ?
+                                 ORDER BY created_at DESC
+                                 LIMIT 1
+                             )""",
+                        (seed_text, scenario_id, scenario_id),
+                    )
+
+            if current_status == "checkpoint:config" and "max_rounds" in edits:
+                async with db.execute(
+                    "SELECT scenario_id FROM simulation_results WHERE id = ?",
+                    (result_id,),
+                ) as cursor:
+                    row = await cursor.fetchone()
+                if row and row[0]:
+                    await db.execute(
+                        "UPDATE scenarios SET max_rounds = ? WHERE id = ?",
+                        (int(edits["max_rounds"]), row[0]),
+                    )
+
+            await db.commit()
+        finally:
+            await db.close()
+
+    async def run_from_checkpoint(
+        self,
+        scenario_id: str,
+        result_id: str,
+        db_path: str,
+        max_rounds: int,
+        edits: dict | None = None,
+    ) -> None:
+        """Execute next pipeline step from current checkpoint status.
+
+        Called by POST /continue endpoint as BackgroundTask.
+        Reads current status from DB, determines next step, executes it,
+        then pauses at next checkpoint (saves checkpoint_data, updates status).
+
+        If this is the last segment (run+report), runs to completion.
+        """
+        try:
+            checkpoint_info = await self._get_checkpoint_info(db_path, result_id)
+            current_status = checkpoint_info["status"]
+            checkpoint_data = checkpoint_info.get("checkpoint_data", {})
+            project_id = checkpoint_info.get("mirofish_project_id", "")
+            mf_simulation_id = checkpoint_info.get("mirofish_simulation_id", "")
+
+            if edits:
+                await self._apply_edits(db_path, result_id, current_status, edits)
+                if current_status == "checkpoint:config" and "max_rounds" in edits:
+                    max_rounds = int(edits["max_rounds"])
+
+            if current_status == "checkpoint:seed":
+                db = await aiosqlite.connect(db_path)
+                try:
+                    async with db.execute(
+                        """SELECT text FROM seeds
+                           WHERE scenario_id = ?
+                           ORDER BY created_at DESC
+                           LIMIT 1""",
+                        (scenario_id,),
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                finally:
+                    await db.close()
+
+                seed_text = row[0] if row and row[0] else ""
+                ontology_result = await self._step_ontology(
+                    scenario_id, result_id, seed_text, db_path,
+                )
+                await self._save_checkpoint_data(
+                    db_path, result_id, {"ontology": ontology_result},
+                )
+                await self._update_status(
+                    db_path, scenario_id, result_id, "checkpoint:ontology",
+                )
+                return
+
+            if current_status == "checkpoint:ontology":
+                if not project_id:
+                    project_id = checkpoint_data.get("ontology", {}).get("project_id", "")
+                await self._step_graph_build(scenario_id, result_id, project_id, db_path)
+                await self._save_checkpoint_data(
+                    db_path, result_id, {"step": "graph_build"},
+                )
+                await self._update_status(db_path, scenario_id, result_id, "checkpoint:graph")
+                return
+
+            if current_status == "checkpoint:graph":
+                mf_simulation_id = await self._step_create_prepare(
+                    scenario_id, result_id, project_id, db_path,
+                )
+                await self._save_checkpoint_data(
+                    db_path, result_id, {"mf_simulation_id": mf_simulation_id},
+                )
+                await self._update_status(
+                    db_path, scenario_id, result_id, "checkpoint:profiles",
+                )
+                return
+
+            if current_status == "checkpoint:profiles":
+                await self._save_checkpoint_data(
+                    db_path,
+                    result_id,
+                    {"max_rounds": max_rounds, "platform": "twitter"},
+                )
+                await self._update_status(db_path, scenario_id, result_id, "checkpoint:config")
+                return
+
+            if current_status == "checkpoint:config":
+                if not mf_simulation_id:
+                    mf_simulation_id = checkpoint_data.get("mf_simulation_id", "")
+                await self._step_run_simulation(
+                    scenario_id, result_id, mf_simulation_id, max_rounds, db_path,
+                )
+                await self._step_report(scenario_id, result_id, mf_simulation_id, db_path)
+                await self._collect_and_store_results(
+                    db_path, scenario_id, result_id, mf_simulation_id,
+                )
+                return
+
+        except Exception:
+            logger.exception("[%s] Checkpoint pipeline failed", scenario_id)
+            await self._update_status(db_path, scenario_id, result_id, "failed")
+
     async def run_pipeline(
         self,
         scenario_id: str,
@@ -74,84 +391,18 @@ class SimulationOrchestrator:
         실패 시 status='failed'로 업데이트하고 종료한다.
         """
         try:
-            # Step 1: 온톨로지 생성
-            await self._update_status(db_path, scenario_id, result_id, "simulating:ontology")
-            logger.info("[%s] Step 1: Ontology generation", scenario_id)
-
-            ontology_result = await self.mf.generate_ontology(
-                seed_text=seed_text,
-                seed_filename="seed_document.md",
-                simulation_requirement=SIMULATION_REQUIREMENT,
-                project_name=f"osint-{scenario_id}",
+            ontology_result = await self._step_ontology(
+                scenario_id, result_id, seed_text, db_path,
             )
             project_id = ontology_result.get("project_id", "")
-            logger.info("[%s] Ontology done → project_id=%s", scenario_id, project_id)
-
-            await self._update_ids(db_path, result_id, project_id=project_id)
-
-            # Step 2: 그래프 빌드
-            await self._update_status(db_path, scenario_id, result_id, "simulating:graph_build")
-            logger.info("[%s] Step 2: Graph build", scenario_id)
-
-            task_id = await self.mf.build_graph(project_id)
-            await self.mf.poll_until_done(
-                poll_fn=lambda: self.mf.get_task_status(task_id),
-                timeout=GRAPH_BUILD_TIMEOUT,
-                interval=POLL_INTERVAL,
+            await self._step_graph_build(scenario_id, result_id, project_id, db_path)
+            mf_simulation_id = await self._step_create_prepare(
+                scenario_id, result_id, project_id, db_path,
             )
-            logger.info("[%s] Graph build done", scenario_id)
-
-            # Step 3: 시뮬레이션 생성
-            await self._update_status(db_path, scenario_id, result_id, "simulating:create")
-            logger.info("[%s] Step 3: Simulation create", scenario_id)
-
-            sim_result = await self.mf.create_simulation(project_id)
-            mf_simulation_id = sim_result.get("simulation_id", "")
-            logger.info("[%s] Simulation created → id=%s", scenario_id, mf_simulation_id)
-
-            await self._update_ids(db_path, result_id, mf_simulation_id=mf_simulation_id)
-
-            # Step 4: 시뮬레이션 준비 (프로필 생성 포함)
-            await self._update_status(db_path, scenario_id, result_id, "simulating:prepare")
-            logger.info("[%s] Step 4: Simulation prepare", scenario_id)
-
-            prepare_task_id = await self.mf.prepare_simulation(mf_simulation_id)
-            if prepare_task_id:
-                await self.mf.poll_until_done(
-                    poll_fn=lambda: self.mf.get_prepare_status(prepare_task_id),
-                    timeout=PREPARE_TIMEOUT,
-                    interval=POLL_INTERVAL,
-                )
-            logger.info("[%s] Prepare done", scenario_id)
-
-            # Step 5: 시뮬레이션 실행
-            await self._update_status(db_path, scenario_id, result_id, "simulating:running")
-            logger.info("[%s] Step 5: Simulation start (max_rounds=%d)", scenario_id, max_rounds)
-
-            await self.mf.start_simulation(
-                mf_simulation_id, platform="twitter", max_rounds=max_rounds,
+            await self._step_run_simulation(
+                scenario_id, result_id, mf_simulation_id, max_rounds, db_path,
             )
-            await self.mf.poll_until_done(
-                poll_fn=lambda: self.mf.get_run_status(mf_simulation_id),
-                timeout=RUN_TIMEOUT,
-                interval=POLL_INTERVAL,
-                status_key="runner_status",
-                done_values=("completed", "stopped"),
-            )
-            logger.info("[%s] Simulation run done", scenario_id)
-
-            # Step 6: 보고서 생성
-            await self._update_status(db_path, scenario_id, result_id, "simulating:report")
-            logger.info("[%s] Step 6: Report generation", scenario_id)
-
-            report_task_id = await self.mf.generate_report(mf_simulation_id)
-            if report_task_id:
-                await self.mf.poll_until_done(
-                    poll_fn=lambda: self.mf.get_report_status(report_task_id),
-                    timeout=REPORT_TIMEOUT,
-                    interval=POLL_INTERVAL,
-                )
-            logger.info("[%s] Report done", scenario_id)
+            await self._step_report(scenario_id, result_id, mf_simulation_id, db_path)
 
             # 결과 수집 + DB 저장
             await self._collect_and_store_results(
@@ -216,7 +467,12 @@ class SimulationOrchestrator:
                 "UPDATE simulation_results SET status = ? WHERE id = ?",
                 (status, result_id),
             )
-            sim_status = "failed" if status == "failed" else "simulating"
+            if status == "failed":
+                sim_status = "failed"
+            elif status.startswith("checkpoint:"):
+                sim_status = "checkpoint"
+            else:
+                sim_status = "simulating"
             await db.execute(
                 "UPDATE scenarios SET simulation_status = ?, status = ?, updated_at = ? WHERE id = ?",
                 (sim_status, sim_status, now, scenario_id),
