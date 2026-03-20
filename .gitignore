@@ -1,0 +1,113 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.manifest
+*.spec
+sdist/
+wheels/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# UV
+.python-version
+uv.lock
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Type checkers
+.mypy_cache/
+.pytype/
+
+# Pytest / Coverage
+htmlcov/
+.coverage
+.coverage.*
+.cache
+*.cover
+*.py,cover
+.pytest_cache/
+
+# =========================
+# Node.js
+# =========================
+node_modules/
+.next/
+out/
+.nuxt/
+.cache/
+
+# Build output
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency lock (uncomment if needed)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# TypeScript
+*.tsbuildinfo
+
+# =========================
+# Environment
+# =========================
+.env
+.env.*
+*.local
+!.env.example
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========================
+# Data
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# OMC
+# =========================
+.omc/
