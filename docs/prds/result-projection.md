@@ -183,7 +183,8 @@ class ResultProjector:
 
 ### 관련 PRD
 - **PRD 4 (simulation-orchestration)** — 시뮬레이션 결과 제공
-- **PRD 6 (frontend-simulation-ui)** — GeoJSON을 지도에 렌더링
+- **PRD 6a (frontend-foundation)** — 프론트엔드 프로젝트 기반 + MapLibre 지도
+- **PRD 6c (simulation-visualization)** — GeoJSON을 지도에 렌더링
 
 ### 데이터 흐름
 ```

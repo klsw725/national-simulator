@@ -581,8 +581,9 @@ OSINT 프록시 (ShadowBroker 포워딩)
 
 ```
 osint-simulator/
-├── specs/
-│   └── MVP-SPEC.md              # 이 문서
+├── docs/
+│   └── specs/
+│       └── MVP-SPEC.md          # 이 문서
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
@@ -813,3 +814,398 @@ MVP 완료의 정의:
 - 파일명: `snake_case.py`, `PascalCase.tsx`
 - API 경로: `kebab-case` 아닌 `snake_case` (MiroFish 관례)
 - 환경변수: `UPPER_SNAKE_CASE`
+
+---
+
+## 17. Design Decisions (아키텍처 결정 근거)
+
+이 섹션은 "왜 이렇게 설계했는가"에 대한 기록이다. 8개의 탐색/검증 에이전트와 Oracle 아키텍처 리뷰를 통해 도출되었다.
+
+### 17.1 팔란티어 온톨로지 vs Neo4j 지식 그래프
+
+**결론: 팔란티어의 개념을 채택하되, 구현은 그래프 DB 위에 한다.**
+
+팔란티어 Foundry의 온톨로지는 Neo4j 같은 지식 그래프가 **아니다**. 내부적으로 Apache Iceberg(컬럼형 테이블) 위에 구축된 타입드 객체 저장소이며, "그래프"는 FK 조인으로 쿼리 시점에 생성되는 논리적 투영이다.
+
+#### 7대 구조적 차이점
+
+| 차원 | 팔란티어 온톨로지 | MiroFish 현재 (Neo4j) |
+|---|---|---|
+| 저장 모델 | 컬럼형 테이블 (Iceberg/Parquet) | 네이티브 그래프 (노드+엣지 포인터 연결) |
+| 관계(Link) 구현 | FK 조인 또는 조인 테이블. **관계에 속성 없음** | 네이티브 엣지에 fact/fact_type 속성 |
+| 스키마 관리 | 필수, 버전관리, 브랜칭, 마이그레이션 | LLM 즉석 생성, 버전관리 없음 |
+| Action (쓰기 연산) | 1등 시민 — 스키마 정의된 트랜잭셔널 쓰기 | 없음 |
+| Entity Resolution | 비파괴적, 되돌리기 가능, 이력 보존 (Gotham) | 이름 기반 MERGE (파괴적) |
+| 시공간 모델링 | 1등 시민 — Track/Observation API (Gotham) | 없음 |
+| 출처(Provenance) | 모든 쓰기에 출처 메타데이터 내장 | 없음 |
+
+#### 팔란티어 구조를 복제하면 안 되는 이유
+
+OSINT 분석에는 그래프 DB가 팔란티어의 테이블형 구조보다 유리하다:
+
+1. **다중 홉 그래프 탐색**: "용의자로부터 3홉 내 모든 연결"은 Neo4j에서 O(k), 팔란티어에서는 반복 조인 필요
+2. **관계 속성**: OSINT에서 관계의 `confidence_score`, `source`, `timestamp`는 필수. 팔란티어는 관계에 속성 불가 (reification 필요)
+3. **패턴 매칭**: Cypher의 `MATCH (a)-[:KNOWS*2..4]->(b) WHERE b.isSuspicious`는 인텔리전스 분석 핵심
+
+#### 팔란티어에서 가져온 것 vs 안 가져온 것
+
+| 채택 | 미채택 |
+|---|---|
+| 타입드 Object Types (엔티티 스키마) | 컬럼형 테이블 저장 |
+| 타입드 Link Types (관계 스키마) | FK 조인 기반 관계 |
+| Action Types (쓰기 연산 추상화) | 마이크로서비스 6개 아키텍처 |
+| 비파괴적 Entity Resolution (Gotham) | Object Data Funnel (Iceberg 파이프라인) |
+| 시공간 1등 시민 모델링 (Track/Observation) | — |
+| 출처(Provenance) 추적 | — |
+| 스키마 버전관리 | — |
+
+---
+
+### 17.2 OpenCTI 탈락 근거
+
+**결론: OpenCTI는 과잉이다. `stix2` Python 라이브러리를 직접 사용한다.**
+
+| 평가 항목 | OpenCTI | stix2 라이브러리 |
+|---|---|---|
+| 임베딩 가능성 | ❌ 독립 플랫폼 (5개 서비스, 18GB RAM) | ✅ pip install, 인프로세스 |
+| 커스텀 SDO | ❌ TypeScript 소스 포크 필요 | ✅ `@CustomObject` 5줄 |
+| pycti 독립 사용 | ❌ HTTP 클라이언트일 뿐 | N/A |
+| 라이선스 | Apache 2.0 (CE) / Proprietary (EE) | BSD 3-Clause |
+
+v2에서 `stix2`를 사용하여 커스텀 OSINT 엔티티를 정의하는 패턴:
+```python
+from stix2 import CustomObject, properties
+
+@CustomObject('x-vessel', [
+    ('mmsi', properties.StringProperty(required=True)),
+    ('vessel_type', properties.StringProperty()),
+    ('flag_state', properties.StringProperty()),
+])
+class Vessel(object):
+    pass
+```
+
+---
+
+### 17.3 OASIS 확장성 분석 결과
+
+**결론: 확장 가능하지만 비공식적이다. MVP에서는 수정 없이 Twitter 메타포로 사용, v2에서 Platform 서브클래싱.**
+
+탐색/검증 에이전트의 상반된 결과를 종합:
+
+- `DefaultPlatformType`은 닫힌 enum (Twitter/Reddit만)
+- **하지만** `OasisEnv.__init__()`은 `isinstance(platform, Platform)` 분기가 있어, 커스텀 Platform 인스턴스를 직접 전달하면 수용됨
+- `getattr(self, action.value)` 디스패치 → Platform 서브클래스에 메서드만 추가하면 새 액션 동작
+- `Channel`(비동기 큐)은 완전히 플랫폼 무관
+- `PURCHASE_PRODUCT` 액션이 이미 소셜미디어 밖으로 확장된 선례
+
+v2에서의 확장 방법 (OASIS 소스 ~20줄 수정):
+1. `ActionType` enum에 새 값 추가 (typing.py)
+2. `Platform` 서브클래스 생성 + 새 액션 핸들러 메서드
+3. `database.py`의 `create_db()`에 새 테이블 추가
+4. 커스텀 `UserInfo` 템플릿으로 에이전트 페르소나 변경
+
+---
+
+## 18. v2 Target Architecture (전체 5-레이어)
+
+MVP 이후 진화할 최종 아키텍처. Oracle 아키텍처 리뷰 결과를 반영.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Layer 5: FRONTEND (Next.js + MapLibre)                            │
+│  ShadowBroker 지도 + 시뮬레이션 패널 + 보고서 + 온톨로지 브라우저     │
+├─────────────────────────────────────────────────────────────────────┤
+│  Layer 4: SIMULATION                                               │
+│  ┌──────────────────────┐  ┌──────────────────────────────────┐    │
+│  │ 지정학 시나리오 엔진    │  │ OASIS (정보 전파 서브 시뮬레이터)  │    │
+│  │ (신규 구축)            │  │ (Platform 서브클래싱)             │    │
+│  │ 상태 전이, 의사결정,    │  │ 여론 시뮬레이션, 소셜 반응        │    │
+│  │ 행위자 목표/제약       │  │                                 │    │
+│  └──────────┬───────────┘  └───────────────┬──────────────────┘    │
+│             │ 시나리오 브랜치에서만 쓰기        │                       │
+├─────────────┼──────────────────────────────┼───────────────────────┤
+│  Layer 3: ACTION LAYER (PG append-only 이벤트)                     │
+│  Action 정의 → 유효성 검증 → PG 기록 → 시나리오 상태 변경             │
+│  승인 규칙 / RBAC / 감사 트레일 / 롤백                               │
+├─────────────────────────────────────────────────────────────────────┤
+│  Layer 2: ONTOLOGY (2-Tier)                                        │
+│                                                                     │
+│  PostgreSQL + PostGIS (유일한 쓰기 권한, Source of Truth)             │
+│  ┌─────────────────────┐  ┌────────────────────────────────────┐   │
+│  │ Tier 1: 원시 관측     │  │ Tier 2: STIX-aligned 해소 엔티티   │   │
+│  │ flights, vessels,    │  │ x-vessel, x-aircraft, threat-actor │   │
+│  │ tracks, incidents    │  │ relationship, identity, location   │   │
+│  │ (PostGIS + 시계열)    │  │ (stix2 라이브러리로 검증)           │   │
+│  └─────────────────────┘  └────────────────────────────────────┘   │
+│  ┌──────────────────┐  ┌───────────────────┐  ┌────────────────┐   │
+│  │ Entity Resolution │  │ Provenance        │  │ 시나리오 스냅샷  │   │
+│  │ (경량 identity     │  │ (출처, 신뢰도)    │  │ (브랜치/동결)   │   │
+│  │  graph + 수동 병합) │  │                   │  │                │   │
+│  └──────────────────┘  └───────────────────┘  └────────────────┘   │
+│                                                                     │
+│  Neo4j (읽기 전용 투영, 비동기, 폐기/재구축 가능)                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ 엔티티 관계 그래프 → 다중 홉 탐색, 패턴 매칭, 중심성 분석       │   │
+│  │ PG outbox → micro-batch 프로젝터 (1~10초 지연)                │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────┤
+│  Layer 1: DATA SYNC (ShadowBroker → PG)                            │
+│  20+ OSINT 피드 → Tier 1 원시 관측 upsert                           │
+│             → Entity Resolution → Tier 2 STIX 엔티티                │
+│             → PG outbox → Neo4j 투영                                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 2-Tier 온톨로지 설계 근거
+
+STIX에 모든 것을 우겨넣으면 안 된다 (Oracle 리뷰 결과):
+
+- **Tier 1 (원시 관측, Native PG)**: ADS-B/AIS 텔레메트리는 60초마다 갱신되는 고빈도 위치 데이터. STIX 객체로 만들면 과잉이고 성능 저하.
+- **Tier 2 (STIX-aligned 해소 엔티티)**: Entity Resolution이 완료된 식별된 엔티티. 관계, 출처, 인시던트를 STIX 표준으로 관리.
+
+### 시나리오/라이브 경계 (스냅샷 브랜칭)
+
+시뮬레이션이 라이브 OSINT 데이터를 오염시키면 안 된다:
+
+```
+ShadowBroker 피드 → PG (라이브 세계) ← 읽기 전용
+                         │
+                    스냅샷 복제 (특정 시점)
+                         ↓
+               PG (시나리오 브랜치) ← 시뮬레이션 쓰기 전용
+                    │
+               시뮬레이션 결과만 시각화에 투영
+```
+
+### PG ↔ Neo4j 동기화 패턴
+
+| 패턴 | 설명 |
+|---|---|
+| 쓰기 | 항상 PostgreSQL 먼저 → 성공 시 Neo4j에 투영 |
+| 동기화 | PG 트랜잭셔널 outbox + micro-batch 프로젝터 (1~10초) |
+| 충돌 | PostgreSQL이 진실의 원천 (Source of Truth) |
+| 장애 | Neo4j 다운 시 → 서비스 지속 (그래프 쿼리만 불가) |
+| 재구축 | Neo4j는 PG 데이터에서 언제든 재구축 가능 (disposable) |
+
+### RDB + Graph DB 쿼리 분담
+
+| 쿼리 유형 | 담당 DB | 이유 |
+|---|---|---|
+| 시공간 쿼리 (반경 50km 내 자산) | PG + PostGIS | 공간 인덱스 (R-tree) |
+| 시계열 쿼리 (24시간 이동 경로) | PG (+ TimescaleDB 옵션) | 인덱스 스캔 O(log n) |
+| 다중 홉 탐색 (3홉 내 연결) | Neo4j | 인접 리스트 O(k) |
+| 패턴 매칭 (러시아 군함→NATO 항구) | Neo4j | Cypher 선언적 쿼리 |
+| 중심성/커뮤니티 분석 | Neo4j GDS | 네이티브 그래프 알고리즘 |
+| Entity Resolution 이력 | PG | ACID 트랜잭션 |
+| Action 로그/감사 | PG | append-only, 불변 |
+| 출처(Provenance) 추적 | PG | 구조화된 조회 |
+
+---
+
+## 19. Oracle Architecture Review (리스크 평가)
+
+Oracle 에이전트가 전체 아키텍처를 리뷰한 결과. 6개 High 이상 리스크 식별.
+
+| 심각도 | 리스크 | 상태 | 완화 방안 |
+|---|---|---|---|
+| **Critical** | OASIS 커플링 — 소셜미디어 시뮬레이터를 지정학 코어로 쓰면 안 됨 | MVP에서 해소 (Twitter 메타포) / v2에서 분리 | OASIS는 정보 전파 서브 시뮬레이터로만 사용. 지정학 코어는 v2에서 별도 구축 |
+| **High** | Sync 엔진 설계 — row-by-row 동기화 실패 | v2에서 대응 | PG 트랜잭셔널 outbox + micro-batch 프로젝터 |
+| **High** | 온톨로지 모델 불일치 — STIX는 ADS-B/AIS 텔레메트리용이 아님 | v2에서 대응 | 2-Tier 온톨로지: 원시 관측은 네이티브 PG, STIX는 해소 엔티티만 |
+| **High** | 시나리오 경계 부재 — 시뮬레이션이 라이브 데이터 오염 가능 | MVP에서 해소 (별도 시뮬레이션 DB) | 스냅샷 브랜칭 패턴 |
+| **High** | Action Layer 미명세 | v2에서 대응 | PG append-only 이벤트, 승인 규칙, RBAC, 감사, 롤백 |
+| **High** | Entity Resolution 과잉 | MVP에서 해소 (수동 매핑) | v2: 경량 identity graph (불변 관측 + 신뢰도 링크 + 수동 병합/해제) |
+| **Medium** | OpenCTI 과잉 | 해소 (stix2 직접 사용) | OpenCTI는 TAXII/ATT&CK 워크플로우 필요 시에만 재검토 |
+| **Medium** | 프론트엔드 분리 (Vue + Next.js) | MVP에서 해소 (SB만 사용) | Next.js로 표준화, MF 워크플로우만 포팅 |
+| **Medium** | 스키마 버전관리 과잉 | MVP에서 해소 (미포함) | DB 마이그레이션 + version 필드로 충분 |
+| **Medium** | 성능 (~500 ops/sec) | 해소 | PG 충분, Neo4j 배치 인덱싱이면 가능 |
+
+### Oracle 에스컬레이션 트리거
+
+다음 조건 발생 시 아키텍처 재검토 필요:
+
+- 대부분의 읽기 패턴이 지리공간/시계열이고 심층 그래프 탐색이 거의 없으면 → **Neo4j 제거, PG 단독으로 전환**
+- TAXII 교환, ATT&CK 매핑, 분석관 협업, 외부 CTI 연동이 초기에 필요하면 → **OpenCTI 재검토**
+- 시뮬레이터가 물류, 지휘 체계, 운동학적 효과를 모델링해야 하면 → **OASIS 완전 대체**
+
+---
+
+## 20. Entity Resolution 설계 (v2)
+
+### Gotham 패턴: 비파괴적, 되돌리기 가능
+
+팔란티어 Gotham의 Entity Resolution은 독립 이력 보존, 되돌리기 가능, 재귀적 해소 평탄화가 핵심:
+
+```python
+class ResolutionBag:
+    canonical_id: str           # 대표 ID
+    constituent_ids: list[str]  # 구성 엔티티 ID들
+    winner_id: str              # 해소 후 속성 기록용
+    created_by: str             # 해소 실행자
+    created_at: datetime
+    reversible: bool = True
+
+    def resolve(self, other_id: str) -> None:
+        """두 엔티티 병합 — 양쪽 이력 보존"""
+        pass
+
+    def unresolve(self, id: str) -> None:
+        """병합 해제 — 해소 후 기록된 속성은 winner에 유지"""
+        pass
+```
+
+### v1 (MVP) 단순화
+
+MVP에서는 Entity Resolution 없이 정적 `military_vessels.json`으로 수동 매핑.
+
+### v2 경량 Identity Graph
+
+Palantir 전체 구현 대신 경량 버전:
+- 불변 관측(observation) 보존
+- 후보 매칭 테이블 + 신뢰도 점수
+- 선택된 엔티티 클래스에 대해서만 수동 병합/해제 지원
+- 출처(provenance) 추적
+
+---
+
+## 21. Performance Analysis
+
+### 데이터 볼륨
+
+ShadowBroker의 실시간 데이터 규모:
+- ~5,000 항공기 (60초마다 갱신)
+- ~25,000 선박 (실시간 WebSocket)
+- ~2,000 위성 (60초마다 갱신)
+- ~1,000 GDELT 이벤트 (6시간마다)
+- 합계: **~33,000 엔티티 / 60초 = ~550 업데이트/초**
+
+### 처리 능력
+
+| 구성요소 | 처리량 | 충분 여부 |
+|---|---|---|
+| PostgreSQL 쓰기 | ~10,000+ TPS (배치) | ✅ 여유 |
+| PostGIS 공간 쿼리 | ~1,000+ QPS (인덱싱된) | ✅ 여유 |
+| Neo4j 관계 쓰기 | ~1,000-3,000 MERGE/초 (배치) | ✅ 배치면 충분 |
+| PG→Neo4j 프로젝션 | micro-batch (1-10초 지연) | ✅ eventual consistency |
+
+### 진짜 병목
+
+- 동기식 Entity Resolution (LLM 호출 시)
+- 프로젝션 갱신 빈도 (전체 재구축 vs 변경분만)
+- 핫 인덱스 경합 (Neo4j MERGE on 자주 갱신되는 노드)
+
+---
+
+## 22. Investigation Summary (탐색 에이전트 결과 요약)
+
+총 8개의 탐색/검증 에이전트 실행 결과 요약.
+
+### Round 1: 초기 탐색 (4개 에이전트)
+
+| 에이전트 | 목적 | 핵심 발견 |
+|---|---|---|
+| librarian #1 | 팔란티어 Foundry 기술 아키텍처 | 그래프 DB 아님, Iceberg 테이블 + 6개 마이크로서비스, Link에 속성 없음 |
+| librarian #2 | Gotham vs Foundry 비교 | Gotham: 비파괴적 Entity Resolution, Track/Observation API, 연합 소스 |
+| explore #1 | MiroFish 그래프/온톨로지 구현 | 전체 데이터 흐름 매핑 (텍스트→온톨로지→그래프→프로필→시뮬레이션), Zep/DozerDB 팩토리 패턴 |
+| librarian #3 | 오픈소스 팔란티어 대안 | TypeDB 가장 유사, STIX 2.1이 Gotham 등가물, Action Layer는 오픈소스에 없음 |
+
+### Round 2: 검증 (4개 에이전트)
+
+| 에이전트 | 목적 | 핵심 발견 |
+|---|---|---|
+| explore #2 | OASIS 확장성 검증 (MiroFish 코드) | ActionType 닫힌 enum, OasisEnv 하드코딩, 프로필 포맷 하드코딩 |
+| librarian #4 | OASIS 확장성 검증 (GitHub 소스) | Platform 서브클래싱 가능, Channel 재사용 가능, PURCHASE_PRODUCT 선례 |
+| librarian #5 | OpenCTI 아키텍처 | 5서비스/18GB, 커스텀 SDO 불가, stix2로 대체 가능 |
+| **oracle** | 전체 아키텍처 리뷰 | 6개 High 리스크, 2-Tier 온톨로지 필요, 시나리오 경계 부재, OASIS는 서브모듈로 제한 |
+
+---
+
+## 23. SPEC ↔ PRD 매핑
+
+### 실행 순서 및 의존성
+
+```
+PRD 1 (gateway-api-foundation)
+  │
+  ├──→ PRD 2 (shadowbroker-integration)
+  │       │
+  │       └──→ PRD 3 (seed-generation)
+  │               │
+  │               └──→ PRD 4 (simulation-orchestration)
+  │                       │
+  │                       └──→ PRD 5 (result-projection)
+  │                               │
+  └───────────────────────────────┴──→ PRD 6 (frontend-simulation-ui)
+```
+
+### SPEC 섹션 → PRD 매핑 (정방향)
+
+| SPEC 섹션 | 담당 PRD | 비고 |
+|---|---|---|
+| **§1** Executive Summary | 전체 | 프로젝트 목표, 소스 프로젝트 정의 |
+| **§2** Architecture | PRD 1 | 4-레이어 구조, 설계 원칙 |
+| **§3.1.1** Seed Generator | **PRD 3** | `SeedGenerator`, `VesselMapper` 클래스 |
+| **§3.1.2** ShadowBroker Client | **PRD 2** | `ShadowBrokerClient` 클래스. ⚠️ SPEC의 API 엔드포인트는 실제와 다름 — PRD 2가 실제 검증 |
+| **§3.1.3** MiroFish Pipeline Adapter | **PRD 4** | `MiroFishClient`, `SimulationOrchestrator` 클래스. ⚠️ SPEC의 API 엔드포인트는 실제와 다름 — PRD 4가 실제 검증 |
+| **§3.1.4** Result Projector | **PRD 5** | `ResultProjector` 클래스, GeoJSON 변환 |
+| **§3.2** 기존 코드 활용 (9개 모듈) | PRD 2, 4 | SB/MF 모듈을 HTTP API로 호출 |
+| **§4 Phase 1** 시나리오 생성 | **PRD 3** | OSINT 데이터 → 시드 문서 변환 흐름 |
+| **§4 Phase 2** MiroFish 파이프라인 | **PRD 4** | 온톨로지 → 그래프 → 프로필 → 시뮬레이션 6단계 |
+| **§4 Phase 3** 결과 시각화 | **PRD 5, 6** | GeoJSON 변환(PRD 5) + 지도 렌더링(PRD 6) |
+| **§5.1** ScenarioConfig | PRD 1 | SQLite scenarios 테이블 |
+| **§5.2** SeedDocument | PRD 1, 3 | SQLite seeds 테이블(PRD 1), 생성 로직(PRD 3) |
+| **§5.3** SimulationResult | PRD 1, 4 | SQLite simulation_results 테이블(PRD 1), 파이프라인(PRD 4) |
+| **§5.4** Military Vessel Mapping | **PRD 3** | `military_vessels.json` + `VesselMapper` |
+| **§5.5** Actor GeoJSON | **PRD 5** | `ResultProjector` 출력 형식 |
+| **§6** API Design (12 endpoints) | PRD 1, 2, 3, 4, 5 | 시나리오 CRUD(PRD 1), OSINT 프록시(PRD 2), 시드(PRD 3), 시뮬레이션(PRD 4), 결과(PRD 5) |
+| **§7** Tech Stack | PRD 1, 6 | 백엔드(PRD 1), 프론트엔드(PRD 6) |
+| **§8** Project Structure | PRD 1, 6 | 백엔드 구조(PRD 1), 프론트엔드 구조(PRD 6) |
+| **§9** Environment Variables | PRD 1 | `.env.example` |
+| **§10** Dependencies | PRD 1, 6 | pyproject.toml(PRD 1), package.json(PRD 6) |
+| **§11** Prompt Customization | **PRD 3, 4** | 시드 생성 프롬프트(PRD 3), simulation_requirement + action_mapping(PRD 4) |
+| **§12** Timeline | 전체 | 아래 주차별 매핑 참조 |
+| **§13** Success Criteria | 전체 | 각 PRD의 E2E 마일스톤에서 검증 |
+| **§14** v2 Roadmap | 해당 없음 | MVP PRD 범위 밖 |
+| **§15** Risks & Mitigations | 전체 | 각 PRD에 위험 섹션 포함 |
+| **§16** Conventions | PRD 1 | 코드 스타일, 패키지 관리, 네이밍 |
+| **§17** Design Decisions | 해당 없음 | 참고 자료 (PRD 실행에 직접 영향 없음) |
+| **§18** v2 Target Architecture | 해당 없음 | v2 범위 |
+| **§19** Oracle Review | 해당 없음 | 참고 자료 |
+| **§20** Entity Resolution | 해당 없음 | v2 범위 |
+| **§21** Performance Analysis | 해당 없음 | 참고 자료 |
+| **§22** Investigation Summary | 해당 없음 | 참고 자료 |
+
+### PRD → SPEC 매핑 (역방향)
+
+| PRD | SPEC 섹션 | 핵심 산출물 |
+|---|---|---|
+| **PRD 1** gateway-api-foundation | §2, §5.1-5.3, §6, §7, §8, §9, §10, §16 | FastAPI 앱, SQLite 스키마, Docker Compose, 환경 설정 |
+| **PRD 2** shadowbroker-integration | §3.1.2, §3.2 | ShadowBroker HTTP 클라이언트, OSINT 프록시 엔드포인트 |
+| **PRD 3** seed-generation | §3.1.1, §4 Phase 1, §5.4, §11 | 군함 DB, Vessel Mapper, GDELT 추출기, LLM 시드 생성기 |
+| **PRD 4** simulation-orchestration | §3.1.3, §4 Phase 2, §11 | MiroFish HTTP 클라이언트, 6단계 파이프라인 오케스트레이터 |
+| **PRD 5** result-projection | §3.1.4, §4 Phase 3, §5.5 | 행위자 좌표 DB, 결과 분석기, GeoJSON 변환기 |
+| **PRD 6** frontend-simulation-ui | §2, §4 Phase 3, §7 프론트엔드, §13 | 시뮬레이션 UI, MapLibre 오버레이, 타임라인, 보고서 뷰어 |
+
+### 타임라인 → PRD 매핑
+
+| 주차 | SPEC §12 마일스톤 | PRD | PRD 마일스톤 |
+|---|---|---|---|
+| **W1** | 프로젝트 셋업 + SB 클라이언트 | PRD 1 (M1~M5) + PRD 2 (M1~M2) | FastAPI 앱 + Docker Compose + SB 클라이언트 |
+| **W2** | 군함 매핑 + 시드 생성기 | PRD 2 (M3~M5) + PRD 3 (M1~M4) | SB 연동 완성 + 군함 DB + 시드 생성기 |
+| **W3** | MiroFish 어댑터 + 파이프라인 | PRD 3 (M5~M6) + PRD 4 (M1~M4) | 시드 API + MF 클라이언트 + 파이프라인 |
+| **W4** | 결과 프로젝터 + API 통합 | PRD 4 (M5~M6) + PRD 5 (M1~M5) | 파이프라인 E2E + GeoJSON 변환 + API |
+| **W5-6** | 프론트엔드 시각화 | PRD 6 (M1~M7) | Next.js 앱 + 지도 레이어 + 시나리오 UI + 타임라인 |
+| **W7** | 통합 테스트 + 데모 준비 | PRD 6 (M8) | 남중국해 시나리오 E2E 데모 |
+
+### API 엔드포인트 오류 정정 (PRD 검증 결과)
+
+> **중요**: 본 SPEC §3.2, §4, §6에 기술된 ShadowBroker/MiroFish API 엔드포인트는 초기 설계 시점의 추정치이며, 실제 소스 코드와 다른 부분이 있다. **실제 구현 시에는 아래 PRD의 검증된 엔드포인트를 따른다.**
+
+| 항목 | SPEC 기술 (추정) | PRD 검증 결과 (실제) | 참조 PRD |
+|---|---|---|---|
+| SB 선박 데이터 | `GET /api/ships` | `GET /api/live-data/fast` → `ships` 필드 | PRD 2 §3.1 |
+| SB 분쟁 이벤트 | `GET /api/geopolitics` | `GET /api/live-data/slow` → `gdelt` 필드 | PRD 2 §3.1 |
+| MF 온톨로지 생성 | `POST /api/ontology/generate` | `POST /api/graph/ontology/generate` (multipart) | PRD 4 §3.1 |
+| MF 프로필 생성 | `POST /api/profiles/generate` | `POST /api/simulation/prepare` (내부 포함) | PRD 4 §3.1 |
+| MF 시뮬레이션 실행 | `POST /api/simulation/run` | `POST /api/simulation/start` | PRD 4 §3.1 |
+| MF 시뮬레이션 상태 | `GET /api/simulation/{id}/status` | `GET /api/simulation/{id}/run-status` | PRD 4 §3.3 |
