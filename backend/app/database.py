@@ -7,6 +7,8 @@ from app.config import settings
 _pool: asyncpg.Pool | None = None
 
 SCHEMA = """\
+CREATE EXTENSION IF NOT EXISTS postgis;
+
 CREATE TABLE IF NOT EXISTS scenarios (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -74,7 +76,72 @@ CREATE TABLE IF NOT EXISTS action_log (
     scenario_id TEXT,
     action_type TEXT NOT NULL,
     actor TEXT DEFAULT 'system',
+    actor_role TEXT DEFAULT 'system',
+    status TEXT DEFAULT 'executed',
     payload TEXT,
+    compensation_for TEXT,
+    created_at TEXT NOT NULL
+);
+
+ALTER TABLE action_log ADD COLUMN IF NOT EXISTS actor_role TEXT DEFAULT 'system';
+ALTER TABLE action_log ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'executed';
+ALTER TABLE action_log ADD COLUMN IF NOT EXISTS compensation_for TEXT;
+
+CREATE TABLE IF NOT EXISTS observations (
+    id TEXT PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    raw_data TEXT NOT NULL,
+    geom geometry(Point, 4326),
+    observed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ontology_versions (
+    id TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
+    schema_hash TEXT NOT NULL,
+    schema_json TEXT NOT NULL,
+    change_summary TEXT,
+    is_breaking BOOLEAN DEFAULT FALSE,
+    created_by TEXT DEFAULT 'system',
+    created_at TEXT NOT NULL
+);
+
+ALTER TABLE simulation_results ADD COLUMN IF NOT EXISTS ontology_version TEXT;
+
+CREATE TABLE IF NOT EXISTS geopolitics_events (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT,
+    simulation_result_id TEXT,
+    action_type TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    target_actor_ids TEXT,
+    content TEXT,
+    magnitude REAL DEFAULT 0.5,
+    round_number INTEGER DEFAULT 0,
+    event_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS resolution_candidates (
+    id TEXT PRIMARY KEY,
+    observation_id TEXT NOT NULL,
+    candidate_stix_id TEXT NOT NULL,
+    match_score REAL NOT NULL,
+    match_strategy TEXT NOT NULL,
+    match_reason TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS resolution_decisions (
+    id TEXT PRIMARY KEY,
+    observation_id TEXT NOT NULL,
+    resolved_stix_id TEXT NOT NULL,
+    decision_type TEXT NOT NULL,
+    decided_by TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    reason TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -85,6 +152,19 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_scenario ON scenario_snapshots(scenario
 CREATE INDEX IF NOT EXISTS idx_action_log_scenario ON action_log(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_action_log_type ON action_log(action_type);
 CREATE INDEX IF NOT EXISTS idx_action_log_created ON action_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_observations_geom ON observations USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_observations_source ON observations(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_observations_time ON observations(observed_at);
+CREATE INDEX IF NOT EXISTS idx_resolution_candidates_obs ON resolution_candidates(observation_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_candidates_stix ON resolution_candidates(candidate_stix_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_candidates_status ON resolution_candidates(status);
+CREATE INDEX IF NOT EXISTS idx_resolution_decisions_obs ON resolution_decisions(observation_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_decisions_stix ON resolution_decisions(resolved_stix_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ontology_versions_version ON ontology_versions(version);
+CREATE INDEX IF NOT EXISTS idx_ontology_versions_hash ON ontology_versions(schema_hash);
+CREATE INDEX IF NOT EXISTS idx_geopolitics_events_scenario ON geopolitics_events(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_geopolitics_events_actor ON geopolitics_events(actor_id);
+CREATE INDEX IF NOT EXISTS idx_geopolitics_events_type ON geopolitics_events(action_type);
 """
 
 

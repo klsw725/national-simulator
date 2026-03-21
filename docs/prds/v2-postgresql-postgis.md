@@ -80,7 +80,7 @@ backend/
 - [ ] **M3: asyncpg 전환** — database.py, repositories 전체 플레이스홀더 교체
   - 검증: 기존 API 엔드포인트 전체 정상 응답
 
-- [ ] **M4: PostGIS 확장 + 공간 인덱스** — 확장 활성화, observations geom 컬럼 추가
+- [x] **M4: PostGIS 확장 + 공간 인덱스** — 확장 활성화, observations geom 컬럼 추가
   - 검증: `SELECT PostGIS_Version()` 성공
 
 ## 5. 성공 기준
@@ -111,3 +111,4 @@ backend/
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | v2 기반 인프라 PRD 초안 작성 |
+| 2026-03-21 | M4 완료 | PostGIS 확장 활성화 + observations 테이블(Tier 1, geom 컬럼) + GIST 공간 인덱스. 전체 마일스톤 완료 |
