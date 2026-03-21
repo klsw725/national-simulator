@@ -75,10 +75,10 @@ backend/app/geopolitics/
 
 ## 4. 마일스톤
 
-- [ ] **M1: 행위자 상태 모델** — GeopoliticalActorState, 목표/제약 프레임워크
+- [x] **M1: 행위자 상태 모델** — GeopoliticalActorState, 목표/제약 프레임워크
   - 검증: 행위자 상태 생성 + 직렬화/역직렬화 확인
 
-- [ ] **M2: 상태 전이 엔진** — DecisionEngine, 규칙 기반 의사결정 (LLM 없이)
+- [x] **M2: 상태 전이 엔진** — DecisionEngine, 규칙 기반 의사결정 (LLM 없이)
   - 검증: 위협 인식 상승 → 군사 이동 결정 트리거 확인
 
 - [ ] **M3: 지정학 이벤트 시스템** — 이벤트 생성, 전파, 영향 계산
@@ -118,3 +118,4 @@ backend/app/geopolitics/
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | v2 지정학 시나리오 엔진 PRD 초안 작성 |
+| 2026-03-21 | M1-M2 완료 | GeopoliticalActorState(목표/제약/상태) + DecisionEngine(규칙 기반 의사결정) + GeopoliticsEvent(전파 규칙). M3-M4는 OASIS 서브클래싱 의존 |
