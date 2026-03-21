@@ -71,10 +71,10 @@ backend/app/actions/
 - [ ] **M2: Action 타입 + 실행 엔진** — ActionType enum, 타입별 실행 로직
   - 검증: ENTITY_TAG 생성 → 실행 → stix_objects 업데이트 확인
 
-- [ ] **M3: 승인 규칙 + RBAC** — 조치 유형별 승인 방식, 역할 검증
+- [x] **M3: 승인 규칙 + RBAC** — 조치 유형별 승인 방식, 역할 검증
   - 검증: analyst가 SCENARIO_ARCHIVE 시도 → 403 반환
 
-- [ ] **M4: 롤백** — compensation_for 참조, 보상 조치 실행
+- [x] **M4: 롤백** — compensation_for 참조, 보상 조치 실행
   - 검증: ENTITY_TAG 실행 후 compensate → 태그 제거 확인
 
 ## 5. 성공 기준
@@ -109,3 +109,4 @@ backend/app/actions/
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | v2 Action Layer PRD 초안 작성 |
+| 2026-03-21 | M3-M4 완료 | 승인 규칙(RBAC) + 역할 검증 + 보상 Action 롤백. APPROVAL_RULES 딕셔너리 기반 auto_approve/manual 분기. 전체 마일스톤 완료 |
