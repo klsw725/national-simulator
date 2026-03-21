@@ -11,9 +11,10 @@ import SimulationTimeline from "./SimulationTimeline";
 import ReportViewer from "./ReportViewer";
 import IntermediateResults from "./IntermediateResults";
 import GraphTab from "./GraphTab";
+import DecisionPointView from "./DecisionPointView";
 import GeopoliticsView from "./GeopoliticsView";
 
-type Tab = "create" | "progress" | "list" | "graph" | "geopolitics" | "timeline" | "report";
+type Tab = "create" | "progress" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report";
 
 interface Props {
   open: boolean;
@@ -35,9 +36,12 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
     "completed"
   ].includes(sim.pipelineStatus.status);
 
+  const hasActiveScenario = sim.activeScenario !== null;
+
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
+    { key: "decisions", label: "결정", show: hasActiveScenario },
     { key: "list", label: "목록", show: true },
     { key: "graph", label: "그래프", show: showGraphTab },
     { key: "geopolitics", label: "지정학", show: isCompleted },
@@ -209,6 +213,21 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
               }}
             />
           )
+        )}
+
+        {tab === "decisions" && sim.activeScenario && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <DecisionPointView
+              scenarioId={sim.activeScenario.id}
+              type="seed_selection"
+              onResolved={() => {}}
+            />
+            <DecisionPointView
+              scenarioId={sim.activeScenario.id}
+              type="parameter_recommendation"
+              onResolved={() => {}}
+            />
+          </div>
         )}
 
         {tab === "list" && (
