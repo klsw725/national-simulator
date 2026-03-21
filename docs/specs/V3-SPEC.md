@@ -2,7 +2,7 @@
 
 > Version: 3.0.0
 > Date: 2026-03-21
-> Status: Draft
+> Status: Complete
 > Codename: **Ghostfish v3** — 모듈 통합 + 지능형 파이프라인
 
 ---
@@ -242,12 +242,12 @@ PRD V3-3 (simulation-params)
 
 V3 완료의 정의:
 
-- [ ] Entity Resolution 결과가 시드 생성에 자동 반영된다
-- [ ] 시뮬레이션 결과가 지정학 엔진에 자동 주입되어 연쇄 분석이 수행된다
-- [ ] DuckDuckGo 웹 검색 결과가 시드 문서에 포함된다
-- [ ] 시뮬레이션 파라미터(platform, hours, requirement)를 시나리오별로 설정할 수 있다
-- [ ] 그래프 뷰어를 시뮬레이션 완료 후에도 조회할 수 있다
-- [ ] GeopoliticsPlatform으로 실제 OASIS 시뮬레이션을 실행할 수 있다
+- [x] Entity Resolution 결과가 시드 생성에 자동 반영된다
+- [x] 시뮬레이션 결과가 지정학 엔진에 자동 주입되어 연쇄 분석이 수행된다
+- [x] DuckDuckGo 웹 검색 결과가 시드 문서에 포함된다
+- [x] 시뮬레이션 파라미터(platform, hours, requirement)를 시나리오별로 설정할 수 있다
+- [x] 그래프 뷰어를 시뮬레이션 완료 후에도 조회할 수 있다
+- [x] GeopoliticsPlatform으로 실제 OASIS 시뮬레이션을 실행할 수 있다
 
 ---
 
