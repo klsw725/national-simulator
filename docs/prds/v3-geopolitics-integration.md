@@ -153,16 +153,16 @@ frontend/src/lib/gatewayApi.ts                            # 지정학 API 호출
 
 ## 4. 마일스톤
 
-- [ ] **M1: SimulationOrchestrator → DecisionEngine 브릿지** — 시뮬레이션 액션을 GeopoliticsEvent로 변환하는 브릿지 로직 구현. 에이전트 → GeopoliticalActorState 매핑. DecisionEngine.run_simulation() 호출.
+- [x] **M1: SimulationOrchestrator → DecisionEngine 브릿지** — 시뮬레이션 액션을 GeopoliticsEvent로 변환하는 브릿지 로직 구현. 에이전트 → GeopoliticalActorState 매핑. DecisionEngine.run_simulation() 호출.
   - 검증: 시뮬레이션 완료 후 DecisionEngine이 연쇄 분석을 수행하고 결과 반환
 
-- [ ] **M2: DecisionEngine 결과 → geopolitics_events DB 저장 + API** — 분석 결과를 geopolitics_events 테이블에 저장. 조회 API (events, actors, timeline) 구현.
+- [x] **M2: DecisionEngine 결과 → geopolitics_events DB 저장 + API** — 분석 결과를 geopolitics_events 테이블에 저장. 조회 API (events, actors, timeline) 구현.
   - 검증: GET /api/scenario/{id}/geopolitics/events에서 저장된 이벤트 조회 가능
 
-- [ ] **M3: CP6 지정학 검토 체크포인트 추가** — 체크포인트 파이프라인에 geopolitics 단계 추가. PipelineProgress에 Step 7 표시. 체크포인트 모드에서 검토 가능.
+- [x] **M3: CP6 지정학 검토 체크포인트 추가** — 체크포인트 파이프라인에 geopolitics 단계 추가. PipelineProgress에 Step 7 표시. 체크포인트 모드에서 검토 가능.
   - 검증: checkpoint 모드에서 지정학 분석 단계에 일시정지. 결과 확인 후 계속.
 
-- [ ] **M4: 프론트엔드 지정학 분석 뷰** — SimulationPanel에 "지정학" 탭 추가. 이벤트 타임라인, 행위자 상태, 연쇄 분석 표시. geopolitics_enabled=true인 시나리오에서만 표시.
+- [x] **M4: 프론트엔드 지정학 분석 뷰** — SimulationPanel에 "지정학" 탭 추가. 이벤트 타임라인, 행위자 상태, 연쇄 분석 표시. geopolitics_enabled=true인 시나리오에서만 표시.
   - 검증: 시뮬레이션 완료 후 "지정학" 탭에서 분석 결과 확인 가능
 
 ## 5. 성공 기준
@@ -202,3 +202,4 @@ frontend/src/lib/gatewayApi.ts                            # 지정학 API 호출
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V3-1 지정학 엔진 ↔ 시뮬레이션 통합 PRD 초안 작성 |
+| 2026-03-21 | M1-M4 완료 | _step_geopolitics_analysis(): 시뮬레이션 액션 → GeopoliticalActorState 매핑 → DecisionEngine.run_simulation(3 rounds) → geopolitics_events DB 저장. geopolitics_enabled=true일 때 _collect_and_store_results에서 자동 호출. CP6 체크포인트 추가. 3개 API (summary, events, timeline). GeopoliticsView 프론트엔드 컴포넌트 (라운드별 타임라인, 행위자 pills, 액션 타입 색상 코딩). SimulationPanel에 "지정학" 탭 추가. |

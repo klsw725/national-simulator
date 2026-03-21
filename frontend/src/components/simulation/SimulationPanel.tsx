@@ -11,8 +11,9 @@ import SimulationTimeline from "./SimulationTimeline";
 import ReportViewer from "./ReportViewer";
 import IntermediateResults from "./IntermediateResults";
 import GraphTab from "./GraphTab";
+import GeopoliticsView from "./GeopoliticsView";
 
-type Tab = "create" | "progress" | "list" | "graph" | "timeline" | "report";
+type Tab = "create" | "progress" | "list" | "graph" | "geopolitics" | "timeline" | "report";
 
 interface Props {
   open: boolean;
@@ -39,6 +40,7 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
     { key: "progress", label: "진행 상태", show: true },
     { key: "list", label: "목록", show: true },
     { key: "graph", label: "그래프", show: showGraphTab },
+    { key: "geopolitics", label: "지정학", show: isCompleted },
     { key: "timeline", label: "타임라인", show: isCompleted },
     { key: "report", label: "리포트", show: isCompleted },
   ];
@@ -227,6 +229,10 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
 
         {tab === "graph" && sim.activeScenario && (
           <GraphTab scenarioId={sim.activeScenario.id} />
+        )}
+
+        {tab === "geopolitics" && sim.activeScenario && (
+          <GeopoliticsView scenarioId={sim.activeScenario.id} />
         )}
 
         {tab === "report" && (

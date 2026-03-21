@@ -142,3 +142,24 @@ export function getLiveProfiles(scenarioId: string): Promise<LiveProfiles> {
 export function getLiveConfig(scenarioId: string): Promise<LiveConfig> {
   return fetchJSON(`/api/scenario/${scenarioId}/live/config`);
 }
+
+// ── Geopolitics ──
+
+export function getGeopoliticsSummary(scenarioId: string): Promise<{
+  scenario_id: string; total_events: number; total_rounds: number; actors: string[];
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/geopolitics`);
+}
+
+export function getGeopoliticsTimeline(scenarioId: string): Promise<{
+  scenario_id: string;
+  timeline: Array<{
+    round: number;
+    events: Array<{
+      action_type: string; actor_id: string; target_actor_ids: string[];
+      content: string; magnitude: number;
+    }>;
+  }>;
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/geopolitics/timeline`);
+}

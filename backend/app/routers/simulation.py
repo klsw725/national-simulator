@@ -153,6 +153,7 @@ CHECKPOINT_STEPS = {
     "checkpoint:graph": {"step": "graph", "editable": False},
     "checkpoint:profiles": {"step": "profiles", "editable": False},
     "checkpoint:config": {"step": "config", "editable": True},
+    "checkpoint:geopolitics": {"step": "geopolitics", "editable": False},
 }
 
 
@@ -738,4 +739,90 @@ async def get_scenario_observations(
             }
             for r in rows
         ],
+    }
+
+
+@router.get("/{scenario_id}/geopolitics")
+async def get_geopolitics_summary(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    count = await conn.fetchval(
+        "SELECT COUNT(*) FROM geopolitics_events WHERE scenario_id = $1",
+        scenario_id,
+    )
+    actors = await conn.fetch(
+        "SELECT DISTINCT actor_id FROM geopolitics_events WHERE scenario_id = $1",
+        scenario_id,
+    )
+    max_round = await conn.fetchval(
+        "SELECT MAX(round_number) FROM geopolitics_events WHERE scenario_id = $1",
+        scenario_id,
+    )
+    return {
+        "scenario_id": scenario_id,
+        "total_events": count or 0,
+        "total_rounds": max_round or 0,
+        "actors": [r["actor_id"] for r in actors],
+    }
+
+
+@router.get("/{scenario_id}/geopolitics/events")
+async def get_geopolitics_events(
+    scenario_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    rows = await conn.fetch(
+        """SELECT * FROM geopolitics_events
+           WHERE scenario_id = $1
+           ORDER BY round_number, event_at
+           LIMIT $2 OFFSET $3""",
+        scenario_id, limit, offset,
+    )
+    return {
+        "scenario_id": scenario_id,
+        "count": len(rows),
+        "events": [
+            {
+                "id": r["id"],
+                "action_type": r["action_type"],
+                "actor_id": r["actor_id"],
+                "target_actor_ids": json.loads(r["target_actor_ids"]) if r["target_actor_ids"] else [],
+                "content": r["content"],
+                "magnitude": r["magnitude"],
+                "round_number": r["round_number"],
+                "event_at": r["event_at"],
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/{scenario_id}/geopolitics/timeline")
+async def get_geopolitics_timeline(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    rows = await conn.fetch(
+        """SELECT round_number, action_type, actor_id, target_actor_ids, content, magnitude
+           FROM geopolitics_events
+           WHERE scenario_id = $1
+           ORDER BY round_number, event_at""",
+        scenario_id,
+    )
+    rounds: dict[int, list[dict]] = {}
+    for r in rows:
+        rn = r["round_number"]
+        rounds.setdefault(rn, []).append({
+            "action_type": r["action_type"],
+            "actor_id": r["actor_id"],
+            "target_actor_ids": json.loads(r["target_actor_ids"]) if r["target_actor_ids"] else [],
+            "content": r["content"],
+            "magnitude": r["magnitude"],
+        })
+    return {
+        "scenario_id": scenario_id,
+        "timeline": [{"round": rn, "events": evts} for rn, evts in sorted(rounds.items())],
     }
