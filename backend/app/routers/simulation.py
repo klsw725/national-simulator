@@ -131,6 +131,79 @@ async def generate_seed(
     )
 
 
+@router.post("/{scenario_id}/seed_options", status_code=201)
+async def generate_seed_options(
+    scenario_id: str,
+    request: Request,
+    num_options: int = 3,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    scenario = await conn.fetchrow("SELECT * FROM scenarios WHERE id = $1", scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    if num_options < 2 or num_options > 5:
+        raise HTTPException(status_code=400, detail="num_options must be between 2 and 5")
+
+    sb_client = request.app.state.sb_client
+    generator = SeedGenerator(sb_client)
+
+    bbox = json.loads(scenario["region_bbox"])
+    question = scenario["question"]
+    region_name = scenario["region_name"]
+
+    raw_params = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
+
+    try:
+        result = await generator.generate_options(
+            bbox=bbox,
+            question=question,
+            region_name=region_name,
+            num_options=num_options,
+            web_search_enabled=sim_params.web_search_enabled,
+        )
+    except Exception:
+        logger.exception("Seed options generation failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=500, detail="Seed options generation failed")
+
+    dp_id = f"dp_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    await conn.execute(
+        """INSERT INTO decision_points
+           (id, scenario_id, type, options, recommended, allow_custom, status, created_at)
+           VALUES ($1, $2, 'seed_selection', $3, $4, TRUE, 'pending', $5)""",
+        dp_id,
+        scenario_id,
+        json.dumps(result["options"], ensure_ascii=False),
+        result["recommended"],
+        now,
+    )
+    await ActionLogger.log(
+        "seed_options.generate",
+        scenario_id,
+        payload={
+            "dp_id": dp_id,
+            "options_count": len(result["options"]),
+            "recommended": result["recommended"],
+        },
+    )
+
+    dp_row = await conn.fetchrow("SELECT * FROM decision_points WHERE id = $1", dp_id)
+    if not dp_row:
+        raise HTTPException(status_code=500, detail="Failed to read back created decision point")
+
+    return {
+        "scenario_id": scenario_id,
+        "decision_point_id": dp_id,
+        "options_count": len(result["options"]),
+        "recommended": result["recommended"],
+        "decision_point": _row_to_decision_point(dp_row),
+        "metadata": result["metadata"],
+    }
+
+
 @router.get("/{scenario_id}/seed", response_model=SeedResponse)
 async def get_seed(
     scenario_id: str,

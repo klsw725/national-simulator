@@ -64,6 +64,23 @@ export function generateSeed(
   });
 }
 
+export function generateSeedOptions(
+  scenarioId: string,
+  numOptions: number = 3,
+): Promise<{
+  scenario_id: string;
+  decision_point_id: string;
+  options_count: number;
+  recommended: string;
+  decision_point: DecisionPoint;
+  metadata: Record<string, unknown>;
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/seed_options?num_options=${numOptions}`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+  });
+}
+
 export function getSeed(
   scenarioId: string
 ): Promise<{

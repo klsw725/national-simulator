@@ -8,6 +8,7 @@ ShadowBroker OSINT 데이터를 기반으로 MiroFish에 전달할
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -60,6 +61,33 @@ SEED_GENERATION_PROMPT = """\
 각 행위자(국가)는 이후 소셜미디어 시뮬레이션에서 개별 에이전트로 동작합니다.
 실제 OSINT 데이터에 기반하여 현실적으로 작성하세요.
 """
+
+PERSPECTIVE_CONFIGS: list[dict[str, str]] = [
+    {
+        "id": "military_focus",
+        "label": "군사 긴장 중심",
+        "instruction": (
+            "군사적 관점에서 작성하세요. 군함 배치, 군사 훈련, 무기 체계, 군사 동맹에 초점을 맞추세요. "
+            "군사적 충돌 가능성과 억지력 균형을 강조하세요."
+        ),
+    },
+    {
+        "id": "diplomatic_focus",
+        "label": "외교 협상 중심",
+        "instruction": (
+            "외교적 관점에서 작성하세요. 다자간 협상, 국제기구 중재, 외교 성명, 경제 제재에 초점을 맞추세요. "
+            "대화와 협상을 통한 긴장 완화 가능성을 강조하세요."
+        ),
+    },
+    {
+        "id": "neutral",
+        "label": "균형 분석",
+        "instruction": (
+            "균형 잡힌 중립적 관점에서 작성하세요. 군사적 요소와 외교적 요소를 동등하게 다루세요. "
+            "각 행위자의 입장을 공정하게 제시하고, 다양한 시나리오 가능성을 열어두세요."
+        ),
+    },
+]
 
 
 class SeedGenerator:
@@ -246,23 +274,13 @@ class SeedGenerator:
             return ""
         return f"- 활성 전선 구간 {touched}개 감지"
 
-    async def generate(
+    async def _collect_and_summarize(
         self,
         bbox: list[float],
         question: str,
         region_name: str = "",
         web_search_enabled: bool = False,
     ) -> dict[str, Any]:
-        """시드 문서 생성.
-
-        Args:
-            bbox: [min_lng, min_lat, max_lng, max_lat]
-            question: 사용자의 시뮬레이션 질문
-            region_name: 해역 이름 (예: "South China Sea")
-
-        Returns:
-            {"text": str, "metadata": dict}
-        """
         sb_bbox = BBox(s=bbox[1], w=bbox[0], n=bbox[3], e=bbox[2])
 
         fast_data = await self.sb.get_fast_data(sb_bbox)
@@ -354,49 +372,60 @@ class SeedGenerator:
             except Exception:
                 logger.warning("Web search enrichment failed, continuing without it")
 
-        prompt = SEED_GENERATION_PROMPT.format(
-            vessel_deployment=vessel_text or "(해역 내 군함 미감지)",
-            military_flights=flights_text or "(해역 내 군용 항공기 미감지)",
-            satellite_activity=satellite_text or "(해역 상공 군사 위성 미감지)",
-            gdelt_context=gdelt_text,
-            osint_signals=osint_signals,
-            recent_news_section=recent_news_section,
-            resolver_context_section=resolver_context_section,
-            user_question=question,
-            region_name=region_name or "미지정",
-        )
-
-        seed_text = await self._call_llm(prompt)
-
         filtered_flights = self._filter_by_bbox(mil_flights, bbox)
         filtered_sats = self._filter_by_bbox(satellites, bbox)
 
-        metadata = {
-            "vessels_count": len(military_vessels),
-            "actors_identified": list(actors.keys()),
-            "military_flights_count": len(filtered_flights),
-            "satellites_count": len(filtered_sats),
-            "gdelt_events_count": gdelt_context["event_count"],
-            "tension_score": gdelt_context["tension_score"],
-            "osint_sources_used": len([s for s in osint_signals_parts if s]),
-            "web_search_count": web_search_count,
-            "resolved_entity_count": resolved_entity_count,
-            "used_observation_ids": used_observation_ids,
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+        return {
+            "prompt_vars": {
+                "vessel_deployment": vessel_text or "(해역 내 군함 미감지)",
+                "military_flights": flights_text or "(해역 내 군용 항공기 미감지)",
+                "satellite_activity": satellite_text or "(해역 상공 군사 위성 미감지)",
+                "gdelt_context": gdelt_text,
+                "osint_signals": osint_signals,
+                "recent_news_section": recent_news_section,
+                "resolver_context_section": resolver_context_section,
+                "user_question": question,
+                "region_name": region_name or "미지정",
+            },
+            "metadata": {
+                "vessels_count": len(military_vessels),
+                "actors_identified": list(actors.keys()),
+                "military_flights_count": len(filtered_flights),
+                "satellites_count": len(filtered_sats),
+                "gdelt_events_count": gdelt_context["event_count"],
+                "tension_score": gdelt_context["tension_score"],
+                "osint_sources_used": len([s for s in osint_signals_parts if s]),
+                "web_search_count": web_search_count,
+                "resolved_entity_count": resolved_entity_count,
+                "used_observation_ids": used_observation_ids,
+                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         }
+
+    async def generate(
+        self,
+        bbox: list[float],
+        question: str,
+        region_name: str = "",
+        web_search_enabled: bool = False,
+    ) -> dict[str, Any]:
+        ctx = await self._collect_and_summarize(bbox, question, region_name, web_search_enabled)
+
+        prompt = SEED_GENERATION_PROMPT.format(**ctx["prompt_vars"])
+        seed_text = await self._call_llm(prompt)
 
         logger.info(
             "Seed generated: %d vessels, %d actors, %d flights, %d sats, tension=%.1f, +%d osint, +%d web",
-            metadata["vessels_count"],
-            len(metadata["actors_identified"]),
-            metadata["military_flights_count"],
-            metadata["satellites_count"],
-            metadata["tension_score"],
-            metadata["osint_sources_used"],
-            metadata["web_search_count"],
+            ctx["metadata"]["vessels_count"],
+            len(ctx["metadata"]["actors_identified"]),
+            ctx["metadata"]["military_flights_count"],
+            ctx["metadata"]["satellites_count"],
+            ctx["metadata"]["tension_score"],
+            ctx["metadata"]["osint_sources_used"],
+            ctx["metadata"]["web_search_count"],
         )
 
-        return {"text": seed_text, "metadata": metadata}
+        return {"text": seed_text, "metadata": ctx["metadata"]}
 
     async def _get_resolver_context(self, bbox: list[float]) -> dict[str, Any]:
         pool = get_pool()
@@ -460,7 +489,7 @@ class SeedGenerator:
             "observation_ids": observation_ids,
         }
 
-    async def _call_llm(self, prompt: str) -> str:
+    async def _call_llm(self, prompt: str, temperature: float = 0.4) -> str:
         response = await self._llm.chat.completions.create(
             model=settings.llm_model_name,
             messages=[
@@ -470,7 +499,74 @@ class SeedGenerator:
                 },
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.4,
+            temperature=temperature,
             max_tokens=2048,
         )
         return response.choices[0].message.content or ""
+
+    async def generate_options(
+        self,
+        bbox: list[float],
+        question: str,
+        region_name: str = "",
+        num_options: int = 3,
+        web_search_enabled: bool = False,
+    ) -> dict[str, Any]:
+        ctx = await self._collect_and_summarize(bbox, question, region_name, web_search_enabled)
+        perspectives = PERSPECTIVE_CONFIGS[:num_options]
+
+        async def _gen_one(perspective: dict[str, str]) -> dict[str, Any]:
+            prompt = SEED_GENERATION_PROMPT.format(**ctx["prompt_vars"])
+            prompt += f"\n\n## 분석 관점 지시\n{perspective['instruction']}"
+            text = await self._call_llm(prompt, temperature=0.6)
+            return {
+                "id": perspective["id"],
+                "label": perspective["label"],
+                "text": text,
+            }
+
+        results = await asyncio.gather(*[_gen_one(p) for p in perspectives])
+
+        metadata = ctx["metadata"]
+        tension = metadata.get("tension_score", 0.0)
+        vessels = metadata.get("vessels_count", 0)
+
+        options = []
+        for result in results:
+            if result["id"] == "military_focus":
+                confidence = min(0.95, 0.6 + tension * 0.3 + min(vessels, 10) * 0.01)
+                reasoning = (
+                    f"GDELT 긴장도 {tension:.1f}, 군함 {vessels}척 감지. "
+                    "군사 데이터가 풍부하여 군사 중심 분석이 높은 신뢰도를 가집니다."
+                )
+            elif result["id"] == "diplomatic_focus":
+                confidence = min(0.95, 0.5 + (1.0 - tension) * 0.3)
+                reasoning = (
+                    f"GDELT 긴장도 {tension:.1f}. "
+                    "외교적 관점은 긴장 완화 시나리오 탐색에 유용합니다."
+                )
+            else:
+                confidence = 0.75
+                reasoning = "균형 잡힌 분석으로 군사적·외교적 요소를 동등하게 고려합니다."
+
+            options.append({
+                "id": result["id"],
+                "label": result["label"],
+                "description": result["text"][:200] + "..." if len(result["text"]) > 200 else result["text"],
+                "confidence": round(confidence, 2),
+                "reasoning": reasoning,
+                "data": {"seed_text": result["text"]},
+            })
+
+        recommended = max(options, key=lambda o: o["confidence"])["id"]
+
+        logger.info(
+            "Seed options generated: %d options, recommended=%s, tension=%.1f",
+            len(options), recommended, tension,
+        )
+
+        return {
+            "options": options,
+            "recommended": recommended,
+            "metadata": metadata,
+        }
