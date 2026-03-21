@@ -192,16 +192,20 @@ class SeedGenerator:
         countries = set(o.get("country_name", "불명") for o in severe)
         return f"- 심각한 인터넷 장애 {len(severe)}건 ({', '.join(countries)})"
 
-    def _summarize_stocks(self, stocks: list[dict]) -> str:
+    def _summarize_stocks(self, stocks: list) -> str:
         if not stocks:
             return ""
         lines: list[str] = []
         for stock in stocks:
+            if not isinstance(stock, dict):
+                continue
             symbol = stock.get("symbol", stock.get("name", ""))
             change = stock.get("change_percent", 0)
+            if not isinstance(change, (int, float)):
+                continue
             direction = "+" if change >= 0 else ""
             lines.append(f"{symbol} {direction}{change:.1f}%")
-        return "방산주/에너지: " + ", ".join(lines)
+        return ("방산주/에너지: " + ", ".join(lines)) if lines else ""
 
     def _summarize_fires(self, fires: list[dict], bbox: list[float]) -> str:
         filtered = self._filter_by_bbox(fires, bbox)
