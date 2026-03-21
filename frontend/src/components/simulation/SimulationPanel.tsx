@@ -10,8 +10,9 @@ import ScenarioList from "./ScenarioList";
 import SimulationTimeline from "./SimulationTimeline";
 import ReportViewer from "./ReportViewer";
 import IntermediateResults from "./IntermediateResults";
+import GraphTab from "./GraphTab";
 
-type Tab = "create" | "progress" | "list" | "timeline" | "report";
+type Tab = "create" | "progress" | "list" | "graph" | "timeline" | "report";
 
 interface Props {
   open: boolean;
@@ -27,10 +28,17 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
   const isCompleted = sim.pipelineStatus?.status === "completed";
   const hasCheckpoint = sim.checkpointData !== null;
 
+  const showGraphTab = sim.pipelineStatus != null && [
+    "simulating:prepare", "simulating:running", "simulating:report",
+    "checkpoint:profiles", "checkpoint:config", "checkpoint:geopolitics",
+    "completed"
+  ].includes(sim.pipelineStatus.status);
+
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
     { key: "list", label: "목록", show: true },
+    { key: "graph", label: "그래프", show: showGraphTab },
     { key: "timeline", label: "타임라인", show: isCompleted },
     { key: "report", label: "리포트", show: isCompleted },
   ];
@@ -215,6 +223,10 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
 
         {tab === "timeline" && (
           <SimulationTimeline actions={sim.simulationResults} />
+        )}
+
+        {tab === "graph" && sim.activeScenario && (
+          <GraphTab scenarioId={sim.activeScenario.id} />
         )}
 
         {tab === "report" && (

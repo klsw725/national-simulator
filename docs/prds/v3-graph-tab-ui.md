@@ -133,13 +133,13 @@ frontend/src/types/simulation.ts                          # NodeDetail, GraphFil
 
 ## 4. 마일스톤
 
-- [ ] **M1: SimulationPanel에 "그래프" 탭 추가 + GraphViewer 독립 렌더링** — 6번째 탭 "그래프" 추가 (graph_build 완료 이후 표시). GraphViewer standalone 모드 (전체 패널 크기, 줌/패닝). 완료 상태에서 graph_data 1회성 fetch.
+- [x] **M1: SimulationPanel에 "그래프" 탭 추가 + GraphViewer 독립 렌더링** — 6번째 탭 "그래프" 추가 (graph_build 완료 이후 표시). GraphViewer standalone 모드 (전체 패널 크기, 줌/패닝). 완료 상태에서 graph_data 1회성 fetch.
   - 검증: 시뮬레이션 완료 후 "그래프" 탭에서 엔티티 그래프 조회 가능
 
-- [ ] **M2: 노드 클릭 인터랙션** — 노드 클릭 → NodeDetailPanel 표시 (이름, 타입, 속성, 관계 목록). 클릭 노드 하이라이트 + 관련 엣지 강조. 페르소나 미리보기 (시뮬레이션 에이전트일 경우).
+- [x] **M2: 노드 클릭 인터랙션** — 노드 클릭 → NodeDetailPanel 표시 (이름, 타입, 속성, 관계 목록). 클릭 노드 하이라이트 + 관련 엣지 강조. 페르소나 미리보기 (시뮬레이션 에이전트일 경우).
   - 검증: 노드 클릭 시 상세 정보 + 관계 목록 표시. 관련 엣지 하이라이트.
 
-- [ ] **M3: 그래프 필터링** — 엔티티 타입별 필터 (체크박스: person, organization, location, event). 관계 타입별 필터 (그래프 데이터에서 동적 추출). 필터 변경 시 실시간 반영.
+- [x] **M3: 그래프 필터링** — 엔티티 타입별 필터 (체크박스: person, organization, location, event). 관계 타입별 필터 (그래프 데이터에서 동적 추출). 필터 변경 시 실시간 반영.
   - 검증: 특정 엔티티 타입 필터 해제 시 해당 노드/엣지 숨김
 
 ## 5. 성공 기준
@@ -179,3 +179,4 @@ frontend/src/types/simulation.ts                          # NodeDetail, GraphFil
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V3-5 그래프 뷰어 상시 접근 PRD 초안 작성 |
+| 2026-03-21 | M1-M3 완료 | "그래프" 탭 추가 (graph_build 이후 표시). GraphViewer standalone 모드 (줌/패닝, 380x320 뷰포트). 노드 클릭 → NodeDetailPanel (이름/타입/관계목록, 하이라이트). 엔티티·관계 타입별 필터 pill UI. GraphTab 신규 컴포넌트 (1회성 fetch). 기존 IntermediateResults 미수정. |

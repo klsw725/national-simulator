@@ -143,3 +143,21 @@ export interface LiveConfig {
     initial_posts_count: number;
   };
 }
+
+export interface NodeDetail {
+  id: string;
+  name: string;
+  type: string;
+  labels: string[];
+  attributes: Record<string, unknown>;
+  relationships: {
+    targetName: string;
+    type: string;
+    direction: "outgoing" | "incoming";
+  }[];
+}
+
+export interface GraphFilters {
+  entityTypes: string[];
+  relationTypes: string[];
+}
