@@ -146,7 +146,7 @@ frontend/src/lib/gatewayApi.ts              # DecisionPoint API 호출
 - [x] **M2: AI 시드 옵션 생성기** — SeedGenerator.generate_options() 구현. 동일 OSINT 데이터에서 관점별 프롬프트로 3개 시드 병렬 생성. 각 시드에 confidence + reasoning 첨부. DecisionPoint 타입 seed_selection으로 저장.
   - 검증: 시드 생성 시 3개 옵션이 생성되어 decision_points에 저장
 
-- [ ] **M3: AI 파라미터 권장 엔진** — ParameterRecommender 구현. 지역/긴장도/행위자 수 기반 파라미터 권장. DecisionPoint 타입 parameter_recommendation으로 저장. 근거 텍스트 생성.
+- [x] **M3: AI 파라미터 권장 엔진** — ParameterRecommender 구현. 지역/긴장도/행위자 수 기반 파라미터 권장. DecisionPoint 타입 parameter_recommendation으로 저장. 근거 텍스트 생성.
   - 검증: 시나리오 생성 시 AI가 파라미터 권장값 + 근거 제시
 
 - [ ] **M4: 프론트엔드 DecisionPointView** — 선택지 카드 UI (제목, 설명, 신뢰도 바, AI 추론). 추천 옵션 하이라이트. 커스텀 입력 지원. 선택 → resolve API 호출 → 파이프라인 재개.
@@ -185,3 +185,4 @@ frontend/src/lib/gatewayApi.ts              # DecisionPoint API 호출
 | 2026-03-21 | Draft | V4-1 AI 가이드 결정 지점 PRD 초안 작성 |
 | 2026-03-21 | M1 Complete | DecisionPoint 모델 + decision_points 테이블 + CRUD API 4개 + 프론트엔드 타입/API 클라이언트 구현 |
 | 2026-03-21 | M2 Complete | SeedGenerator.generate_options() — 3개 관점별(군사/외교/균형) 시드 병렬 생성 + OSINT 기반 confidence + DecisionPoint 자동 저장 |
+| 2026-03-21 | M3 Complete | param_recommender.recommend_params() — quick/standard/deep 3개 파라미터 옵션 + OSINT 메타데이터 기반 자동 추천 |

@@ -14,6 +14,7 @@ from app.models.decision_point import (
     DecisionPointResolveRequest,
     DecisionPointResponse,
 )
+from app.services.param_recommender import recommend_params
 from app.models.result import (
     CheckpointResponse,
     ContinueRequest,
@@ -204,12 +205,79 @@ async def generate_seed_options(
     }
 
 
+@router.post("/{scenario_id}/recommend_params", status_code=201)
+async def recommend_simulation_params(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    scenario = await conn.fetchrow("SELECT * FROM scenarios WHERE id = $1", scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    sb_client = request.app.state.sb_client
+    generator = SeedGenerator(sb_client)
+
+    bbox = json.loads(scenario["region_bbox"])
+    question = scenario["question"]
+    region_name = scenario["region_name"]
+
+    raw_params = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
+
+    try:
+        ctx = await generator._collect_and_summarize(
+            bbox=bbox,
+            question=question,
+            region_name=region_name,
+            web_search_enabled=sim_params.web_search_enabled,
+        )
+    except Exception:
+        logger.exception("OSINT data collection failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=500, detail="OSINT data collection failed")
+
+    result = recommend_params(ctx["metadata"])
+
+    dp_id = f"dp_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    await conn.execute(
+        """INSERT INTO decision_points
+           (id, scenario_id, type, options, recommended, allow_custom, status, created_at)
+           VALUES ($1, $2, 'parameter_recommendation', $3, $4, TRUE, 'pending', $5)""",
+        dp_id,
+        scenario_id,
+        json.dumps(result["options"], ensure_ascii=False),
+        result["recommended"],
+        now,
+    )
+    await ActionLogger.log(
+        "param_recommendation.generate",
+        scenario_id,
+        payload={
+            "dp_id": dp_id,
+            "recommended": result["recommended"],
+        },
+    )
+
+    dp_row = await conn.fetchrow("SELECT * FROM decision_points WHERE id = $1", dp_id)
+    if not dp_row:
+        raise HTTPException(status_code=500, detail="Failed to read back created decision point")
+
+    return {
+        "scenario_id": scenario_id,
+        "decision_point_id": dp_id,
+        "recommended": result["recommended"],
+        "decision_point": _row_to_decision_point(dp_row),
+        "metadata": ctx["metadata"],
+    }
+
+
 @router.get("/{scenario_id}/seed", response_model=SeedResponse)
 async def get_seed(
     scenario_id: str,
     conn: asyncpg.Connection = Depends(get_db),
 ):
-    """생성된 시드 문서를 조회한다."""
     row = await conn.fetchrow("SELECT * FROM seeds WHERE scenario_id = $1", scenario_id)
     if not row:
         raise HTTPException(status_code=404, detail="Seed not found for this scenario")

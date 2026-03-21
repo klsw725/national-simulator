@@ -121,44 +121,72 @@ export default function LiveActionFeed({ actions }: Props) {
             action as LiveAction & { geopolitics_label?: string }
           ).geopolitics_label ?? action.action_type.replace(/_/g, " ");
 
+          const prevRound = idx > 0 ? visibleActions[idx - 1].round_num : -1;
+          const isNewRound = action.round_num !== prevRound;
+
           return (
-            <div
-              key={`${action.timestamp}-${action.agent_id}-${idx}`}
-              style={{
-                alignSelf: action.agent_id % 2 === 0 ? "flex-start" : "flex-end",
-                maxWidth: "95%",
-                minWidth: "65%",
-                border: `1px solid ${meta.color}`,
-                borderRadius: 6,
-                padding: "8px 10px",
-                background: "var(--bg-tertiary)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 12, lineHeight: 1 }}>{meta.icon}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
-                  {action.agent_name}
-                </span>
-                <span
+            <div key={`${action.timestamp}-${action.agent_id}-${idx}`}>
+              {isNewRound && (
+                <div
                   style={{
-                    marginLeft: "auto",
-                    fontSize: 10,
-                    color: meta.color,
-                    border: `1px solid ${meta.color}`,
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    textTransform: "uppercase",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    margin: idx === 0 ? "0 0 6px" : "10px 0 6px",
                   }}
                 >
-                  {actionLabel}
-                </span>
-              </div>
-
-              {content && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                  {truncate(content, 100)}
+                  <div style={{ flex: 1, height: 1, background: "var(--border-secondary)" }} />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "var(--accent-cyan)",
+                      letterSpacing: "0.05em",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    ROUND {action.round_num}
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: "var(--border-secondary)" }} />
                 </div>
               )}
+              <div
+                style={{
+                  alignSelf: action.agent_id % 2 === 0 ? "flex-start" : "flex-end",
+                  maxWidth: "95%",
+                  minWidth: "65%",
+                  border: `1px solid ${meta.color}`,
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  background: "var(--bg-tertiary)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, lineHeight: 1 }}>{meta.icon}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                    {action.agent_name}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 10,
+                      color: meta.color,
+                      border: `1px solid ${meta.color}`,
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {actionLabel}
+                  </span>
+                </div>
+
+                {content && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                    {truncate(content, 100)}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

@@ -64,6 +64,21 @@ export function generateSeed(
   });
 }
 
+export function recommendParams(
+  scenarioId: string,
+): Promise<{
+  scenario_id: string;
+  decision_point_id: string;
+  recommended: string;
+  decision_point: DecisionPoint;
+  metadata: Record<string, unknown>;
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/recommend_params`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+  });
+}
+
 export function generateSeedOptions(
   scenarioId: string,
   numOptions: number = 3,
