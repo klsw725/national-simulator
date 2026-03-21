@@ -67,16 +67,16 @@ backend/app/resolution/
 
 ## 4. 마일스톤
 
-- [ ] **M1: PG 스키마** — resolution_candidates, resolution_decisions 테이블
+- [x] **M1: PG 스키마** — resolution_candidates, resolution_decisions 테이블
   - 검증: `alembic upgrade head` 성공
 
-- [ ] **M2: 매칭 엔진** — 정확 매칭 (MMSI/ICAO24) + 퍼지 매칭
+- [x] **M2: 매칭 엔진** — 정확 매칭 (MMSI/ICAO24) + 퍼지 매칭
   - 검증: 테스트 관측 데이터 → 후보 목록 생성 확인
 
-- [ ] **M3: 자동 해소** — 신뢰도 임계값(0.85) 초과 시 stix_objects 자동 반영
+- [x] **M3: 자동 해소** — 신뢰도 임계값(0.85) 초과 시 stix_objects 자동 반영
   - 검증: 고신뢰도 매칭 → stix_object 자동 업데이트
 
-- [ ] **M4: 수동 검토 API** — 큐 조회, 수락/거부, 병합 엔드포인트
+- [x] **M4: 수동 검토 API** — 큐 조회, 수락/거부, 병합 엔드포인트
   - 검증: API 호출 → resolution_decisions 기록 생성
 
 ## 5. 성공 기준
@@ -108,3 +108,5 @@ backend/app/resolution/
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | v2 Entity Resolution PRD 초안 작성 |
+| 2026-03-21 | M1-M2 완료 | PG 스키마(resolution_candidates/decisions 테이블+인덱스) + 매칭 엔진(정확/퍼지). Matcher + Resolver 클래스 |
+| 2026-03-21 | M3-M4 완료 | 자동 해소(threshold 0.85) + 수동 검토 API(queue/accept/reject/merge). 전체 마일스톤 완료 |
