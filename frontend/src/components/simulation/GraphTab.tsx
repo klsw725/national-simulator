@@ -5,14 +5,7 @@ import { X } from "lucide-react";
 import type { GraphData, GraphNode, NodeDetail, GraphFilters } from "@/types/simulation";
 import { getLiveGraphData } from "@/lib/gatewayApi";
 import GraphViewer from "./GraphViewer";
-
-const COLOR_MAP: Record<string, string> = {
-  person: "#22d3ee",
-  organization: "#f59e0b",
-  location: "#a78bfa",
-  event: "#f472b6",
-  default: "#60a5fa",
-};
+import { ENTITY_COLOR_MAP as COLOR_MAP } from "@/lib/chartColors";
 
 interface Props {
   scenarioId: string;

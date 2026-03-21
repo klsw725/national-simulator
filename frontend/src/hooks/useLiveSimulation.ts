@@ -79,7 +79,7 @@ export function useLiveSimulation(
     try {
       const data = await getLiveGraphTask(scenarioId);
       setGraphTaskStatus(data);
-    } catch {}
+    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollGraphTask failed", e); }
   }, [scenarioId]);
 
   const pollGraphData = useCallback(async () => {
@@ -87,7 +87,7 @@ export function useLiveSimulation(
     try {
       const data = await getLiveGraphData(scenarioId);
       setGraphData(data);
-    } catch {}
+    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollGraphData failed", e); }
   }, [scenarioId]);
 
   const pollProfiles = useCallback(async () => {
@@ -95,7 +95,7 @@ export function useLiveSimulation(
     try {
       const data = await getLiveProfiles(scenarioId);
       setProfiles(data);
-    } catch {}
+    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollProfiles failed", e); }
   }, [scenarioId]);
 
   const pollConfig = useCallback(async () => {
@@ -103,7 +103,7 @@ export function useLiveSimulation(
     try {
       const data = await getLiveConfig(scenarioId);
       setConfig(data);
-    } catch {}
+    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollConfig failed", e); }
   }, [scenarioId]);
 
   const pollStats = useCallback(async () => {
@@ -111,7 +111,7 @@ export function useLiveSimulation(
     try {
       const data = await getLiveStats(scenarioId);
       setStats(data);
-    } catch {}
+    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollStats failed", e); }
   }, [scenarioId]);
 
   const pollActions = useCallback(async () => {
@@ -130,7 +130,7 @@ export function useLiveSimulation(
       if (typeof data.count === "number") {
         lastOffsetRef.current += data.count;
       }
-    } catch {}
+    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollActions failed", e); }
   }, [scenarioId]);
 
   useEffect(() => {

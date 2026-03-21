@@ -63,8 +63,8 @@ export function useSimulation(): UseSimulationReturn {
         const data = reportRes.value as { report?: string };
         setReportMarkdown(data.report ?? "");
       }
-    } catch {
-      // non-critical — results may not be ready
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") console.warn("loadResults failed", e);
     }
   }, []);
 
@@ -79,8 +79,8 @@ export function useSimulation(): UseSimulationReturn {
     try {
       const list = await api.getScenarios();
       setScenarios(Array.isArray(list) ? list : []);
-    } catch {
-      // non-critical — list may be empty on first use
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") console.warn("loadScenarios failed", e);
     }
   }, []);
 
@@ -109,8 +109,8 @@ export function useSimulation(): UseSimulationReturn {
               await loadResults(scenarioId);
             }
           }
-        } catch {
-          // keep polling on transient errors
+        } catch (e) {
+          if (process.env.NODE_ENV === "development") console.warn("pollStatus failed", e);
         }
       };
 

@@ -54,7 +54,7 @@ async def generate_seed(
     question = scenario["question"]
     region_name = scenario["region_name"]
 
-    raw_params = scenario["simulation_params"] if "simulation_params" in scenario.keys() else "{}"
+    raw_params = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
     sim_params = SimulationParams.model_validate_json(raw_params or "{}")
 
     try:
@@ -198,7 +198,7 @@ async def start_simulation(
     result_id = f"simr_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
 
-    raw_params_cp = scenario["simulation_params"] if "simulation_params" in scenario.keys() else "{}"
+    raw_params_cp = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
     sim_params_cp = SimulationParams.model_validate_json(raw_params_cp or "{}")
 
     if mode == "checkpoint":
@@ -230,7 +230,7 @@ async def start_simulation(
             "message": "Pipeline paused at seed review checkpoint",
         }
 
-    raw_params = scenario["simulation_params"] if "simulation_params" in scenario.keys() else "{}"
+    raw_params = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
     sim_params = SimulationParams.model_validate_json(raw_params or "{}")
 
     mf_client = request.app.state.mf_client
@@ -357,7 +357,7 @@ async def continue_pipeline(
 
     scn_row = await conn.fetchrow("SELECT max_rounds, simulation_params FROM scenarios WHERE id = $1", scenario_id)
     max_rounds = scn_row["max_rounds"] if scn_row else 10
-    raw_params = scn_row["simulation_params"] if scn_row and "simulation_params" in scn_row.keys() else "{}"
+    raw_params = scn_row["simulation_params"] if scn_row and "simulation_params" in scn_row else "{}"
     sim_params = SimulationParams.model_validate_json(raw_params or "{}")
 
     orchestrator = SimulationOrchestrator(mf_client, sb_client=request.app.state.sb_client)

@@ -547,7 +547,7 @@ class SimulationOrchestrator:
                     payload={"error": str(exc)[:500]},
                 )
             except Exception:
-                pass
+                logger.warning("[%s] Failed to log checkpoint pipeline error", scenario_id, exc_info=True)
 
     async def run_pipeline(
         self,
@@ -622,7 +622,7 @@ class SimulationOrchestrator:
                     payload={"error": str(exc)[:500]},
                 )
             except Exception:
-                pass
+                logger.warning("[%s] Failed to log pipeline error", scenario_id, exc_info=True)
 
     async def _collect_and_store_results(
         self,

@@ -81,7 +81,7 @@ async def delete_scenario(
 
 
 def _row_to_response(row: asyncpg.Record) -> ScenarioResponse:
-    raw_params = row["simulation_params"] if "simulation_params" in row.keys() else "{}"
+    raw_params = row["simulation_params"] if "simulation_params" in row else "{}"
     sim_params = SimulationParams.model_validate_json(raw_params or "{}")
 
     return ScenarioResponse(
