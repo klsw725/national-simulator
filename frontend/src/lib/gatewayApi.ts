@@ -9,6 +9,7 @@ import type {
   GraphData,
   LiveProfiles,
   LiveConfig,
+  DecisionPoint,
 } from "@/types/simulation";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -167,6 +168,37 @@ export function getGeopoliticsSummary(scenarioId: string): Promise<{
 }> {
   return fetchJSON(`/api/scenario/${scenarioId}/geopolitics`);
 }
+
+// ── Decision Points ──
+
+export function getDecisionPoints(
+  scenarioId: string,
+  status?: string,
+): Promise<{ scenario_id: string; count: number; decision_points: DecisionPoint[] }> {
+  const qs = status ? `?status=${status}` : "";
+  return fetchJSON(`/api/scenario/${scenarioId}/decision_points${qs}`);
+}
+
+export function getDecisionPoint(
+  scenarioId: string,
+  dpId: string,
+): Promise<DecisionPoint> {
+  return fetchJSON(`/api/scenario/${scenarioId}/decision_points/${dpId}`);
+}
+
+export function resolveDecisionPoint(
+  scenarioId: string,
+  dpId: string,
+  data: { selected_option_id?: string; custom_data?: Record<string, unknown> },
+): Promise<DecisionPoint> {
+  return fetchJSON(`/api/scenario/${scenarioId}/decision_points/${dpId}/resolve`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Geopolitics ──
 
 export function getGeopoliticsTimeline(scenarioId: string): Promise<{
   scenario_id: string;

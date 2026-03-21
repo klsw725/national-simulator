@@ -163,3 +163,31 @@ export interface GraphFilters {
   entityTypes: string[];
   relationTypes: string[];
 }
+
+export interface DecisionOption {
+  id: string;
+  label: string;
+  description: string;
+  confidence: number;
+  reasoning: string;
+  data: Record<string, unknown>;
+}
+
+export type DecisionPointType =
+  | "seed_selection"
+  | "actor_configuration"
+  | "parameter_recommendation";
+
+export interface DecisionPoint {
+  id: string;
+  scenario_id: string;
+  type: DecisionPointType;
+  options: DecisionOption[];
+  recommended: string;
+  allow_custom: boolean;
+  status: "pending" | "resolved";
+  selected_option_id: string | null;
+  custom_data: Record<string, unknown> | null;
+  created_at: string;
+  resolved_at: string | null;
+}

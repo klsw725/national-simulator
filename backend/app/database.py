@@ -177,6 +177,22 @@ CREATE TABLE IF NOT EXISTS scenario_observations (
 );
 CREATE INDEX IF NOT EXISTS idx_scenario_obs_scenario ON scenario_observations(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_scenario_obs_observation ON scenario_observations(observation_id);
+
+CREATE TABLE IF NOT EXISTS decision_points (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
+    type TEXT NOT NULL,
+    options TEXT NOT NULL,
+    recommended TEXT NOT NULL,
+    allow_custom BOOLEAN DEFAULT TRUE,
+    status TEXT DEFAULT 'pending',
+    selected_option_id TEXT,
+    custom_data TEXT,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_decision_points_scenario ON decision_points(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_decision_points_status ON decision_points(status);
 """
 
 
