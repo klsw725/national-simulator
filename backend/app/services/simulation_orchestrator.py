@@ -20,6 +20,7 @@ from typing import Any
 
 from app.clients.mirofish import MiroFishClient
 from app.database import get_pool
+from app.services.action_logger import ActionLogger
 from app.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,11 @@ class SimulationOrchestrator:
         logger.info("[%s] Ontology done → project_id=%s", scenario_id, project_id)
 
         await self._update_ids(result_id, project_id=project_id)
+        await ActionLogger.log(
+            "pipeline.ontology",
+            scenario_id,
+            payload={"project_id": project_id},
+        )
         return ontology_result
 
     async def _step_graph_build(
@@ -105,6 +111,11 @@ class SimulationOrchestrator:
         if graph_id:
             await self._update_ids(result_id, graph_id=graph_id)
         logger.info("[%s] Graph build done (graph_id=%s)", scenario_id, graph_id)
+        await ActionLogger.log(
+            "pipeline.graph_build",
+            scenario_id,
+            payload={"graph_id": graph_id},
+        )
 
     async def _step_create_prepare(
         self,
@@ -133,6 +144,11 @@ class SimulationOrchestrator:
                 interval=POLL_INTERVAL,
             )
         logger.info("[%s] Prepare done", scenario_id)
+        await ActionLogger.log(
+            "pipeline.prepare",
+            scenario_id,
+            payload={"simulation_id": mf_simulation_id},
+        )
 
         return mf_simulation_id
 
@@ -158,6 +174,11 @@ class SimulationOrchestrator:
             done_values=("completed", "stopped"),
         )
         logger.info("[%s] Simulation run done", scenario_id)
+        await ActionLogger.log(
+            "pipeline.run_complete",
+            scenario_id,
+            payload={"simulation_id": mf_simulation_id, "max_rounds": max_rounds},
+        )
 
     async def _step_report(
         self,
@@ -177,6 +198,7 @@ class SimulationOrchestrator:
                 interval=POLL_INTERVAL,
             )
         logger.info("[%s] Report done", scenario_id)
+        await ActionLogger.log("pipeline.report", scenario_id)
 
     async def _save_checkpoint_data(self, result_id: str, data: dict) -> None:
         """Save intermediate result JSON to checkpoint_data column."""
@@ -389,9 +411,17 @@ class SimulationOrchestrator:
                 )
                 return
 
-        except Exception:
+        except Exception as exc:
             logger.exception("[%s] Checkpoint pipeline failed", scenario_id)
             await self._update_status(scenario_id, result_id, "failed")
+            try:
+                await ActionLogger.log(
+                    "pipeline.failed",
+                    scenario_id,
+                    payload={"error": str(exc)[:500]},
+                )
+            except Exception:
+                pass
 
     async def run_pipeline(
         self,
@@ -451,9 +481,17 @@ class SimulationOrchestrator:
                 mf_simulation_id,
             )
 
-        except Exception:
+        except Exception as exc:
             logger.exception("[%s] Pipeline failed", scenario_id)
             await self._update_status(scenario_id, result_id, "failed")
+            try:
+                await ActionLogger.log(
+                    "pipeline.failed",
+                    scenario_id,
+                    payload={"error": str(exc)[:500]},
+                )
+            except Exception:
+                pass
 
     async def _collect_and_store_results(
         self,
@@ -499,6 +537,11 @@ class SimulationOrchestrator:
                 now,
                 scenario_id,
             )
+        await ActionLogger.log(
+            "pipeline.completed",
+            scenario_id,
+            payload={"result_id": result_id},
+        )
 
         logger.info("[%s] Pipeline completed successfully", scenario_id)
 

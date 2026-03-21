@@ -15,6 +15,7 @@ from app.models.result import (
     SimulationResultResponse,
 )
 from app.models.seed import SeedMetadata, SeedResponse
+from app.services.action_logger import ActionLogger
 from app.services.seed_generator import SeedGenerator
 from app.services.simulation_orchestrator import SimulationOrchestrator
 
@@ -88,6 +89,14 @@ async def generate_seed(
         "UPDATE scenarios SET seed_status = 'completed', updated_at = $1 WHERE id = $2",
         now,
         scenario_id,
+    )
+    await ActionLogger.log(
+        "seed.generate",
+        scenario_id,
+        payload={
+            "seed_id": seed_id,
+            "vessels_count": result["metadata"].get("vessels_count", 0),
+        },
     )
 
     return SeedResponse(
@@ -185,6 +194,11 @@ async def start_simulation(
             now,
             scenario_id,
         )
+        await ActionLogger.log(
+            "simulation.start",
+            scenario_id,
+            payload={"result_id": result_id, "mode": "checkpoint"},
+        )
 
         return {
             "scenario_id": scenario_id,
@@ -219,6 +233,15 @@ async def start_simulation(
         result_id=result_id,
         seed_text=seed_row["text"],
         max_rounds=scenario["max_rounds"],
+    )
+    await ActionLogger.log(
+        "simulation.start",
+        scenario_id,
+        payload={
+            "result_id": result_id,
+            "mode": "auto",
+            "max_rounds": scenario["max_rounds"],
+        },
     )
 
     return {
@@ -316,6 +339,11 @@ async def continue_pipeline(
         result_id=row["id"],
         max_rounds=max_rounds,
         edits=edits,
+    )
+    await ActionLogger.log(
+        "simulation.continue",
+        scenario_id,
+        payload={"result_id": row["id"], "from_status": status},
     )
 
     return {
@@ -628,3 +656,21 @@ async def get_snapshot_data(
     if not row or not row[col]:
         raise HTTPException(status_code=404, detail="No snapshot found")
     return json.loads(row[col])
+
+
+@router.get("/{scenario_id}/audit")
+async def get_audit_log(
+    scenario_id: str,
+    action_type: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    del db
+    events = await ActionLogger.query(
+        scenario_id=scenario_id,
+        action_type=action_type,
+        limit=limit,
+        offset=offset,
+    )
+    return {"scenario_id": scenario_id, "count": len(events), "events": events}

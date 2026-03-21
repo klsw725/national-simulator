@@ -11,6 +11,7 @@ from app.models.scenario import (
     ScenarioCreatedResponse,
     ScenarioResponse,
 )
+from app.services.action_logger import ActionLogger
 
 router = APIRouter(prefix="/api/scenario", tags=["scenario"])
 
@@ -36,6 +37,11 @@ async def create_scenario(
         json.dumps(data.data_sources),
         now,
         now,
+    )
+    await ActionLogger.log(
+        "scenario.create",
+        scenario_id,
+        payload={"name": data.name, "region": data.region.name},
     )
 
     return ScenarioCreatedResponse(
@@ -69,6 +75,7 @@ async def delete_scenario(
     result = await conn.execute("DELETE FROM scenarios WHERE id = $1", scenario_id)
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Scenario not found")
+    await ActionLogger.log("scenario.delete", scenario_id)
 
 
 def _row_to_response(row: asyncpg.Record) -> ScenarioResponse:

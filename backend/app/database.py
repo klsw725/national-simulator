@@ -69,10 +69,22 @@ CREATE TABLE IF NOT EXISTS scenario_snapshots (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS action_log (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT,
+    action_type TEXT NOT NULL,
+    actor TEXT DEFAULT 'system',
+    payload TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_stix_objects_type ON stix_objects(object_type);
 CREATE INDEX IF NOT EXISTS idx_stix_objects_stix_id ON stix_objects(stix_id);
 CREATE INDEX IF NOT EXISTS idx_stix_objects_branch ON stix_objects(branch_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_scenario ON scenario_snapshots(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_action_log_scenario ON action_log(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_action_log_type ON action_log(action_type);
+CREATE INDEX IF NOT EXISTS idx_action_log_created ON action_log(created_at);
 """
 
 
