@@ -81,7 +81,7 @@ backend/app/geopolitics/
 - [x] **M2: 상태 전이 엔진** — DecisionEngine, 규칙 기반 의사결정 (LLM 없이)
   - 검증: 위협 인식 상승 → 군사 이동 결정 트리거 확인
 
-- [ ] **M3: 지정학 이벤트 시스템** — 이벤트 생성, 전파, 영향 계산
+- [x] **M3: 지정학 이벤트 시스템** — 이벤트 생성, 전파, 영향 계산
   - 검증: 제재 이벤트 → 대상국 자원 감소 + 인접국 상태 변화 확인
 
 - [ ] **M4: OASIS 양방향 연동** — GeopoliticsOASISBridge, 피드백 루프
@@ -119,3 +119,4 @@ backend/app/geopolitics/
 |------|------|------|
 | 2026-03-20 | Draft | v2 지정학 시나리오 엔진 PRD 초안 작성 |
 | 2026-03-21 | M1-M2 완료 | GeopoliticalActorState(목표/제약/상태) + DecisionEngine(규칙 기반 의사결정) + GeopoliticsEvent(전파 규칙). M3-M4는 OASIS 서브클래싱 의존 |
+| 2026-03-21 | M3 완료 | CASCADE_RULES(연쇄 이벤트), apply_event_with_cascade(재귀+감쇠), run_simulation(N라운드). M4만 OASIS 런타임 의존 |

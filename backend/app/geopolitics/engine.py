@@ -13,7 +13,13 @@ import logging
 from typing import Any
 
 from app.geopolitics.actors import GeopoliticalActorState
-from app.geopolitics.events import GeopoliticsEvent, PROPAGATION_RULES
+from app.geopolitics.events import (
+    CASCADE_DECAY,
+    CASCADE_RULES,
+    GeopoliticsEvent,
+    MAX_CASCADE_DEPTH,
+    PROPAGATION_RULES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,23 +123,91 @@ class DecisionEngine:
 
         return events
 
+    def apply_event_with_cascade(
+        self, event: GeopoliticsEvent, depth: int = 0,
+    ) -> tuple[dict[str, dict[str, float]], list[GeopoliticsEvent]]:
+        """Apply event + evaluate cascade triggers. Returns (deltas, cascade_events)."""
+        deltas = self.apply_event(event)
+        cascaded: list[GeopoliticsEvent] = []
+
+        if depth >= MAX_CASCADE_DEPTH:
+            return deltas, cascaded
+
+        cascade_rules = CASCADE_RULES.get(event.event_type, [])
+        for target_id in event.target_actor_ids:
+            actor = self._actors.get(target_id)
+            if not actor:
+                continue
+
+            for rule in cascade_rules:
+                field_val = getattr(actor, rule["condition_field"], 0.0)
+                triggered = (
+                    (rule["condition_op"] == ">=" and field_val >= rule["condition_value"])
+                    or (rule["condition_op"] == "<=" and field_val <= rule["condition_value"])
+                )
+                if not triggered:
+                    continue
+
+                cascade_targets = [
+                    a for a in actor.adversaries
+                    if a in self._actors and a != target_id
+                ] or [event.source_actor_id]
+
+                cascade_event = GeopoliticsEvent(
+                    event_type=rule["trigger"],
+                    source_actor_id=target_id,
+                    target_actor_ids=cascade_targets,
+                    magnitude=event.magnitude * rule["magnitude_factor"] * (CASCADE_DECAY ** depth),
+                    description=rule["description"],
+                    round_number=self._round,
+                )
+                cascaded.append(cascade_event)
+
+                sub_deltas, sub_cascades = self.apply_event_with_cascade(
+                    cascade_event, depth + 1,
+                )
+                for aid, d in sub_deltas.items():
+                    deltas.setdefault(aid, {})
+                    for k, v in d.items():
+                        deltas[aid][k] = deltas[aid].get(k, 0.0) + v
+                cascaded.extend(sub_cascades)
+
+        return deltas, cascaded
+
     def run_round(self) -> dict[str, Any]:
-        """Execute one full round: decide → apply → return summary."""
+        """Execute one full round: decide → apply (with cascade) → return summary."""
         decisions = self.decide_actions()
 
         all_deltas: dict[str, dict[str, float]] = {}
+        all_cascades: list[GeopoliticsEvent] = []
+
         for event in decisions:
-            deltas = self.apply_event(event)
+            deltas, cascades = self.apply_event_with_cascade(event)
             for actor_id, d in deltas.items():
                 all_deltas.setdefault(actor_id, {})
                 for k, v in d.items():
                     all_deltas[actor_id][k] = all_deltas[actor_id].get(k, 0.0) + v
+            all_cascades.extend(cascades)
 
         return {
             "round": self._round,
             "events": [e.to_dict() for e in decisions],
+            "cascade_events": [e.to_dict() for e in all_cascades],
             "state_changes": all_deltas,
             "actor_states": {a.actor_id: a.to_dict() for a in self._actors.values()},
+        }
+
+    def run_simulation(self, rounds: int) -> dict[str, Any]:
+        """Execute N rounds and return full timeline."""
+        timeline: list[dict[str, Any]] = []
+        for _ in range(rounds):
+            round_result = self.run_round()
+            timeline.append(round_result)
+        return {
+            "total_rounds": rounds,
+            "timeline": timeline,
+            "final_states": {a.actor_id: a.to_dict() for a in self._actors.values()},
+            "total_events": len(self._event_log),
         }
 
     # ------------------------------------------------------------------
