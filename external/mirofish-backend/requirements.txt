@@ -27,6 +27,10 @@ PyMuPDF>=1.24.0
 charset-normalizer>=3.0.0
 chardet>=5.0.0
 
+# ============= 검색 도구 =============
+duckduckgo-search>=7.0.0
+camel-ai[tools]>=0.2.78
+
 # ============= 도구 라이브러리 =============
 # 환경변수 로드
 python-dotenv>=1.0.0

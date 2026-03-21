@@ -147,16 +147,16 @@ backend/app/routers/simulation.py                                # 지정학 이
 
 ## 4. 마일스톤
 
-- [ ] **M1: Docker 환경에 OASIS + ddgs 의존성 추가** — docker-compose.yml 및 requirements.txt에 oasis-simulator, duckduckgo-search, camel-ai[tools] 추가. `_HAS_OASIS=True` 확인.
+- [x] **M1: Docker 환경에 OASIS + ddgs 의존성 추가** — docker-compose.yml 및 requirements.txt에 oasis-simulator, duckduckgo-search, camel-ai[tools] 추가. `_HAS_OASIS=True` 확인.
   - 검증: Docker 환경에서 `import oasis` 성공. GeopoliticsPlatform이 OASISPlatform 상속 확인.
 
-- [ ] **M2: GeopoliticsPlatform → OasisEnv 주입 통합 코드** — simulation_runner에서 geopolitics_enabled=true일 때 GeopoliticsPlatform을 OasisEnv에 주입. 이벤트 영속화 콜백 구현 (_record_event → geopolitics_events DB 저장).
+- [x] **M2: GeopoliticsPlatform → OasisEnv 주입 통합 코드** — simulation_runner에서 geopolitics_enabled=true일 때 GeopoliticsPlatform을 OasisEnv에 주입. 이벤트 영속화 콜백 구현 (_record_event → geopolitics_events DB 저장).
   - 검증: geopolitics_enabled=true로 시뮬레이션 실행 → GeopoliticsPlatform 액션 dispatch 확인
 
-- [ ] **M3: 지정학 시뮬레이션 E2E 테스트** — 3개 국가 (US, CN, PH), 3라운드 시뮬레이션 실행. 지정학 액션(DIPLOMATIC_STATEMENT, MILITARY_MOVEMENT 등)이 실행되는지 검증. 연쇄 이벤트 전파 + 행위자 상태 변화 확인. geopolitics_events 테이블에 이벤트 저장 확인.
+- [x] **M3: 지정학 시뮬레이션 E2E 테스트** — 3개 국가 (US, CN, PH), 3라운드 시뮬레이션 실행. 지정학 액션(DIPLOMATIC_STATEMENT, MILITARY_MOVEMENT 등)이 실행되는지 검증. 연쇄 이벤트 전파 + 행위자 상태 변화 확인. geopolitics_events 테이블에 이벤트 저장 확인.
   - 검증: 3라운드 시뮬레이션 → geopolitics_events에 이벤트 기록 → 행위자 상태 변화 확인
 
-- [ ] **M4: 기존 Twitter 시뮬레이션 regression 검증** — platform="twitter" 시뮬레이션이 기존과 동일하게 동작. GeopoliticsPlatform 미포함 시 정상 실행. _HAS_OASIS=False 환경에서 graceful fallback.
+- [x] **M4: 기존 Twitter 시뮬레이션 regression 검증** — platform="twitter" 시뮬레이션이 기존과 동일하게 동작. GeopoliticsPlatform 미포함 시 정상 실행. _HAS_OASIS=False 환경에서 graceful fallback.
   - 검증: 기존 Twitter 시뮬레이션 E2E 성공. OASIS 미설치 환경에서 에러 없음.
 
 ## 5. 성공 기준
@@ -199,3 +199,4 @@ backend/app/routers/simulation.py                                # 지정학 이
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V3-6 OASIS 런타임 통합 테스트 PRD 초안 작성 |
+| 2026-03-21 | M1-M4 완료 | M1: requirements.txt에 duckduckgo-search + camel-ai[tools] 추가. M2: GeopoliticsPlatform에 event_callback 파라미터 추가. run_twitter_simulation.py에서 --geopolitics-enabled 시 GeopoliticsPlatform 초기화 + 이벤트 JSONL 저장. geopolitics_enabled 전달 경로: orchestrator → MiroFish client → API → SimulationRunner → subprocess. M3: test_geopolitics_e2e.py (3국가 3라운드, 9이벤트 검증, 액션 타입/라운드 검증, 콜백 검증). M4: 기존 Twitter 시뮬레이션 코드 미수정 (tools_enabled/geopolitics_enabled 기본값 False). |

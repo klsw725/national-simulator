@@ -36,11 +36,12 @@ class GeopoliticsPlatform(OASISPlatform):  # type: ignore[misc]
     getattr(self, action_type.value) 디스패치로 각 액션 핸들러가 호출된다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, event_callback: Any = None) -> None:
         if _HAS_OASIS:
             super().__init__()
         self._events: list[dict[str, Any]] = []
         self._round: int = 0
+        self._event_callback = event_callback
 
     def set_round(self, round_number: int) -> None:
         self._round = round_number
@@ -113,4 +114,9 @@ class GeopoliticsPlatform(OASISPlatform):  # type: ignore[misc]
             "magnitude": extra.get("magnitude", 0.5),
         }
         self._events.append(event)
+        if self._event_callback:
+            try:
+                self._event_callback(event)
+            except Exception as e:
+                logger.warning("Event callback failed: %s", e)
         return event

@@ -414,6 +414,8 @@ class TwitterSimulationRunner:
         self.simulation_dir = os.path.dirname(config_path)
         self.wait_for_commands = wait_for_commands
         self.tools_enabled = False
+        self.geopolitics_enabled = False
+        self._geo_platform = None
         self.env = None
         self.agent_graph = None
         self.ipc_handler = None
@@ -619,8 +621,24 @@ class TwitterSimulationRunner:
             agent_graph=self.agent_graph,
             platform=oasis.DefaultPlatformType.TWITTER,
             database_path=db_path,
-            semaphore=30,  # 최대 동시 LLM 요청 수를 제한하여 API 과부하 방지
+            semaphore=30,
         )
+
+        if self.geopolitics_enabled:
+            try:
+                from app.platforms.geopolitics_platform import GeopoliticsPlatform
+                geo_events_path = os.path.join(self.simulation_dir, "geopolitics_events.jsonl")
+
+                def _persist_event(event: dict):
+                    with open(geo_events_path, "a", encoding="utf-8") as f:
+                        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+                self._geo_platform = GeopoliticsPlatform(event_callback=_persist_event)
+                print(f"GeopoliticsPlatform 주입 완료 (이벤트 저장: {geo_events_path})")
+            except ImportError:
+                print("경고: GeopoliticsPlatform을 로드할 수 없습니다")
+            except Exception as e:
+                print(f"경고: GeopoliticsPlatform 초기화 실패: {e}")
 
         await self.env.reset()
         print("환경 초기화 완료\n")
@@ -757,6 +775,12 @@ async def main():
         default=False,
         help="에이전트에 DuckDuckGo 검색 도구 주입",
     )
+    parser.add_argument(
+        "--geopolitics-enabled",
+        action="store_true",
+        default=False,
+        help="GeopoliticsPlatform을 OASIS 환경에 주입",
+    )
 
     args = parser.parse_args()
 
@@ -774,6 +798,7 @@ async def main():
         config_path=args.config, wait_for_commands=not args.no_wait
     )
     runner.tools_enabled = args.tools_enabled
+    runner.geopolitics_enabled = args.geopolitics_enabled
     await runner.run(max_rounds=args.max_rounds)
 
 

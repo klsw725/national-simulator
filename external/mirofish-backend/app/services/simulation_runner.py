@@ -331,6 +331,7 @@ class SimulationRunner:
         enable_graph_memory_update: bool = False,
         graph_id: str = None,
         tools_enabled: bool = False,
+        geopolitics_enabled: bool = False,
     ) -> SimulationRunState:
         """
         시뮬레이션 시작
@@ -450,6 +451,9 @@ class SimulationRunner:
 
             if tools_enabled:
                 cmd.append("--tools-enabled")
+
+            if geopolitics_enabled:
+                cmd.append("--geopolitics-enabled")
 
             # 메인 로그 파일 생성, stdout/stderr 파이프 버퍼가 가득 차서 프로세스가 차단되는 것을 방지
             main_log_path = os.path.join(sim_dir, "simulation.log")

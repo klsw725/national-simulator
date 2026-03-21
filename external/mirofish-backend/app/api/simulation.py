@@ -1644,6 +1644,7 @@ def start_simulation():
             enable_graph_memory_update=enable_graph_memory_update,
             graph_id=graph_id,
             tools_enabled=tools_enabled,
+            geopolitics_enabled=data.get("geopolitics_enabled", False),
         )
 
         # 시뮬레이션 상태 업데이트
