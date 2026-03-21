@@ -18,6 +18,7 @@ from app.clients.shadowbroker import BBox, ShadowBrokerClient
 from app.config import settings
 from app.services.gdelt_extractor import extract_gdelt_context, format_gdelt_text
 from app.services.vessel_mapper import VesselMapper
+from app.services.web_search import WebSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ SEED_GENERATION_PROMPT = """\
 ## 실시간 OSINT 정보
 {osint_signals}
 
+{recent_news_section}
 ## 시뮬레이션 질문
 {user_question}
 
@@ -247,6 +249,7 @@ class SeedGenerator:
         bbox: list[float],
         question: str,
         region_name: str = "",
+        web_search_enabled: bool = False,
     ) -> dict[str, Any]:
         """시드 문서 생성.
 
@@ -305,12 +308,29 @@ class SeedGenerator:
             else "(추가 OSINT 신호 없음)"
         )
 
+        recent_news_section = ""
+        web_search_count = 0
+        if web_search_enabled:
+            try:
+                ws = WebSearchService()
+                keywords = WebSearchService.extract_keywords(
+                    question, region_name, list(actors.keys()),
+                )
+                news_results = ws.search_news(keywords)
+                formatted = ws.format_for_seed(news_results)
+                if formatted:
+                    recent_news_section = f"## 최근 뉴스 (웹 검색)\n{formatted}\n"
+                    web_search_count = len(news_results)
+            except Exception:
+                logger.warning("Web search enrichment failed, continuing without it")
+
         prompt = SEED_GENERATION_PROMPT.format(
             vessel_deployment=vessel_text or "(해역 내 군함 미감지)",
             military_flights=flights_text or "(해역 내 군용 항공기 미감지)",
             satellite_activity=satellite_text or "(해역 상공 군사 위성 미감지)",
             gdelt_context=gdelt_text,
             osint_signals=osint_signals,
+            recent_news_section=recent_news_section,
             user_question=question,
             region_name=region_name or "미지정",
         )
@@ -328,17 +348,19 @@ class SeedGenerator:
             "gdelt_events_count": gdelt_context["event_count"],
             "tension_score": gdelt_context["tension_score"],
             "osint_sources_used": len([s for s in osint_signals_parts if s]),
+            "web_search_count": web_search_count,
             "data_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         logger.info(
-            "Seed generated: %d vessels, %d actors, %d flights, %d sats, tension=%.1f, +%d osint signals",
+            "Seed generated: %d vessels, %d actors, %d flights, %d sats, tension=%.1f, +%d osint, +%d web",
             metadata["vessels_count"],
             len(metadata["actors_identified"]),
             metadata["military_flights_count"],
             metadata["satellites_count"],
             metadata["tension_score"],
             metadata["osint_sources_used"],
+            metadata["web_search_count"],
         )
 
         return {"text": seed_text, "metadata": metadata}

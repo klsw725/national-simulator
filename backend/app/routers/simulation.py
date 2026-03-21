@@ -54,6 +54,9 @@ async def generate_seed(
     question = scenario["question"]
     region_name = scenario["region_name"]
 
+    raw_params = scenario["simulation_params"] if "simulation_params" in scenario.keys() else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
+
     try:
         await conn.execute(
             "UPDATE scenarios SET seed_status = 'generating', updated_at = $1 WHERE id = $2",
@@ -65,6 +68,7 @@ async def generate_seed(
             bbox=bbox,
             question=question,
             region_name=region_name,
+            web_search_enabled=sim_params.web_search_enabled,
         )
     except Exception:
         logger.exception("Seed generation failed for scenario %s", scenario_id)

@@ -3,6 +3,7 @@ export interface SimulationParams {
   simulation_hours: number;
   simulation_requirement: string | null;
   geopolitics_enabled: boolean;
+  web_search_enabled: boolean;
 }
 
 export interface Scenario {
@@ -35,6 +36,7 @@ export interface ScenarioFormData {
     simulation_hours: number;
     simulation_requirement?: string;
     geopolitics_enabled: boolean;
+    web_search_enabled: boolean;
   };
 }
 

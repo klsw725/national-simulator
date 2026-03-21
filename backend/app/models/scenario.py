@@ -11,6 +11,7 @@ class SimulationParams(BaseModel):
     simulation_hours: int = Field(default=24, ge=12, le=96)
     simulation_requirement: str | None = None
     geopolitics_enabled: bool = Field(default=False)
+    web_search_enabled: bool = Field(default=False)
 
 
 class ScenarioCreate(BaseModel):

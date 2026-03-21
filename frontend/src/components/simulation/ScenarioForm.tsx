@@ -29,6 +29,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
   const [simulationHours, setSimulationHours] = useState(24);
   const [simRequirement, setSimRequirement] = useState("");
   const [geopoliticsEnabled, setGeopoliticsEnabled] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   const region = REGION_PRESETS[regionIdx];
 
@@ -50,6 +51,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
           simulation_hours: simulationHours,
           simulation_requirement: simRequirement || undefined,
           geopolitics_enabled: geopoliticsEnabled,
+          web_search_enabled: webSearchEnabled,
         },
       });
     } finally {
@@ -338,6 +340,44 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
                       border: "none",
                       fontSize: 12,
                       fontWeight: geopoliticsEnabled === opt.value ? 700 : 400,
+                      cursor: "pointer",
+                      transition: "background 0.15s, color 0.15s",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Web Search Enabled */}
+            <div>
+              <label style={labelStyle}>웹 검색 보강</label>
+              <div
+                style={{
+                  display: "flex",
+                  background: "var(--bg-primary)",
+                  border: "1px solid var(--border-secondary)",
+                  borderRadius: 4,
+                  overflow: "hidden",
+                }}
+              >
+                {([
+                  { value: false, label: "비활성" },
+                  { value: true, label: "활성" },
+                ] as const).map((opt) => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setWebSearchEnabled(opt.value)}
+                    style={{
+                      flex: 1,
+                      padding: "7px 12px",
+                      background: webSearchEnabled === opt.value ? "var(--accent-cyan)" : "transparent",
+                      color: webSearchEnabled === opt.value ? "var(--bg-primary)" : "var(--text-muted)",
+                      border: "none",
+                      fontSize: 12,
+                      fontWeight: webSearchEnabled === opt.value ? 700 : 400,
                       cursor: "pointer",
                       transition: "background 0.15s, color 0.15s",
                     }}

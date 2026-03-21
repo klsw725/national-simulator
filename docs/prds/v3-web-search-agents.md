@@ -146,10 +146,10 @@ backend/app/clients/mirofish.py                               # start_simulation
 
 ## 4. 마일스톤
 
-- [ ] **M1: ddgs 패키지 의존성 추가 + WebSearchService 생성** — duckduckgo-search 패키지 설치. WebSearchService 클래스 구현 (search_news, search_web, format_for_seed). 인메모리 캐시 + 레이트 리밋.
+- [x] **M1: ddgs 패키지 의존성 추가 + WebSearchService 생성** — duckduckgo-search 패키지 설치. WebSearchService 클래스 구현 (search_news, search_web, format_for_seed). 인메모리 캐시 + 레이트 리밋.
   - 검증: WebSearchService.search_news(["South China Sea tension"]) → 뉴스 결과 반환
 
-- [ ] **M2: SeedGenerator에 웹 검색 결과 주입 (시드 보강)** — web_search_enabled=true일 때 시드 생성 시 DuckDuckGo 검색. 키워드 자동 추출 (지역명 + 시나리오 질문에서). 검색 결과를 시드 문서 "최근 뉴스" 섹션에 추가.
+- [x] **M2: SeedGenerator에 웹 검색 결과 주입 (시드 보강)** — web_search_enabled=true일 때 시드 생성 시 DuckDuckGo 검색. 키워드 자동 추출 (지역명 + 시나리오 질문에서). 검색 결과를 시드 문서 "최근 뉴스" 섹션에 추가.
   - 검증: web_search_enabled=true로 시드 생성 → 시드 문서에 뉴스 섹션 포함
 
 - [ ] **M3: MiroFish simulation_runner에 tools 파라미터 전달 경로 추가** — MiroFish start_simulation API에 tools_enabled 플래그 추가. simulation_runner에서 SearchToolkit().search_duckduckgo를 SocialAgent tools에 주입. single_iteration=False 설정.
@@ -198,3 +198,4 @@ backend/app/clients/mirofish.py                               # start_simulation
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V3-4 DuckDuckGo 웹 검색 통합 PRD 초안 작성 |
+| 2026-03-21 | M1-M2 완료 | duckduckgo-search 8.1.1 설치. WebSearchService (search_news, format_for_seed, extract_keywords, 캐시 1h TTL, 시드당 최대 3회). SeedGenerator에 web_search_enabled 파라미터 + "최근 뉴스" 섹션 주입. SimulationParams에 web_search_enabled 추가. 프론트엔드 토글 추가. M3-M4(OASIS 에이전트 도구)는 W4 예정. |
