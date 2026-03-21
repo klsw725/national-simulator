@@ -21,6 +21,7 @@ from typing import Any
 from app.clients.mirofish import MiroFishClient
 from app.database import get_pool
 from app.services.action_logger import ActionLogger
+from app.services.geopolitics_mapper import map_actions_to_geopolitics
 from app.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
@@ -501,6 +502,10 @@ class SimulationOrchestrator:
         """시뮬레이션 결과 수집 → DB 저장."""
         # 액션 로그 + 보고서 수집
         actions = await self.mf.get_simulation_actions(mf_simulation_id)
+        if isinstance(actions, dict) and "actions" in actions:
+            actions["actions"] = map_actions_to_geopolitics(actions["actions"])
+        elif isinstance(actions, list):
+            actions = map_actions_to_geopolitics(actions)
         report_data = {}
         try:
             report_data = await self.mf.get_report_by_simulation(mf_simulation_id)

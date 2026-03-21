@@ -39,6 +39,8 @@ export interface PipelineStatus {
 export interface SimulationAction {
   agent_name: string;
   action_type: string;
+  geopolitics_action?: string;
+  geopolitics_label?: string;
   action_args: { content?: string; [key: string]: unknown };
   round_num: number;
 }

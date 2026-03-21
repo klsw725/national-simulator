@@ -117,6 +117,9 @@ export default function LiveActionFeed({ actions }: Props) {
             color: "var(--text-muted)",
           };
           const content = typeof action.action_args?.content === "string" ? action.action_args.content : "";
+          const actionLabel = (
+            action as LiveAction & { geopolitics_label?: string }
+          ).geopolitics_label ?? action.action_type.replace(/_/g, " ");
 
           return (
             <div
@@ -147,7 +150,7 @@ export default function LiveActionFeed({ actions }: Props) {
                     textTransform: "uppercase",
                   }}
                 >
-                  {action.action_type.replace(/_/g, " ")}
+                  {actionLabel}
                 </span>
               </div>
 

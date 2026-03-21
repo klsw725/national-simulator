@@ -130,6 +130,7 @@ export default function SimulationTimeline({ actions }: Props) {
           const Icon = ACTION_ICONS[action.action_type] ?? Minus;
           const color = ACTION_COLORS[action.action_type] ?? "var(--text-muted)";
           const content = action.action_args?.content ?? "";
+          const actionLabel = action.geopolitics_label ?? action.action_type.replace(/_/g, " ");
 
           return (
             <div
@@ -168,7 +169,7 @@ export default function SimulationTimeline({ actions }: Props) {
                       textTransform: "uppercase",
                     }}
                   >
-                    {action.action_type.replace(/_/g, " ")}
+                    {actionLabel}
                   </span>
                 </div>
                 {content && (
