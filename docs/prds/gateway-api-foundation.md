@@ -185,19 +185,19 @@ services:
 
 ## 4. 마일스톤
 
-- [ ] **M1: Python 프로젝트 스켈레톤** — `backend/` 디렉토리 구조, `pyproject.toml`, `app/main.py`, `app/config.py` 생성. `uv sync`로 의존성 설치 확인. `uv run uvicorn app.main:app`으로 서버 기동 확인.
+- [x] **M1: Python 프로젝트 스켈레톤** — `backend/` 디렉토리 구조, `pyproject.toml`, `app/main.py`, `app/config.py` 생성. `uv sync`로 의존성 설치 확인. `uv run uvicorn app.main:app`으로 서버 기동 확인.
   - 검증: `curl localhost:4000/api/health` → 200 응답
 
-- [ ] **M2: Docker Compose 오케스트레이션** — `docker-compose.yml` 작성. ShadowBroker(8000), MiroFish(5001), Gateway(4000) 3개 서비스 동시 기동.
+- [x] **M2: Docker Compose 오케스트레이션** — `docker-compose.yml` 작성. ShadowBroker(8000), MiroFish(5001), Gateway(4000) 3개 서비스 동시 기동.
   - 검증: `docker compose up` → 3개 서비스 모두 healthy 상태
 
-- [ ] **M3: SQLite + 시나리오 CRUD API** — `database.py`로 SQLite 테이블 생성. 시나리오 생성/목록/상세/삭제 API 구현. Pydantic 모델로 요청/응답 검증.
+- [x] **M3: SQLite + 시나리오 CRUD API** — `database.py`로 SQLite 테이블 생성. 시나리오 생성/목록/상세/삭제 API 구현. Pydantic 모델로 요청/응답 검증.
   - 검증: POST → GET → DELETE 시나리오 라이프사이클 동작
 
-- [ ] **M4: 라우터 스캐폴딩** — 시드/시뮬레이션/결과/OSINT 라우터의 빈 엔드포인트 등록. 각 라우터는 501 Not Implemented 응답 반환 (후속 PRD에서 구현체 연결).
+- [x] **M4: 라우터 스캐폴딩** — 시드/시뮬레이션/결과/OSINT 라우터의 빈 엔드포인트 등록. 각 라우터는 501 Not Implemented 응답 반환 (후속 PRD에서 구현체 연결).
   - 검증: 모든 라우트가 등록되고 501 응답 반환
 
-- [ ] **M5: 환경 설정 + .env.example** — pydantic-settings 기반 Config 클래스. `.env.example` 파일 작성. SB_URL, MF_URL, LLM 설정 로드 확인.
+- [x] **M5: 환경 설정 + .env.example** — pydantic-settings 기반 Config 클래스. `.env.example` 파일 작성. SB_URL, MF_URL, LLM 설정 로드 확인.
   - 검증: 환경변수 누락 시 명확한 에러 메시지 출력
 
 ## 5. 성공 기준

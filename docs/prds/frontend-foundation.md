@@ -104,10 +104,10 @@ export const gatewayApi = {
 
 ## 4. 마일스톤
 
-- [ ] **M1: 프론트엔드 프로젝트 셋업** — Next.js 16 + React 19 + Tailwind CSS + MapLibre GL + react-map-gl 프로젝트 초기화. SB의 mapStyles.ts, useImperativeSource 패턴 참조. Gateway API 프록시 라우트 설정.
+- [x] **M1: 프론트엔드 프로젝트 셋업** — Next.js 16 + React 19 + Tailwind CSS + MapLibre GL + react-map-gl 프로젝트 초기화. SB의 mapStyles.ts, useImperativeSource 패턴 참조. Gateway API 프록시 라우트 설정.
   - 검증: `npm run dev` → MapLibre 지도 렌더링 + Gateway API 연결
 
-- [ ] **M2: 기본 OSINT 지도 레이어** — Gateway OSINT 프록시를 통해 SB 데이터 폴링. 선박 + 항공기 레이어 렌더링 (SB 패턴 동일). 레이어 토글 UI.
+- [x] **M2: 기본 OSINT 지도 레이어** — Gateway OSINT 프록시를 통해 SB 데이터 폴링. 선박 + 항공기 레이어 렌더링 (SB 패턴 동일). 레이어 토글 UI.
   - 검증: 지도에 실시간 선박/항공기 표시. SB와 동일한 시각적 결과
 
 ## 5. 성공 기준

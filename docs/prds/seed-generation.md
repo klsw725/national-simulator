@@ -152,22 +152,22 @@ MiroFish의 `ontology_generator.py`는 시드 문서를 **파일(MD/TXT)** 로 �
 
 ## 4. 마일스톤
 
-- [ ] **M1: 군함 데이터베이스 구축** — `military_vessels.json` 생성. 주요 해군 강대국(US, CN, RU, JP, KR, UK, FR, IN, AU) 주력 함정 데이터 수집. MMSI/IMO, 함급, 함종, 소속국 포함.
+- [x] **M1: 군함 데이터베이스 구축** — `military_vessels.json` 생성. 주요 해군 강대국(US, CN, RU, JP, KR, UK, FR, IN, AU) 주력 함정 데이터 수집. MMSI/IMO, 함급, 함종, 소속국 포함.
   - 검증: JSON 파일이 유효하고 최소 50척 이상의 군함 데이터 포함
 
-- [ ] **M2: Vessel Mapper 서비스 구현** — AIS 선박 데이터에서 군함 식별 (3단계 전략). 국가별 전력 그룹핑. 선박 데이터에 `country`, `vessel_type` 등 부가 정보 추가.
+- [x] **M2: Vessel Mapper 서비스 구현** — AIS 선박 데이터에서 군함 식별 (3단계 전략). 국가별 전력 그룹핑. 선박 데이터에 `country`, `vessel_type` 등 부가 정보 추가.
   - 검증: 테스트용 AIS 데이터 입력 → 군함 식별 및 국가 매핑 정확
 
-- [ ] **M3: GDELT 컨텍스트 추출기 구현** — SB slow 데이터에서 GDELT GeoJSON 파싱. bbox 내 이벤트 필터링. Goldstein Scale 기반 긴장도 점수 계산. 주요 행위자 쌍 추출.
+- [x] **M3: GDELT 컨텍스트 추출기 구현** — SB slow 데이터에서 GDELT GeoJSON 파싱. bbox 내 이벤트 필터링. Goldstein Scale 기반 긴장도 점수 계산. 주요 행위자 쌍 추출.
   - 검증: 실제 GDELT 데이터에서 bbox 필터링 및 긴장도 계산 동작
 
-- [ ] **M4: LLM 기반 시드 문서 생성기 구현** — OpenAI Compatible API 호출. 군함 배치 + GDELT 컨텍스트 + 사용자 질문을 프롬프트에 조합. 마크다운 시드 문서 출력.
+- [x] **M4: LLM 기반 시드 문서 생성기 구현** — OpenAI Compatible API 호출. 군함 배치 + GDELT 컨텍스트 + 사용자 질문을 프롬프트에 조합. 마크다운 시드 문서 출력.
   - 검증: 테스트 데이터 입력 → 구조화된 마크다운 시드 문서 생성 (약 2000자)
 
-- [ ] **M5: 시드 생성 API 통합** — POST `/api/scenario/{id}/seed` → 시드 생성 트리거. GET `/api/scenario/{id}/seed` → 생성된 시드 조회. 시드 메타데이터 (군함 수, 행위자, 긴장도 등) 포함.
+- [x] **M5: 시드 생성 API 통합** — POST `/api/scenario/{id}/seed` → 시드 생성 트리거. GET `/api/scenario/{id}/seed` → 생성된 시드 조회. 시드 메타데이터 (군함 수, 행위자, 긴장도 등) 포함.
   - 검증: 시나리오 생성 → 시드 생성 → 시드 조회 플로우 동작
 
-- [ ] **M6: E2E 검증** — ShadowBroker 실행 상태에서 실제 AIS 데이터로 시드 문서 자동 생성. 생성된 시드 문서가 MiroFish에 전달 가능한 형식인지 확인.
+- [x] **M6: E2E 검증** — ShadowBroker 실행 상태에서 실제 AIS 데이터로 시드 문서 자동 생성. 생성된 시드 문서가 MiroFish에 전달 가능한 형식인지 확인.
   - 검증: 실제 SB 데이터 → 시드 문서 → MiroFish ontology/generate에 전달 시 정상 처리
 
 ## 5. 성공 기준

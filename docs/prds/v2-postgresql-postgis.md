@@ -71,13 +71,13 @@ backend/
 
 ## 4. 마일스톤
 
-- [ ] **M1: Docker + PG 서비스** — docker-compose.yml 수정, PG 컨테이너 기동
+- [x] **M1: Docker + PG 서비스** — docker-compose.yml 수정, PG 컨테이너 기동
   - 검증: `docker compose up postgres` 성공, healthcheck 통과
 
-- [ ] **M2: Alembic 초기화 + 초기 마이그레이션** — alembic init, 기존 스키마 이식
+- [x] **M2: Alembic 초기화 + 초기 마이그레이션** — alembic init, 기존 스키마 이식
   - 검증: `alembic upgrade head` 성공, 테이블 생성 확인
 
-- [ ] **M3: asyncpg 전환** — database.py, repositories 전체 플레이스홀더 교체
+- [x] **M3: asyncpg 전환** — database.py, repositories 전체 플레이스홀더 교체
   - 검증: 기존 API 엔드포인트 전체 정상 응답
 
 - [x] **M4: PostGIS 확장 + 공간 인덱스** — 확장 활성화, observations geom 컬럼 추가

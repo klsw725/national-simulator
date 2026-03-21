@@ -151,16 +151,16 @@ frontend/src/
 
 ## 4. 마일스톤
 
-- [ ] **M1: 타입 정의 + GeoJSON 빌더** — dashboard.ts에 Flight, Satellite 인터페이스 추가. geoJSONBuilders.ts에 buildFlightsGeoJSON, buildSatellitesGeoJSON, buildGdeltGeoJSON 함수 추가. useDataPolling이 반환하는 데이터에서 flights/satellites/gdelt 필드 파싱.
+- [x] **M1: 타입 정의 + GeoJSON 빌더** — dashboard.ts에 Flight, Satellite 인터페이스 추가. geoJSONBuilders.ts에 buildFlightsGeoJSON, buildSatellitesGeoJSON, buildGdeltGeoJSON 함수 추가. useDataPolling이 반환하는 데이터에서 flights/satellites/gdelt 필드 파싱.
   - 검증: 테스트 데이터 → GeoJSON FeatureCollection 변환 정상
 
-- [ ] **M2: MapLibre 레이어 추가** — MaplibreViewer.tsx에 3개 Source/Layer 세트 추가 (flights, satellites, gdelt). 각 레이어별 스타일링 (아이콘, 색상, 클러스터링). useImperativeSource로 데이터 업데이트. 클릭 팝업 (항공기: callsign/모델/고도, GDELT: 헤드라인).
+- [x] **M2: MapLibre 레이어 추가** — MaplibreViewer.tsx에 3개 Source/Layer 세트 추가 (flights, satellites, gdelt). 각 레이어별 스타일링 (아이콘, 색상, 클러스터링). useImperativeSource로 데이터 업데이트. 클릭 팝업 (항공기: callsign/모델/고도, GDELT: 헤드라인).
   - 검증: 지도에 항공기/위성/GDELT 이벤트 표시
 
-- [ ] **M3: 레이어 토글 UI** — LayerToggle.tsx 컴포넌트. activeLayers 상태 관리 (page.tsx). 각 레이어 on/off + 현재 카운트 표시. 위성은 기본 off (성능 고려).
+- [x] **M3: 레이어 토글 UI** — LayerToggle.tsx 컴포넌트. activeLayers 상태 관리 (page.tsx). 각 레이어 on/off + 현재 카운트 표시. 위성은 기본 off (성능 고려).
   - 검증: 토글 클릭 → 레이어 표시/숨김 동작
 
-- [ ] **M4: 빌드 검증** — `npm run build` 성공. 전체 레이어 동시 표시 시 성능 확인.
+- [x] **M4: 빌드 검증** — `npm run build` 성공. 전체 레이어 동시 표시 시 성능 확인.
   - 검증: TypeScript 에러 0, 빌드 성공
 
 ## 5. 성공 기준

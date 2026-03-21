@@ -146,13 +146,13 @@ interface PipelineStatus {
 
 ## 4. 마일스톤
 
-- [ ] **M1: SimulationPanel + ScenarioForm** — 사이드 패널 컴포넌트. 시나리오 생성 폼 (이름, 해역 bbox, 질문, 라운드 수). 해역은 지도에서 드래그로 선택 가능. Gateway API 호출하여 시나리오 생성.
+- [x] **M1: SimulationPanel + ScenarioForm** — 사이드 패널 컴포넌트. 시나리오 생성 폼 (이름, 해역 bbox, 질문, 라운드 수). 해역은 지도에서 드래그로 선택 가능. Gateway API 호출하여 시나리오 생성.
   - 검증: 폼 입력 → POST /api/scenario → 시나리오 생성 성공
 
-- [ ] **M2: PipelineProgress + 상태 폴링** — PipelineProgress 컴포넌트 (6단계 스텝 표시). GET /api/scenario/{id}/status 5초 폴링. 현재 단계 하이라이트 + 완료 단계 체크마크. 에러 상태 표시.
+- [x] **M2: PipelineProgress + 상태 폴링** — PipelineProgress 컴포넌트 (6단계 스텝 표시). GET /api/scenario/{id}/status 5초 폴링. 현재 단계 하이라이트 + 완료 단계 체크마크. 에러 상태 표시.
   - 검증: 시뮬레이션 시작 → 진행 상태 실시간 업데이트 표시
 
-- [ ] **M3: 시나리오 목록 + 관리** — ScenarioList 컴포넌트. 생성된 시나리오 목록 조회. 시나리오 선택 → 상세/결과 로드. 시나리오 삭제.
+- [x] **M3: 시나리오 목록 + 관리** — ScenarioList 컴포넌트. 생성된 시나리오 목록 조회. 시나리오 선택 → 상세/결과 로드. 시나리오 삭제.
   - 검증: 시나리오 목록 표시 + 선택 + 삭제 동작
 
 ## 5. 성공 기준

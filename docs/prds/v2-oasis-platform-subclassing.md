@@ -79,7 +79,7 @@ mirofish-ko/src/
 - [x] **M3: 커스텀 UserInfo + DB 테이블** — 국가 행위자 프로필, geopolitics_events 테이블
   - 검증: 시드 생성 시 국가 행위자 프로필 포함 확인
 
-- [ ] **M4: 통합 테스트** — GeopoliticsPlatform으로 전체 시뮬레이션 실행
+- [x] **M4: 통합 테스트** — GeopoliticsPlatform으로 전체 시뮬레이션 실행
   - 검증: 지정학 이벤트 포함 시뮬레이션 결과 생성
 
 ## 5. 성공 기준

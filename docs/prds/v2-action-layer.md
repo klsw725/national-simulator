@@ -65,10 +65,10 @@ backend/app/actions/
 
 ## 4. 마일스톤
 
-- [ ] **M1: PG 스키마** — action_events 테이블, append-only 규칙 (INSERT만 허용)
+- [x] **M1: PG 스키마** — action_events 테이블, append-only 규칙 (INSERT만 허용)
   - 검증: INSERT 성공, UPDATE 시도 → 무시 확인
 
-- [ ] **M2: Action 타입 + 실행 엔진** — ActionType enum, 타입별 실행 로직
+- [x] **M2: Action 타입 + 실행 엔진** — ActionType enum, 타입별 실행 로직
   - 검증: ENTITY_TAG 생성 → 실행 → stix_objects 업데이트 확인
 
 - [x] **M3: 승인 규칙 + RBAC** — 조치 유형별 승인 방식, 역할 검증

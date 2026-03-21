@@ -148,19 +148,19 @@ class ResultProjector:
 
 ## 4. 마일스톤
 
-- [ ] **M1: 국가 행위자 좌표 데이터 구축** — `actor_locations.json` 생성. 주요 국가 20개 + 국제기구(NATO, ASEAN, UN 등) 좌표. 시나리오 내 군함 위치 오버라이드 로직.
+- [x] **M1: 국가 행위자 좌표 데이터 구축** — `actor_locations.json` 생성. 주요 국가 20개 + 국제기구(NATO, ASEAN, UN 등) 좌표. 시나리오 내 군함 위치 오버라이드 로직.
   - 검증: JSON 파일이 유효하고 주요 국가 좌표가 정확
 
-- [ ] **M2: 시뮬레이션 결과 분석 로직 구현** — 에이전트별 포스트 집계. 감정 기반 긴장 수준 계산. 입장 분류. 핵심 발언 추출.
+- [x] **M2: 시뮬레이션 결과 분석 로직 구현** — 에이전트별 포스트 집계. 감정 기반 긴장 수준 계산. 입장 분류. 핵심 발언 추출.
   - 검증: 테스트 시뮬레이션 데이터 → 에이전트별 분석 결과 정확
 
-- [ ] **M3: GeoJSON 변환 구현** — Point 피처 (행위자 위치 + 속성). LineString 피처 (관계 라인). 색상 매핑. GeoJSON spec 준수.
+- [x] **M3: GeoJSON 변환 구현** — Point 피처 (행위자 위치 + 속성). LineString 피처 (관계 라인). 색상 매핑. GeoJSON spec 준수.
   - 검증: 생성된 GeoJSON이 유효한 FeatureCollection이고 MapLibre에서 렌더링 가능
 
-- [ ] **M4: 관계 라인 추출 구현** — REPOST/QUOTE/LIKE 패턴에서 동맹/적대/외교 관계 추출. 관계 강도 계산. LineString GeoJSON 생성.
+- [x] **M4: 관계 라인 추출 구현** — REPOST/QUOTE/LIKE 패턴에서 동맹/적대/외교 관계 추출. 관계 강도 계산. LineString GeoJSON 생성.
   - 검증: 시뮬레이션 데이터에서 의미 있는 관계 라인 추출
 
-- [ ] **M5: GeoJSON + Report API 통합** — GET `/api/scenario/{id}/geojson` → GeoJSON FeatureCollection 반환. GET `/api/scenario/{id}/report` → MiroFish 보고서 반환. DB 캐싱.
+- [x] **M5: GeoJSON + Report API 통합** — GET `/api/scenario/{id}/geojson` → GeoJSON FeatureCollection 반환. GET `/api/scenario/{id}/report` → MiroFish 보고서 반환. DB 캐싱.
   - 검증: 완료된 시뮬레이션에 대해 GeoJSON/보고서 API 정상 응답
 
 ## 5. 성공 기준

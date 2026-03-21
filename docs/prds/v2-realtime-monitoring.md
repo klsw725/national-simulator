@@ -132,16 +132,16 @@ frontend/src/hooks/
 
 ## 4. 마일스톤
 
-- [ ] **M1: Gateway 라이브 프록시** — MiroFish 실시간 엔드포인트를 Gateway로 프록시. `GET /live/actions`, `/live/stats`, `/live/profiles`, `/live/config`. mirofish_simulation_id를 사용하여 MiroFish API 호출.
+- [x] **M1: Gateway 라이브 프록시** — MiroFish 실시간 엔드포인트를 Gateway로 프록시. `GET /live/actions`, `/live/stats`, `/live/profiles`, `/live/config`. mirofish_simulation_id를 사용하여 MiroFish API 호출.
   - 검증: 시뮬레이션 실행 중 Gateway API로 실시간 데이터 조회
 
-- [ ] **M2: LiveActionFeed + LiveStats** — 실시간 액션 스트림 컴포넌트. 2초 폴링. 에이전트별 국기+이름, 액션 유형 아이콘. 실시간 통계 (라운드, 액션 수, 에이전트 활동량).
+- [x] **M2: LiveActionFeed + LiveStats** — 실시간 액션 스트림 컴포넌트. 2초 폴링. 에이전트별 국기+이름, 액션 유형 아이콘. 실시간 통계 (라운드, 액션 수, 에이전트 활동량).
   - 검증: 시뮬레이션 실행 중 실시간 액션 피드 표시
 
-- [ ] **M3: IntermediateResults 뷰어** — 각 파이프라인 단계 완료 시 중간 결과 표시. 온톨로지 트리, 페르소나 카드 (실시간 추가), 시뮬레이션 설정 요약.
+- [x] **M3: IntermediateResults 뷰어** — 각 파이프라인 단계 완료 시 중간 결과 표시. 온톨로지 트리, 페르소나 카드 (실시간 추가), 시뮬레이션 설정 요약.
   - 검증: 파이프라인 진행 중 각 단계의 산출물이 실시간으로 표시
 
-- [ ] **M4: SimulationPanel 통합** — SimulationPanel에서 시뮬레이션 상태에 따라 뷰 자동 전환: 준비 중→중간 결과, 실행 중→라이브 피드, 완료→결과 시각화.
+- [x] **M4: SimulationPanel 통합** — SimulationPanel에서 시뮬레이션 상태에 따라 뷰 자동 전환: 준비 중→중간 결과, 실행 중→라이브 피드, 완료→결과 시각화.
   - 검증: 전체 파이프라인에서 뷰 전환이 자연스럽게 동작
 
 ## 5. 성공 기준

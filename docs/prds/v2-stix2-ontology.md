@@ -67,16 +67,16 @@ backend/
 
 ## 4. 마일스톤
 
-- [ ] **M1: 커스텀 SDO 정의** — stix2 라이브러리 설치, x-vessel/x-aircraft/x-satellite SDO 구현
+- [x] **M1: 커스텀 SDO 정의** — stix2 라이브러리 설치, x-vessel/x-aircraft/x-satellite SDO 구현
   - 검증: `XVessel(name="test", mmsi="123456789")` 생성 성공, STIX JSON 직렬화 확인
 
-- [ ] **M2: PG Tier 2 테이블** — Alembic 마이그레이션으로 stix_objects 테이블 생성
+- [x] **M2: PG Tier 2 테이블** — Alembic 마이그레이션으로 stix_objects 테이블 생성
   - 검증: `alembic upgrade head` 성공, 인덱스 생성 확인
 
-- [ ] **M3: STIX 검증 레이어** — StixValidator 구현, API 엔드포인트에 검증 통합
+- [x] **M3: STIX 검증 레이어** — StixValidator 구현, API 엔드포인트에 검증 통합
   - 검증: 잘못된 STIX 객체 생성 시 422 에러 반환
 
-- [ ] **M4: MiroFish 온톨로지 연동** — MiroFish 생성 온톨로지를 Tier 2 형식으로 변환하는 어댑터
+- [x] **M4: MiroFish 온톨로지 연동** — MiroFish 생성 온톨로지를 Tier 2 형식으로 변환하는 어댑터
   - 검증: 시뮬레이션 결과 → stix_objects 저장 성공
 
 ## 5. 성공 기준

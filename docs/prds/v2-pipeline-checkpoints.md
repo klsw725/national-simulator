@@ -77,13 +77,13 @@ PipelineProgress 컴포넌트 확장:
 
 ## 4. 마일스톤
 
-- [ ] **M1: 백엔드 체크포인트 모드** — SimulationOrchestrator에 checkpoint 모드 추가. 중간 결과 DB 저장. `GET /checkpoint`, `POST /continue` API. 기존 auto 모드 유지.
+- [x] **M1: 백엔드 체크포인트 모드** — SimulationOrchestrator에 checkpoint 모드 추가. 중간 결과 DB 저장. `GET /checkpoint`, `POST /continue` API. 기존 auto 모드 유지.
   - 검증: checkpoint 모드로 실행 → 각 단계에서 일시정지 → continue로 진행
 
-- [ ] **M2: 중간 결과 조회 API** — MiroFish API 활용: `GET /profiles`, `GET /config`, 온톨로지/그래프 데이터 조회. Gateway 프록시 확장.
+- [x] **M2: 중간 결과 조회 API** — MiroFish API 활용: `GET /profiles`, `GET /config`, 온톨로지/그래프 데이터 조회. Gateway 프록시 확장.
   - 검증: 각 체크포인트에서 해당 단계의 중간 결과 조회 가능
 
-- [ ] **M3: 프론트엔드 체크포인트 UI** — PipelineProgress에 검토 버튼 + 모달. 시드 편집기, 온톨로지 뷰어, 페르소나 카드 뷰어, 설정 에디터.
+- [x] **M3: 프론트엔드 체크포인트 UI** — PipelineProgress에 검토 버튼 + 모달. 시드 편집기, 온톨로지 뷰어, 페르소나 카드 뷰어, 설정 에디터.
   - 검증: UI에서 중간 결과 검토 + 수정 후 계속 진행
 
 ## 5. 성공 기준

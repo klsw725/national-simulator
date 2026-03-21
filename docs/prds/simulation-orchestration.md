@@ -212,22 +212,22 @@ simulating:ontology → simulating:graph_build → simulating:create
 
 ## 4. 마일스톤
 
-- [ ] **M1: MiroFish HTTP 클라이언트 구현** — 위 6단계의 모든 API 호출 메서드 구현. multipart/form-data 온톨로지 요청 포함. 에러 핸들링 + 타임아웃.
+- [x] **M1: MiroFish HTTP 클라이언트 구현** — 위 6단계의 모든 API 호출 메서드 구현. multipart/form-data 온톨로지 요청 포함. 에러 핸들링 + 타임아웃.
   - 검증: MF 실행 상태에서 각 메서드 개별 호출 성공
 
-- [ ] **M2: 비동기 폴링 로직 구현** — `_poll_until_done()` 유틸리티. graph/build, simulation/prepare, report/generate 3개 비동기 단계 폴링. 타임아웃 (기본 10분) + 진행률 로깅.
+- [x] **M2: 비동기 폴링 로직 구현** — `_poll_until_done()` 유틸리티. graph/build, simulation/prepare, report/generate 3개 비동기 단계 폴링. 타임아웃 (기본 10분) + 진행률 로깅.
   - 검증: 비동기 태스크 시작 → 완료까지 폴링 → 결과 반환
 
-- [ ] **M3: Pipeline Orchestrator 구현** — 6단계 순차 실행 로직. 각 단계 완료 후 다음 단계 시작. DB에 상태 업데이트. FastAPI BackgroundTasks로 비동기 실행.
+- [x] **M3: Pipeline Orchestrator 구현** — 6단계 순차 실행 로직. 각 단계 완료 후 다음 단계 시작. DB에 상태 업데이트. FastAPI BackgroundTasks로 비동기 실행.
   - 검증: 시드 문서 입력 → 전체 파이프라인 실행 → 시뮬레이션 완료
 
-- [ ] **M4: 시뮬레이션 API 통합** — POST `/api/scenario/{id}/simulate` → 파이프라인 트리거. GET `/api/scenario/{id}/status` → 현재 단계/진행률. GET `/api/scenario/{id}/results` → 시뮬레이션 결과.
+- [x] **M4: 시뮬레이션 API 통합** — POST `/api/scenario/{id}/simulate` → 파이프라인 트리거. GET `/api/scenario/{id}/status` → 현재 단계/진행률. GET `/api/scenario/{id}/results` → 시뮬레이션 결과.
   - 검증: API 호출로 파이프라인 시작/상태 조회/결과 조회 동작
 
-- [ ] **M5: 에러 복구 + 재시도** — 각 단계 실패 시 적절한 에러 메시지. 타임아웃 시 시뮬레이션 상태를 "failed"로 업데이트. MiroFish 미기동 시 503 응답.
+- [x] **M5: 에러 복구 + 재시도** — 각 단계 실패 시 적절한 에러 메시지. 타임아웃 시 시뮬레이션 상태를 "failed"로 업데이트. MiroFish 미기동 시 503 응답.
   - 검증: MF 미기동 시 명확한 에러 응답. 타임아웃 시 상태 정상 전이
 
-- [ ] **M6: E2E 검증** — 시드 문서 → MiroFish 온톨로지 → 그래프 → 시뮬레이션 → 보고서 전체 파이프라인 성공. 결과가 DB에 저장.
+- [x] **M6: E2E 검증** — 시드 문서 → MiroFish 온톨로지 → 그래프 → 시뮬레이션 → 보고서 전체 파이프라인 성공. 결과가 DB에 저장.
   - 검증: `POST /api/scenario/{id}/simulate` → 상태 폴링 → `GET /results` → 시뮬레이션 데이터 반환
 
 ## 5. 성공 기준

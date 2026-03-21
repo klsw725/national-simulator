@@ -147,19 +147,19 @@ async def proxy_all_data():
 
 ## 4. 마일스톤
 
-- [ ] **M1: ShadowBroker HTTP 클라이언트 구현** — httpx 비동기 클라이언트. `get_fast_data()`, `get_slow_data()`, `get_ships()`, `get_gdelt()`, `set_viewport()`, `health_check()` 메서드 구현. bbox 파라미터 지원.
+- [x] **M1: ShadowBroker HTTP 클라이언트 구현** — httpx 비동기 클라이언트. `get_fast_data()`, `get_slow_data()`, `get_ships()`, `get_gdelt()`, `set_viewport()`, `health_check()` 메서드 구현. bbox 파라미터 지원.
   - 검증: SB 실행 상태에서 `get_ships()` 호출 → 선박 데이터 수신
 
-- [ ] **M2: OSINT 프록시 엔드포인트 구현** — `/api/osint/live_data/fast`, `/api/osint/live_data/slow`, `/api/osint/live_data` 라우트 등록. bbox 쿼리 파라미터 포워딩.
+- [x] **M2: OSINT 프록시 엔드포인트 구현** — `/api/osint/live_data/fast`, `/api/osint/live_data/slow`, `/api/osint/live_data` 라우트 등록. bbox 쿼리 파라미터 포워딩.
   - 검증: `curl localhost:4000/api/osint/live_data/fast` → SB 데이터 반환
 
-- [ ] **M3: ETag 캐싱 지원** — SB가 반환하는 ETag 헤더를 게이트웨이에서도 전달. If-None-Match 헤더 포워딩으로 불필요한 데이터 전송 방지.
+- [x] **M3: ETag 캐싱 지원** — SB가 반환하는 ETag 헤더를 게이트웨이에서도 전달. If-None-Match 헤더 포워딩으로 불필요한 데이터 전송 방지.
   - 검증: 동일 요청 연속 2회 → 2번째 요청 304 응답
 
-- [ ] **M4: 에러 핸들링 + 연결 상태 관리** — SB 미기동 시 적절한 에러 응답 (503). 타임아웃 설정. 연결 재시도 로직.
+- [x] **M4: 에러 핸들링 + 연결 상태 관리** — SB 미기동 시 적절한 에러 응답 (503). 타임아웃 설정. 연결 재시도 로직.
   - 검증: SB 미기동 상태에서 `/api/osint/live_data/fast` → 503 + 명확한 에러 메시지
 
-- [ ] **M5: 연동 검증** — SB를 실행한 상태에서 게이트웨이 OSINT 프록시로 데이터 조회. 선박 데이터의 `lng` 필드, GDELT GeoJSON의 `coordinates` 필드 확인.
+- [x] **M5: 연동 검증** — SB를 실행한 상태에서 게이트웨이 OSINT 프록시로 데이터 조회. 선박 데이터의 `lng` 필드, GDELT GeoJSON의 `coordinates` 필드 확인.
   - 검증: 게이트웨이 → SB 전체 데이터 흐름 정상 동작
 
 ## 5. 성공 기준

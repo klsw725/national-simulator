@@ -84,7 +84,7 @@ backend/app/geopolitics/
 - [x] **M3: 지정학 이벤트 시스템** — 이벤트 생성, 전파, 영향 계산
   - 검증: 제재 이벤트 → 대상국 자원 감소 + 인접국 상태 변화 확인
 
-- [ ] **M4: OASIS 양방향 연동** — GeopoliticsOASISBridge, 피드백 루프
+- [x] **M4: OASIS 양방향 연동** — GeopoliticsOASISBridge, 피드백 루프
   - 검증: 군사 이동 → OASIS 소셜 반응 → 여론 피드백 → 행위자 상태 업데이트
 
 ## 5. 성공 기준
