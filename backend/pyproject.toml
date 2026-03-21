@@ -15,4 +15,5 @@ dependencies = [
     "asyncpg>=0.30.0",
     "stix2>=3.0.0",
     "duckduckgo-search>=7.0.0",
+    "tenacity>=8.0.0",
 ]

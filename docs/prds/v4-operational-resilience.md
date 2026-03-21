@@ -109,7 +109,7 @@ frontend/src/components/simulation/SimulationPanel.tsx  # 헬스체크 표시
 
 ## 4. 마일스톤
 
-- [ ] **M1: HTTP 클라이언트 재시도 + 서킷 브레이커** — MiroFishClient, ShadowBrokerClient에 tenacity 기반 재시도 (3회, 지수 백오프). CircuitBreaker 클래스 구현 (5회 실패 → 오픈, 30초 후 half-open).
+- [x] **M1: HTTP 클라이언트 재시도 + 서킷 브레이커** — MiroFishClient, ShadowBrokerClient에 tenacity 기반 재시도 (3회, 지수 백오프). CircuitBreaker 클래스 구현 (5회 실패 → 오픈, 30초 후 half-open).
   - 검증: MiroFish 일시 중단 → 재시도 3회 → 복구 시 정상 진행. 5회 연속 실패 → 서킷 오픈 → 503 즉시 반환.
 
 - [ ] **M2: 파이프라인 자동 복구** — 파이프라인 실패 시 마지막 성공 체크포인트 확인. 재시도 가능한 에러(네트워크, 타임아웃)이면 자동 재시작. 영구 에러(데이터 무결성)이면 실패 유지.
@@ -138,3 +138,4 @@ frontend/src/components/simulation/SimulationPanel.tsx  # 헬스체크 표시
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V4-6 운영 안정성 PRD 초안 작성 |
+| 2026-03-21 | M1 Complete | CircuitBreaker 구현 + MiroFishClient/ShadowBrokerClient에 tenacity 재시도(3회, 지수 백오프 2s→4s→8s) + 서킷 브레이커(5회→open, 30s→half-open) 적용. health_check는 제외. |

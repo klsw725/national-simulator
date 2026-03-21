@@ -21,6 +21,15 @@ import logging
 from typing import Any
 
 import httpx
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from app.services.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +38,19 @@ class MiroFishClient:
     def __init__(self, base_url: str, timeout: float = 120.0):
         self.base_url = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
+        self._circuit_breaker = CircuitBreaker(name="mirofish")
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    async def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """재시도 + 서킷 브레이커를 적용한 HTTP 요청."""
+        async def _do():
+            return await getattr(self._client, method)(url, **kwargs)
+        return await self._circuit_breaker.call(_do)
 
     # ------------------------------------------------------------------
     # Step 1: 온톨로지 생성 (동기)
@@ -54,12 +76,10 @@ class MiroFishClient:
         if additional_context:
             data["additional_context"] = additional_context
 
-        resp = await self._client.post(
-            "/api/graph/ontology/generate",
-            files=files,
-            data=data,
-            timeout=180.0,
-        )
+        resp = await self._request("post", "/api/graph/ontology/generate",
+        files=files,
+        data=data,
+        timeout=180.0,)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -70,17 +90,15 @@ class MiroFishClient:
 
     async def build_graph(self, project_id: str) -> str:
         """POST /api/graph/build → task_id"""
-        resp = await self._client.post(
-            "/api/graph/build",
-            json={"project_id": project_id},
-        )
+        resp = await self._request("post", "/api/graph/build",
+        json={"project_id": project_id},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body).get("task_id", "")
 
     async def get_task_status(self, task_id: str) -> dict[str, Any]:
         """GET /api/graph/task/{task_id} → {status, progress, ...}"""
-        resp = await self._client.get(f"/api/graph/task/{task_id}")
+        resp = await self._request("get", f"/api/graph/task/{task_id}")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -105,7 +123,7 @@ class MiroFishClient:
         if graph_id:
             payload["graph_id"] = graph_id
 
-        resp = await self._client.post("/api/simulation/create", json=payload)
+        resp = await self._request("post", "/api/simulation/create", json=payload)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -116,14 +134,12 @@ class MiroFishClient:
 
     async def prepare_simulation(self, simulation_id: str) -> str:
         """POST /api/simulation/prepare → task_id"""
-        resp = await self._client.post(
-            "/api/simulation/prepare",
-            json={
-                "simulation_id": simulation_id,
-                "use_llm_for_profiles": True,
-            },
-            timeout=180.0,
-        )
+        resp = await self._request("post", "/api/simulation/prepare",
+        json={
+            "simulation_id": simulation_id,
+            "use_llm_for_profiles": True,
+        },
+        timeout=180.0,)
         resp.raise_for_status()
         body = resp.json()
         data = body.get("data", body)
@@ -134,10 +150,8 @@ class MiroFishClient:
 
     async def get_prepare_status(self, task_id: str) -> dict[str, Any]:
         """POST /api/simulation/prepare/status → {status, progress}"""
-        resp = await self._client.post(
-            "/api/simulation/prepare/status",
-            json={"task_id": task_id},
-        )
+        resp = await self._request("post", "/api/simulation/prepare/status",
+        json={"task_id": task_id},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -168,26 +182,22 @@ class MiroFishClient:
         if geopolitics_enabled:
             payload["geopolitics_enabled"] = True
 
-        resp = await self._client.post("/api/simulation/start", json=payload)
+        resp = await self._request("post", "/api/simulation/start", json=payload)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
 
     async def get_run_status(self, simulation_id: str) -> dict[str, Any]:
         """GET /api/simulation/{id}/run-status"""
-        resp = await self._client.get(
-            f"/api/simulation/{simulation_id}/run-status"
-        )
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/run-status")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
 
     async def stop_simulation(self, simulation_id: str) -> dict[str, Any]:
         """POST /api/simulation/stop"""
-        resp = await self._client.post(
-            "/api/simulation/stop",
-            json={"simulation_id": simulation_id},
-        )
+        resp = await self._request("post", "/api/simulation/stop",
+        json={"simulation_id": simulation_id},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -198,11 +208,9 @@ class MiroFishClient:
 
     async def generate_report(self, simulation_id: str) -> str:
         """POST /api/report/generate → task_id"""
-        resp = await self._client.post(
-            "/api/report/generate",
-            json={"simulation_id": simulation_id},
-            timeout=180.0,
-        )
+        resp = await self._request("post", "/api/report/generate",
+        json={"simulation_id": simulation_id},
+        timeout=180.0,)
         resp.raise_for_status()
         body = resp.json()
         data = body.get("data", body)
@@ -212,19 +220,15 @@ class MiroFishClient:
 
     async def get_report_status(self, task_id: str) -> dict[str, Any]:
         """POST /api/report/generate/status"""
-        resp = await self._client.post(
-            "/api/report/generate/status",
-            json={"task_id": task_id},
-        )
+        resp = await self._request("post", "/api/report/generate/status",
+        json={"task_id": task_id},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
 
     async def get_report_by_simulation(self, simulation_id: str) -> dict[str, Any]:
         """GET /api/report/by-simulation/{simulation_id}"""
-        resp = await self._client.get(
-            f"/api/report/by-simulation/{simulation_id}"
-        )
+        resp = await self._request("get", f"/api/report/by-simulation/{simulation_id}")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -238,10 +242,8 @@ class MiroFishClient:
         limit: int = 200, offset: int = 0,
     ) -> dict[str, Any]:
         """GET /api/simulation/{id}/actions"""
-        resp = await self._client.get(
-            f"/api/simulation/{simulation_id}/actions",
-            params={"platform": platform, "limit": limit, "offset": offset},
-        )
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/actions",
+        params={"platform": platform, "limit": limit, "offset": offset},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -250,10 +252,8 @@ class MiroFishClient:
         self, simulation_id: str, platform: str = "twitter", limit: int = 100
     ) -> dict[str, Any]:
         """GET /api/simulation/{id}/posts"""
-        resp = await self._client.get(
-            f"/api/simulation/{simulation_id}/posts",
-            params={"platform": platform, "limit": limit},
-        )
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/posts",
+        params={"platform": platform, "limit": limit},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -264,31 +264,29 @@ class MiroFishClient:
 
     async def get_graph_data(self, graph_id: str) -> dict[str, Any]:
         """GET /api/graph/data/{graph_id} — 그래프 노드+엣지 데이터."""
-        resp = await self._client.get(f"/api/graph/data/{graph_id}")
+        resp = await self._request("get", f"/api/graph/data/{graph_id}")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
 
     async def get_agent_stats(self, simulation_id: str) -> dict[str, Any]:
         """GET /api/simulation/{id}/agent-stats — 에이전트 활동 통계."""
-        resp = await self._client.get(f"/api/simulation/{simulation_id}/agent-stats")
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/agent-stats")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
 
     async def get_profiles_realtime(self, simulation_id: str, platform: str = "twitter") -> dict[str, Any]:
         """GET /api/simulation/{id}/profiles/realtime — 프로필 생성 실시간 진행."""
-        resp = await self._client.get(
-            f"/api/simulation/{simulation_id}/profiles/realtime",
-            params={"platform": platform},
-        )
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/profiles/realtime",
+        params={"platform": platform},)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
 
     async def get_config_realtime(self, simulation_id: str) -> dict[str, Any]:
         """GET /api/simulation/{id}/config/realtime — 설정 생성 실시간 진행."""
-        resp = await self._client.get(f"/api/simulation/{simulation_id}/config/realtime")
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/config/realtime")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)

@@ -4,6 +4,15 @@ import logging
 from dataclasses import dataclass
 
 import httpx
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from app.services.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +39,21 @@ class ShadowBrokerClient:
     def __init__(self, base_url: str, timeout: float = 30.0):
         self.base_url = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
+        self._circuit_breaker = CircuitBreaker(name="shadowbroker")
         # ETag 캐시: cache_key → (etag, response_body)
         self._etag_cache: dict[str, tuple[str, dict]] = {}
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    async def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """재시도 + 서킷 브레이커를 적용한 HTTP 요청."""
+        async def _do():
+            return await getattr(self._client, method)(url, **kwargs)
+        return await self._circuit_breaker.call(_do)
 
     # ------------------------------------------------------------------
     # Core data endpoints
@@ -69,7 +91,7 @@ class ShadowBrokerClient:
 
     async def set_viewport(self, bbox: BBox) -> None:
         """POST /api/viewport — AIS 스트림 뷰포트 설정."""
-        resp = await self._client.post("/api/viewport", json=bbox.to_params())
+        resp = await self._request("post", "/api/viewport", json=bbox.to_params())
         resp.raise_for_status()
 
     async def health_check(self) -> dict:
@@ -105,7 +127,7 @@ class ShadowBrokerClient:
         if cached:
             headers["If-None-Match"] = cached[0]
 
-        resp = await self._client.get(path, params=params, headers=headers)
+        resp = await self._request("get", path, params=params, headers=headers)
 
         if resp.status_code == 304 and cached:
             logger.debug("ETag cache hit: %s", cache_key)

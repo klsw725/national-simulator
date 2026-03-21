@@ -398,7 +398,7 @@ async def get_simulation_status(
     if not row:
         raise HTTPException(status_code=404, detail="No simulation found for this scenario")
 
-    return {
+    result = {
         "scenario_id": scenario_id,
         "result_id": row["id"],
         "status": row["status"],
@@ -407,6 +407,19 @@ async def get_simulation_status(
         "created_at": row["created_at"],
         "completed_at": row["completed_at"],
     }
+
+    if row["status"] == "failed":
+        error_row = await conn.fetchrow(
+            """SELECT payload FROM action_log
+               WHERE scenario_id = $1 AND action_type = 'pipeline.failed'
+               ORDER BY created_at DESC LIMIT 1""",
+            scenario_id,
+        )
+        if error_row and error_row["payload"]:
+            payload = json.loads(error_row["payload"])
+            result["error_message"] = payload.get("error", "")
+
+    return result
 
 
 @router.get("/{scenario_id}/results", response_model=SimulationResultResponse)

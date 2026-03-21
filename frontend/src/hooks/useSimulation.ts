@@ -108,6 +108,9 @@ export function useSimulation(): UseSimulationReturn {
             if (st.status === "completed") {
               await loadResults(scenarioId);
             }
+            if (st.status === "failed" && st.error_message) {
+              setError(st.error_message);
+            }
           }
         } catch (e) {
           if (process.env.NODE_ENV === "development") console.warn("pollStatus failed", e);
@@ -211,6 +214,11 @@ export function useSimulation(): UseSimulationReturn {
         });
         if (scenario.status === "completed") {
           loadResults(scenario.id);
+        }
+        if (scenario.status === "failed") {
+          api.getStatus(scenario.id).then((st) => {
+            if (st.error_message) setError(st.error_message);
+          }).catch(() => {});
         }
       }
     },

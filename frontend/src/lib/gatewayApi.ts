@@ -112,7 +112,7 @@ export function continueSimulation(
 
 export function getStatus(
   scenarioId: string
-): Promise<{ status: string; seed_status: string; simulation_status: string }> {
+): Promise<{ status: string; seed_status: string; simulation_status: string; error_message?: string }> {
   return fetchJSON(`/api/scenario/${scenarioId}/status`);
 }
 
