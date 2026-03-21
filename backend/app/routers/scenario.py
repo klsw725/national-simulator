@@ -10,6 +10,7 @@ from app.models.scenario import (
     ScenarioCreate,
     ScenarioCreatedResponse,
     ScenarioResponse,
+    SimulationParams,
 )
 from app.services.action_logger import ActionLogger
 
@@ -26,8 +27,8 @@ async def create_scenario(
     await conn.execute(
         """INSERT INTO scenarios
            (id, name, region_bbox, region_name, question, max_rounds, data_sources,
-            status, seed_status, simulation_status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'created', 'pending', 'pending', $8, $9)""",
+            simulation_params, status, seed_status, simulation_status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'created', 'pending', 'pending', $9, $10)""",
         scenario_id,
         data.name,
         json.dumps(data.region.bbox),
@@ -35,6 +36,7 @@ async def create_scenario(
         data.question,
         data.max_rounds,
         json.dumps(data.data_sources),
+        data.simulation_params.model_dump_json(),
         now,
         now,
     )
@@ -79,6 +81,9 @@ async def delete_scenario(
 
 
 def _row_to_response(row: asyncpg.Record) -> ScenarioResponse:
+    raw_params = row["simulation_params"] if "simulation_params" in row.keys() else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
+
     return ScenarioResponse(
         id=row["id"],
         name=row["name"],
@@ -87,6 +92,7 @@ def _row_to_response(row: asyncpg.Record) -> ScenarioResponse:
         question=row["question"],
         max_rounds=row["max_rounds"],
         data_sources=json.loads(row["data_sources"]),
+        simulation_params=sim_params,
         status=row["status"],
         seed_status=row["seed_status"],
         simulation_status=row["simulation_status"],

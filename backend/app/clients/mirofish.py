@@ -93,12 +93,14 @@ class MiroFishClient:
         self,
         project_id: str,
         graph_id: str | None = None,
+        enable_twitter: bool = True,
+        enable_reddit: bool = False,
     ) -> dict[str, Any]:
         """POST /api/simulation/create → {simulation_id, ...}"""
         payload: dict[str, Any] = {
             "project_id": project_id,
-            "enable_twitter": True,
-            "enable_reddit": False,
+            "enable_twitter": enable_twitter,
+            "enable_reddit": enable_reddit,
         }
         if graph_id:
             payload["graph_id"] = graph_id
@@ -149,16 +151,18 @@ class MiroFishClient:
         simulation_id: str,
         platform: str = "twitter",
         max_rounds: int = 10,
+        simulation_hours: int | None = None,
     ) -> dict[str, Any]:
         """POST /api/simulation/start → {runner_status, ...}"""
-        resp = await self._client.post(
-            "/api/simulation/start",
-            json={
-                "simulation_id": simulation_id,
-                "platform": platform,
-                "max_rounds": max_rounds,
-            },
-        )
+        payload: dict[str, Any] = {
+            "simulation_id": simulation_id,
+            "platform": platform,
+            "max_rounds": max_rounds,
+        }
+        if simulation_hours is not None:
+            payload["total_simulation_hours"] = simulation_hours
+
+        resp = await self._client.post("/api/simulation/start", json=payload)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)

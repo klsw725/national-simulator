@@ -14,6 +14,7 @@ from app.models.result import (
     SimulateRequest,
     SimulationResultResponse,
 )
+from app.models.scenario import SimulationParams
 from app.models.seed import SeedMetadata, SeedResponse
 from app.services.action_logger import ActionLogger
 from app.services.seed_generator import SeedGenerator
@@ -180,13 +181,17 @@ async def start_simulation(
     result_id = f"simr_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
 
+    raw_params_cp = scenario["simulation_params"] if "simulation_params" in scenario.keys() else "{}"
+    sim_params_cp = SimulationParams.model_validate_json(raw_params_cp or "{}")
+
     if mode == "checkpoint":
         await conn.execute(
             """INSERT INTO simulation_results
                (id, scenario_id, status, platform, pipeline_mode, created_at)
-               VALUES ($1, $2, 'checkpoint:seed', 'twitter', 'checkpoint', $3)""",
+               VALUES ($1, $2, 'checkpoint:seed', $3, 'checkpoint', $4)""",
             result_id,
             scenario_id,
+            sim_params_cp.platform,
             now,
         )
         await conn.execute(
@@ -208,6 +213,9 @@ async def start_simulation(
             "message": "Pipeline paused at seed review checkpoint",
         }
 
+    raw_params = scenario["simulation_params"] if "simulation_params" in scenario.keys() else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
+
     mf_client = request.app.state.mf_client
     if not await mf_client.health_check():
         raise HTTPException(status_code=503, detail="MiroFish service unavailable")
@@ -215,9 +223,10 @@ async def start_simulation(
     await conn.execute(
         """INSERT INTO simulation_results
            (id, scenario_id, status, platform, pipeline_mode, created_at)
-           VALUES ($1, $2, 'starting', 'twitter', 'auto', $3)""",
+           VALUES ($1, $2, 'starting', $3, 'auto', $4)""",
         result_id,
         scenario_id,
+        sim_params.platform,
         now,
     )
     await conn.execute(
@@ -233,6 +242,7 @@ async def start_simulation(
         result_id=result_id,
         seed_text=seed_row["text"],
         max_rounds=scenario["max_rounds"],
+        simulation_params=sim_params,
     )
     await ActionLogger.log(
         "simulation.start",
@@ -241,6 +251,7 @@ async def start_simulation(
             "result_id": result_id,
             "mode": "auto",
             "max_rounds": scenario["max_rounds"],
+            "platform": sim_params.platform,
         },
     )
 
@@ -327,8 +338,10 @@ async def continue_pipeline(
     if status != "checkpoint:profiles" and not await mf_client.health_check():
         raise HTTPException(status_code=503, detail="MiroFish service unavailable")
 
-    scn_row = await conn.fetchrow("SELECT max_rounds FROM scenarios WHERE id = $1", scenario_id)
+    scn_row = await conn.fetchrow("SELECT max_rounds, simulation_params FROM scenarios WHERE id = $1", scenario_id)
     max_rounds = scn_row["max_rounds"] if scn_row else 10
+    raw_params = scn_row["simulation_params"] if scn_row and "simulation_params" in scn_row.keys() else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
 
     orchestrator = SimulationOrchestrator(mf_client, sb_client=request.app.state.sb_client)
     edits = body.edits if body else None
@@ -339,6 +352,7 @@ async def continue_pipeline(
         result_id=row["id"],
         max_rounds=max_rounds,
         edits=edits,
+        simulation_params=sim_params,
     )
     await ActionLogger.log(
         "simulation.continue",

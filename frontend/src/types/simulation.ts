@@ -1,3 +1,10 @@
+export interface SimulationParams {
+  platform: string;
+  simulation_hours: number;
+  simulation_requirement: string | null;
+  geopolitics_enabled: boolean;
+}
+
 export interface Scenario {
   id: string;
   name: string;
@@ -6,6 +13,7 @@ export interface Scenario {
   question: string;
   max_rounds: number;
   data_sources: string[];
+  simulation_params: SimulationParams;
   status: string;
   seed_status: string;
   simulation_status: string;
@@ -22,6 +30,12 @@ export interface ScenarioFormData {
   max_rounds: number;
   data_sources: string[];
   mode: PipelineMode;
+  simulation_params?: {
+    platform: string;
+    simulation_hours: number;
+    simulation_requirement?: string;
+    geopolitics_enabled: boolean;
+  };
 }
 
 export interface PipelineStep {

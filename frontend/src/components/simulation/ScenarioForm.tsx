@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown } from "lucide-react";
 import type { ScenarioFormData, PipelineMode } from "@/types/simulation";
 
 const REGION_PRESETS: { label: string; name: string; bbox: [number, number, number, number] }[] = [
@@ -24,6 +24,11 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
   const [maxRounds, setMaxRounds] = useState(10);
   const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<PipelineMode>("auto");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [platform, setPlatform] = useState<string>("twitter");
+  const [simulationHours, setSimulationHours] = useState(24);
+  const [simRequirement, setSimRequirement] = useState("");
+  const [geopoliticsEnabled, setGeopoliticsEnabled] = useState(false);
 
   const region = REGION_PRESETS[regionIdx];
 
@@ -40,6 +45,12 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
         max_rounds: maxRounds,
         data_sources: ["ships", "flights", "satellites"],
         mode,
+        simulation_params: {
+          platform,
+          simulation_hours: simulationHours,
+          simulation_requirement: simRequirement || undefined,
+          geopolitics_enabled: geopoliticsEnabled,
+        },
       });
     } finally {
       setSubmitting(false);
@@ -190,6 +201,154 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Advanced Settings */}
+      <div
+        style={{
+          border: "1px solid var(--border-secondary)",
+          borderRadius: 4,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 12px",
+            background: showAdvanced ? "rgba(34, 211, 238, 0.04)" : "transparent",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--text-muted)",
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            고급 설정
+          </span>
+          <ChevronDown
+            size={14}
+            style={{
+              color: "var(--text-muted)",
+              transition: "transform 0.2s",
+              transform: showAdvanced ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
+        </div>
+        {showAdvanced && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              padding: "12px",
+              borderTop: "1px solid var(--border-secondary)",
+              background: "rgba(34, 211, 238, 0.02)",
+            }}
+          >
+            {/* Platform */}
+            <div>
+              <label style={labelStyle}>플랫폼</label>
+              <select
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value)}
+                style={{ ...inputStyle, cursor: "pointer" }}
+              >
+                <option value="twitter">Twitter</option>
+                <option value="reddit">Reddit</option>
+              </select>
+            </div>
+
+            {/* Simulation Hours */}
+            <div>
+              <label style={labelStyle}>
+                시뮬레이션 시간: {simulationHours}h
+              </label>
+              <input
+                type="range"
+                min={12}
+                max={96}
+                value={simulationHours}
+                onChange={(e) => setSimulationHours(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  accentColor: "var(--accent-cyan)",
+                  cursor: "pointer",
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 10,
+                  color: "var(--text-muted)",
+                  marginTop: 2,
+                }}
+              >
+                <span>12h</span>
+                <span>96h</span>
+              </div>
+            </div>
+
+            {/* Simulation Requirement */}
+            <div>
+              <label style={labelStyle}>시뮬레이션 요구사항</label>
+              <textarea
+                value={simRequirement}
+                onChange={(e) => setSimRequirement(e.target.value)}
+                placeholder="커스텀 시뮬레이션 요구사항 (비워두면 기본값 사용)"
+                rows={3}
+                style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
+              />
+            </div>
+
+            {/* Geopolitics Enabled */}
+            <div>
+              <label style={labelStyle}>지정학적 이벤트</label>
+              <div
+                style={{
+                  display: "flex",
+                  background: "var(--bg-primary)",
+                  border: "1px solid var(--border-secondary)",
+                  borderRadius: 4,
+                  overflow: "hidden",
+                }}
+              >
+                {([
+                  { value: false, label: "비활성" },
+                  { value: true, label: "활성" },
+                ] as const).map((opt) => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setGeopoliticsEnabled(opt.value)}
+                    style={{
+                      flex: 1,
+                      padding: "7px 12px",
+                      background: geopoliticsEnabled === opt.value ? "var(--accent-cyan)" : "transparent",
+                      color: geopoliticsEnabled === opt.value ? "var(--bg-primary)" : "var(--text-muted)",
+                      border: "none",
+                      fontSize: 12,
+                      fontWeight: geopoliticsEnabled === opt.value ? 700 : 400,
+                      cursor: "pointer",
+                      transition: "background 0.15s, color 0.15s",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <button

@@ -87,6 +87,8 @@ ALTER TABLE action_log ADD COLUMN IF NOT EXISTS actor_role TEXT DEFAULT 'system'
 ALTER TABLE action_log ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'executed';
 ALTER TABLE action_log ADD COLUMN IF NOT EXISTS compensation_for TEXT;
 
+ALTER TABLE scenarios ADD COLUMN IF NOT EXISTS simulation_params TEXT DEFAULT '{}';
+
 CREATE TABLE IF NOT EXISTS observations (
     id TEXT PRIMARY KEY,
     source_type TEXT NOT NULL,

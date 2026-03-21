@@ -20,6 +20,7 @@ from typing import Any
 
 from app.clients.mirofish import MiroFishClient
 from app.database import get_pool
+from app.models.scenario import SimulationParams
 from app.ontology.versioning import OntologyVersioning
 from app.services.action_logger import ActionLogger
 from app.services.geopolitics_mapper import map_actions_to_geopolitics
@@ -70,15 +71,20 @@ class SimulationOrchestrator:
         scenario_id: str,
         result_id: str,
         seed_text: str,
+        simulation_params: SimulationParams | None = None,
     ) -> dict:
         """Step 1: Ontology generation. Returns ontology_result with project_id."""
         await self._update_status(scenario_id, result_id, "simulating:ontology")
         logger.info("[%s] Step 1: Ontology generation", scenario_id)
 
+        requirement = SIMULATION_REQUIREMENT
+        if simulation_params and simulation_params.simulation_requirement:
+            requirement = simulation_params.simulation_requirement
+
         ontology_result = await self.mf.generate_ontology(
             seed_text=seed_text,
             seed_filename="seed_document.md",
-            simulation_requirement=SIMULATION_REQUIREMENT,
+            simulation_requirement=requirement,
             project_name=f"osint-{scenario_id}",
         )
         project_id = ontology_result.get("project_id", "")
@@ -125,12 +131,21 @@ class SimulationOrchestrator:
         scenario_id: str,
         result_id: str,
         project_id: str,
+        simulation_params: SimulationParams | None = None,
     ) -> str:
         """Step 3+4: Simulation create + prepare. Returns mf_simulation_id."""
         await self._update_status(scenario_id, result_id, "simulating:create")
         logger.info("[%s] Step 3: Simulation create", scenario_id)
 
-        sim_result = await self.mf.create_simulation(project_id)
+        platform = simulation_params.platform if simulation_params else "twitter"
+        enable_twitter = platform in ("twitter", "parallel")
+        enable_reddit = platform in ("reddit", "parallel")
+
+        sim_result = await self.mf.create_simulation(
+            project_id,
+            enable_twitter=enable_twitter,
+            enable_reddit=enable_reddit,
+        )
         mf_simulation_id = sim_result.get("simulation_id", "")
         logger.info("[%s] Simulation created → id=%s", scenario_id, mf_simulation_id)
 
@@ -161,13 +176,20 @@ class SimulationOrchestrator:
         result_id: str,
         mf_simulation_id: str,
         max_rounds: int,
+        simulation_params: SimulationParams | None = None,
     ) -> None:
         """Step 5: Start simulation and poll until done."""
         await self._update_status(scenario_id, result_id, "simulating:running")
         logger.info("[%s] Step 5: Simulation start (max_rounds=%d)", scenario_id, max_rounds)
 
+        platform = simulation_params.platform if simulation_params else "twitter"
+        simulation_hours = simulation_params.simulation_hours if simulation_params else None
+
         await self.mf.start_simulation(
-            mf_simulation_id, platform="twitter", max_rounds=max_rounds,
+            mf_simulation_id,
+            platform=platform,
+            max_rounds=max_rounds,
+            simulation_hours=simulation_hours,
         )
         await self.mf.poll_until_done(
             poll_fn=lambda: self.mf.get_run_status(mf_simulation_id),
@@ -296,6 +318,7 @@ class SimulationOrchestrator:
         result_id: str,
         max_rounds: int,
         edits: dict | None = None,
+        simulation_params: SimulationParams | None = None,
     ) -> None:
         """Execute next pipeline step from current checkpoint status.
 
@@ -350,6 +373,7 @@ class SimulationOrchestrator:
                     scenario_id,
                     result_id,
                     seed_text,
+                    simulation_params=simulation_params,
                 )
                 await self._register_ontology_version(scenario_id, result_id, ontology_result)
                 await self._save_checkpoint_data(
@@ -379,6 +403,7 @@ class SimulationOrchestrator:
                     scenario_id,
                     result_id,
                     project_id,
+                    simulation_params=simulation_params,
                 )
                 await self._save_checkpoint_data(
                     result_id,
@@ -392,9 +417,10 @@ class SimulationOrchestrator:
                 return
 
             if current_status == "checkpoint:profiles":
+                platform = simulation_params.platform if simulation_params else "twitter"
                 await self._save_checkpoint_data(
                     result_id,
-                    {"max_rounds": max_rounds, "platform": "twitter"},
+                    {"max_rounds": max_rounds, "platform": platform},
                 )
                 await self._update_status(scenario_id, result_id, "checkpoint:config")
                 return
@@ -407,6 +433,7 @@ class SimulationOrchestrator:
                     result_id,
                     mf_simulation_id,
                     max_rounds,
+                    simulation_params=simulation_params,
                 )
                 await self._step_report(scenario_id, result_id, mf_simulation_id)
                 await self._collect_and_store_results(
@@ -433,6 +460,7 @@ class SimulationOrchestrator:
         result_id: str,
         seed_text: str,
         max_rounds: int,
+        simulation_params: SimulationParams | None = None,
     ) -> None:
         """전체 파이프라인 실행 (BackgroundTask에서 호출).
 
@@ -463,6 +491,7 @@ class SimulationOrchestrator:
                 scenario_id,
                 result_id,
                 seed_text,
+                simulation_params=simulation_params,
             )
             await self._register_ontology_version(scenario_id, result_id, ontology_result)
             project_id = ontology_result.get("project_id", "")
@@ -471,12 +500,14 @@ class SimulationOrchestrator:
                 scenario_id,
                 result_id,
                 project_id,
+                simulation_params=simulation_params,
             )
             await self._step_run_simulation(
                 scenario_id,
                 result_id,
                 mf_simulation_id,
                 max_rounds,
+                simulation_params=simulation_params,
             )
             await self._step_report(scenario_id, result_id, mf_simulation_id)
 

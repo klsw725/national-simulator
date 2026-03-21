@@ -36,6 +36,7 @@ export function createScenario(
       question: data.question,
       max_rounds: data.max_rounds,
       data_sources: data.data_sources,
+      ...(data.simulation_params && { simulation_params: data.simulation_params }),
     }),
   });
 }
