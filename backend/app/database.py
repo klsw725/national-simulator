@@ -47,6 +47,20 @@ CREATE TABLE IF NOT EXISTS simulation_results (
     created_at TEXT NOT NULL,
     completed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS stix_objects (
+    id TEXT PRIMARY KEY,
+    stix_id TEXT UNIQUE NOT NULL,
+    object_type TEXT NOT NULL,
+    stix_json TEXT NOT NULL,
+    confidence REAL DEFAULT 0.0,
+    source TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_stix_objects_type ON stix_objects(object_type);
+CREATE INDEX IF NOT EXISTS idx_stix_objects_stix_id ON stix_objects(stix_id);
 """
 
 
