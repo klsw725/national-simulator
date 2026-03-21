@@ -52,3 +52,78 @@ export interface CheckpointData {
   data: Record<string, unknown> | null;
   pipeline_mode: string;
 }
+
+export interface LiveStats {
+  simulation_id?: string;
+  runner_status: string;
+  current_round: number;
+  total_rounds: number;
+  progress_percent: number;
+  twitter_actions_count: number;
+  total_actions_count: number;
+}
+
+export interface LiveAction {
+  round_num: number;
+  timestamp: string;
+  platform: string;
+  agent_id: number;
+  agent_name: string;
+  action_type: string;
+  action_args: { content?: string; [key: string]: unknown };
+  success: boolean;
+}
+
+export interface GraphNode {
+  uuid: string;
+  name: string;
+  entityType?: string;
+  labels: string[];
+  attributes: Record<string, unknown>;
+  summary?: string;
+}
+
+export interface GraphEdge {
+  uuid?: string;
+  source_node_uuid: string;
+  target_node_uuid: string;
+  name: string;
+  fact?: string;
+  fact_type?: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  node_count: number;
+  edge_count: number;
+}
+
+export interface GraphTaskStatus {
+  task_id?: string;
+  status: string;
+  progress: number;
+  message?: string;
+}
+
+export interface LiveProfiles {
+  simulation_id?: string;
+  platform: string;
+  count: number;
+  total_expected: number;
+  is_generating: boolean;
+  profiles: Array<Record<string, unknown>>;
+}
+
+export interface LiveConfig {
+  simulation_id?: string;
+  file_exists: boolean;
+  is_generating: boolean;
+  generation_stage?: string;
+  config_generated?: boolean;
+  summary?: {
+    total_agents: number;
+    simulation_hours: number;
+    initial_posts_count: number;
+  };
+}

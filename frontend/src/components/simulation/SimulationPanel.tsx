@@ -9,6 +9,7 @@ import CheckpointReview from "./CheckpointReview";
 import ScenarioList from "./ScenarioList";
 import SimulationTimeline from "./SimulationTimeline";
 import ReportViewer from "./ReportViewer";
+import IntermediateResults from "./IntermediateResults";
 
 type Tab = "create" | "progress" | "list" | "timeline" | "report";
 
@@ -180,6 +181,16 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
               onContinue={sim.continueCheckpoint}
               onCancel={() => setTab("list")}
             />
+          ) : sim.pipelineStatus?.status?.startsWith("simulating:") ? (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+              <PipelineProgress pipelineStatus={sim.pipelineStatus} onReview={() => {}} />
+              <div style={{ flex: 1, minHeight: 0, marginTop: 12 }}>
+                <IntermediateResults
+                  pipelineStatus={sim.pipelineStatus.status}
+                  scenarioId={sim.activeScenario?.id ?? null}
+                />
+              </div>
+            </div>
           ) : (
             <PipelineProgress
               pipelineStatus={sim.pipelineStatus}

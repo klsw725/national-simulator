@@ -224,12 +224,13 @@ class MiroFishClient:
     # ------------------------------------------------------------------
 
     async def get_simulation_actions(
-        self, simulation_id: str, platform: str = "twitter", limit: int = 200
+        self, simulation_id: str, platform: str = "twitter",
+        limit: int = 200, offset: int = 0,
     ) -> dict[str, Any]:
         """GET /api/simulation/{id}/actions"""
         resp = await self._client.get(
             f"/api/simulation/{simulation_id}/actions",
-            params={"platform": platform, "limit": limit},
+            params={"platform": platform, "limit": limit, "offset": offset},
         )
         resp.raise_for_status()
         body = resp.json()
@@ -243,6 +244,41 @@ class MiroFishClient:
             f"/api/simulation/{simulation_id}/posts",
             params={"platform": platform, "limit": limit},
         )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    # ------------------------------------------------------------------
+    # Realtime monitoring
+    # ------------------------------------------------------------------
+
+    async def get_graph_data(self, graph_id: str) -> dict[str, Any]:
+        """GET /api/graph/data/{graph_id} — 그래프 노드+엣지 데이터."""
+        resp = await self._client.get(f"/api/graph/data/{graph_id}")
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def get_agent_stats(self, simulation_id: str) -> dict[str, Any]:
+        """GET /api/simulation/{id}/agent-stats — 에이전트 활동 통계."""
+        resp = await self._client.get(f"/api/simulation/{simulation_id}/agent-stats")
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def get_profiles_realtime(self, simulation_id: str, platform: str = "twitter") -> dict[str, Any]:
+        """GET /api/simulation/{id}/profiles/realtime — 프로필 생성 실시간 진행."""
+        resp = await self._client.get(
+            f"/api/simulation/{simulation_id}/profiles/realtime",
+            params={"platform": platform},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def get_config_realtime(self, simulation_id: str) -> dict[str, Any]:
+        """GET /api/simulation/{id}/config/realtime — 설정 생성 실시간 진행."""
+        resp = await self._client.get(f"/api/simulation/{simulation_id}/config/realtime")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)

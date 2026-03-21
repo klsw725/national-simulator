@@ -95,12 +95,17 @@ class SimulationOrchestrator:
         logger.info("[%s] Step 2: Graph build", scenario_id)
 
         task_id = await self.mf.build_graph(project_id)
-        await self.mf.poll_until_done(
+        await self._update_ids(db_path, result_id, graph_task_id=task_id)
+
+        result = await self.mf.poll_until_done(
             poll_fn=lambda: self.mf.get_task_status(task_id),
             timeout=GRAPH_BUILD_TIMEOUT,
             interval=POLL_INTERVAL,
         )
-        logger.info("[%s] Graph build done", scenario_id)
+        graph_id = result.get("result", {}).get("graph_id", "") if isinstance(result.get("result"), dict) else ""
+        if graph_id:
+            await self._update_ids(db_path, result_id, graph_id=graph_id)
+        logger.info("[%s] Graph build done (graph_id=%s)", scenario_id, graph_id)
 
     async def _step_create_prepare(
         self,
@@ -487,6 +492,8 @@ class SimulationOrchestrator:
         result_id: str,
         project_id: str | None = None,
         mf_simulation_id: str | None = None,
+        graph_task_id: str | None = None,
+        graph_id: str | None = None,
     ) -> None:
         db = await aiosqlite.connect(db_path)
         try:
@@ -499,6 +506,16 @@ class SimulationOrchestrator:
                 await db.execute(
                     "UPDATE simulation_results SET mirofish_simulation_id = ? WHERE id = ?",
                     (mf_simulation_id, result_id),
+                )
+            if graph_task_id:
+                await db.execute(
+                    "UPDATE simulation_results SET graph_task_id = ? WHERE id = ?",
+                    (graph_task_id, result_id),
+                )
+            if graph_id:
+                await db.execute(
+                    "UPDATE simulation_results SET graph_id = ? WHERE id = ?",
+                    (graph_id, result_id),
                 )
             await db.commit()
         finally:

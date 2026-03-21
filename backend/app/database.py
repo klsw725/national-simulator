@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS simulation_results (
     scenario_id TEXT NOT NULL REFERENCES scenarios(id),
     mirofish_simulation_id TEXT,
     mirofish_project_id TEXT,
+    graph_task_id TEXT,
+    graph_id TEXT,
     status TEXT DEFAULT 'pending',
     platform TEXT DEFAULT 'twitter',
     pipeline_mode TEXT DEFAULT 'auto',
@@ -64,6 +66,23 @@ async def get_db():
         await db.close()
 
 
+_MIGRATIONS = [
+    ("pipeline_mode", "ALTER TABLE simulation_results ADD COLUMN pipeline_mode TEXT DEFAULT 'auto'"),
+    ("checkpoint_data", "ALTER TABLE simulation_results ADD COLUMN checkpoint_data TEXT"),
+    ("graph_task_id", "ALTER TABLE simulation_results ADD COLUMN graph_task_id TEXT"),
+    ("graph_id", "ALTER TABLE simulation_results ADD COLUMN graph_id TEXT"),
+]
+
+
+async def _migrate(db: aiosqlite.Connection) -> None:
+    cursor = await db.execute("PRAGMA table_info(simulation_results)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    for col_name, ddl in _MIGRATIONS:
+        if col_name not in existing:
+            await db.execute(ddl)
+    await db.commit()
+
+
 async def init_db():
     """Create tables on startup."""
     db_path = _db_path()
@@ -72,5 +91,6 @@ async def init_db():
     try:
         await db.executescript(SCHEMA)
         await db.commit()
+        await _migrate(db)
     finally:
         await db.close()

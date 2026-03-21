@@ -507,3 +507,140 @@ async def get_report(
         "report": row["report"] or "",
         "completed_at": row["completed_at"],
     }
+
+
+# ------------------------------------------------------------------
+# Live monitoring endpoints (v2-realtime-monitoring)
+# ------------------------------------------------------------------
+
+
+async def _get_sim_row(db: aiosqlite.Connection, scenario_id: str) -> aiosqlite.Row:
+    """시나리오의 최신 simulation_results 행을 반환. 없으면 404."""
+    cursor = await db.execute(
+        "SELECT * FROM simulation_results WHERE scenario_id = ? ORDER BY created_at DESC LIMIT 1",
+        (scenario_id,),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="No simulation found for this scenario")
+    return row
+
+
+@router.get("/{scenario_id}/live/stats")
+async def get_live_stats(
+    scenario_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """실시간 시뮬레이션 실행 상태 (run-status 프록시)."""
+    row = await _get_sim_row(db, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        return {"status": row["status"], "message": "MiroFish simulation not yet created"}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_run_status(mf_sim_id)
+    except Exception:
+        return {"status": row["status"], "message": "MiroFish unavailable"}
+
+
+@router.get("/{scenario_id}/live/actions")
+async def get_live_actions(
+    scenario_id: str,
+    request: Request,
+    offset: int = 0,
+    limit: int = 100,
+    platform: str = "twitter",
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """실시간 에이전트 액션 목록 (offset 기반 incremental)."""
+    row = await _get_sim_row(db, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        return {"actions": [], "count": 0}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_simulation_actions(
+            mf_sim_id, platform=platform, limit=limit, offset=offset,
+        )
+    except Exception:
+        return {"actions": [], "count": 0}
+
+
+@router.get("/{scenario_id}/live/graph_task")
+async def get_live_graph_task(
+    scenario_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """그래프 빌드 태스크 진행률."""
+    row = await _get_sim_row(db, scenario_id)
+    task_id = row["graph_task_id"]
+    if not task_id:
+        return {"status": row["status"], "message": "Graph build not started"}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_task_status(task_id)
+    except Exception:
+        return {"status": "unknown", "progress": 0}
+
+
+@router.get("/{scenario_id}/live/graph_data")
+async def get_live_graph_data(
+    scenario_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """그래프 노드+엣지 데이터 (빌드 중에도 호출 가능)."""
+    row = await _get_sim_row(db, scenario_id)
+    graph_id = row["graph_id"]
+    if not graph_id:
+        return {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_graph_data(graph_id)
+    except Exception:
+        return {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+
+
+@router.get("/{scenario_id}/live/profiles")
+async def get_live_profiles(
+    scenario_id: str,
+    request: Request,
+    platform: str = "twitter",
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """프로필 생성 실시간 진행."""
+    row = await _get_sim_row(db, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        return {"count": 0, "total_expected": 0, "is_generating": False, "profiles": []}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_profiles_realtime(mf_sim_id, platform=platform)
+    except Exception:
+        return {"count": 0, "total_expected": 0, "is_generating": False, "profiles": []}
+
+
+@router.get("/{scenario_id}/live/config")
+async def get_live_config(
+    scenario_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """설정 생성 실시간 진행."""
+    row = await _get_sim_row(db, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        return {"file_exists": False, "is_generating": False}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_config_realtime(mf_sim_id)
+    except Exception:
+        return {"file_exists": False, "is_generating": False}
