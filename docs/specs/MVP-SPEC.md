@@ -762,11 +762,11 @@ action_mapping_prompt = """
 
 MVP 완료의 정의:
 
-- [ ] ShadowBroker에서 실시간 선박 데이터를 수집하여 시드 문서를 자동 생성할 수 있다
-- [ ] 시드 문서로부터 MiroFish 파이프라인이 온톨로지 → 그래프 → 프로필 → 시뮬레이션을 완료한다
-- [ ] 시뮬레이션 결과가 GeoJSON으로 변환되어 지도 위에 표시된다
-- [ ] 최소 1개 시나리오(남중국해)를 처음부터 끝까지 실행할 수 있다
-- [ ] 전체 프로세스가 사용자 개입 없이 자동으로 진행된다 (시나리오 생성 후)
+- [x] ShadowBroker에서 실시간 선박 데이터를 수집하여 시드 문서를 자동 생성할 수 있다
+- [x] 시드 문서로부터 MiroFish 파이프라인이 온톨로지 → 그래프 → 프로필 → 시뮬레이션을 완료한다
+- [x] 시뮬레이션 결과가 GeoJSON으로 변환되어 지도 위에 표시된다
+- [x] 최소 1개 시나리오(남중국해)를 처음부터 끝까지 실행할 수 있다
+- [x] 전체 프로세스가 사용자 개입 없이 자동으로 진행된다 (시나리오 생성 후)
 
 ---
 
@@ -1209,3 +1209,70 @@ PRD 1 (gateway-api-foundation)
 | MF 프로필 생성 | `POST /api/profiles/generate` | `POST /api/simulation/prepare` (내부 포함) | PRD 4 §3.1 |
 | MF 시뮬레이션 실행 | `POST /api/simulation/run` | `POST /api/simulation/start` | PRD 4 §3.1 |
 | MF 시뮬레이션 상태 | `GET /api/simulation/{id}/status` | `GET /api/simulation/{id}/run-status` | PRD 4 §3.3 |
+
+---
+
+## 24. v2 구현 현황 (2026-03-21)
+
+### 완료된 v2 PRD
+
+| PRD | 마일스톤 | 상태 |
+|-----|---------|------|
+| v2-postgresql-postgis | M1-M4 | ✅ 전체 완료 (PostGIS + observations + GIST 인덱스) |
+| v2-stix2-ontology | M1-M4 | ✅ 전체 완료 (커스텀 SDO + Tier 2) |
+| v2-snapshot-branching | M1-M4 | ✅ 전체 완료 (OSINT 스냅샷 격리) |
+| v2-action-layer | M1-M4 | ✅ 전체 완료 (RBAC + 승인 + 보상 롤백) |
+| v2-realtime-monitoring | M1-M4 | ✅ 전체 완료 (실시간 시뮬레이션 모니터링) |
+| v2-pipeline-checkpoints | M1-M3 | ✅ 전체 완료 (Human-in-the-Loop 체크포인트) |
+| multi-feed-integration | M1-M4 | ✅ 전체 완료 (다중 OSINT 피드) |
+| v2-entity-resolution | M1-M4 | ✅ 전체 완료 (매칭 엔진 + 자동 해소 + 검토 API) |
+| v2-schema-versioning | M1-M4 | ✅ 전체 완료 (온톨로지 버전관리 + diff + 파이프라인 연동) |
+
+### 부분 완료 v2 PRD (OASIS 런타임 의존)
+
+| PRD | 완료 | 잔여 | 블로커 |
+|-----|------|------|--------|
+| v2-oasis-platform-subclassing | M1-M3 | M4 (통합 테스트) | OASIS 설치 환경 필요 |
+| v2-geopolitics-scenario-engine | M1-M3 | M4 (OASIS 양방향 연동) | OASIS 설치 환경 필요 |
+
+### PRD 외 추가 구현
+
+| 기능 | 파일 | 설명 |
+|------|------|------|
+| 지정학 엔진 API | `geopolitics/router.py` | POST /api/geopolitics/simulate, POST /api/geopolitics/event |
+| OSINT 관측 수집 파이프라인 | `services/observation_collector.py` | SB → observations INSERT + Entity Resolution 자동 실행 |
+
+### v2 아키텍처 현재 상태
+
+```
+Gateway API (FastAPI, port 4000)
+├── /api/scenario/*          시나리오 CRUD + 시드/시뮬레이션
+├── /api/osint/*             SB 프록시 + OSINT 수집 파이프라인
+├── /api/actions             RBAC + 승인 + 보상 롤백
+├── /api/ontology/versions   온톨로지 버전관리 + diff
+├── /api/resolution          Entity Resolution 매칭 + 검토
+├── /api/geopolitics         지정학 시뮬레이션 엔진
+│
+├── PostgreSQL + PostGIS
+│   ├── scenarios, seeds, simulation_results
+│   ├── stix_objects (Tier 2)
+│   ├── observations (Tier 1, PostGIS geom)
+│   ├── ontology_versions
+│   ├── resolution_candidates, resolution_decisions
+│   ├── action_log (RBAC + 감사)
+│   ├── scenario_snapshots
+│   └── geopolitics_events
+│
+├── Entity Resolution
+│   ├── Matcher (정확 MMSI/ICAO24 + 퍼지 이름)
+│   └── Resolver (자동 해소 threshold 0.85 + 수동 검토)
+│
+├── Geopolitics Engine
+│   ├── ActorState (위협/압력/자원 + 목표/제약)
+│   ├── DecisionEngine (규칙 기반 의사결정)
+│   └── CascadeEvents (연쇄 반응 + 감쇠)
+│
+└── OASIS Integration
+    ├── GeopoliticsPlatform (12 액션 타입)
+    └── GeopoliticsActionType (external/mirofish-backend)
+```
