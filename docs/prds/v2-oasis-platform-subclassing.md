@@ -70,13 +70,13 @@ mirofish-ko/src/
 
 ## 4. 마일스톤
 
-- [ ] **M1: ActionType 확장** — GeopoliticsActionType enum, 기존 OASIS 타입과 호환
+- [x] **M1: ActionType 확장** — GeopoliticsActionType enum, 기존 OASIS 타입과 호환
   - 검증: 기존 OASIS 시뮬레이션 regression 없음
 
-- [ ] **M2: GeopoliticsPlatform** — BasePlatform 서브클래스, 지정학 액션 핸들러
+- [x] **M2: GeopoliticsPlatform** — BasePlatform 서브클래스, 지정학 액션 핸들러
   - 검증: DIPLOMATIC_STATEMENT 액션 → geopolitics_events 저장 확인
 
-- [ ] **M3: 커스텀 UserInfo + DB 테이블** — 국가 행위자 프로필, geopolitics_events 테이블
+- [x] **M3: 커스텀 UserInfo + DB 테이블** — 국가 행위자 프로필, geopolitics_events 테이블
   - 검증: 시드 생성 시 국가 행위자 프로필 포함 확인
 
 - [ ] **M4: 통합 테스트** — GeopoliticsPlatform으로 전체 시뮬레이션 실행
@@ -111,3 +111,4 @@ mirofish-ko/src/
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | v2 OASIS Platform 서브클래싱 PRD 초안 작성 |
+| 2026-03-21 | M1-M3 완료 | GeopoliticsActionType(12개 액션), GeopoliticsPlatform(OASIS 디스패치 호환), geopolitics_events 테이블, build_geopolitics_profile 통합. M4(통합테스트)는 OASIS 런타임 필요 |

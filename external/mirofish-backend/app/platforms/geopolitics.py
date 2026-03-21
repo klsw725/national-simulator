@@ -1,20 +1,13 @@
+from app.platforms.geopolitics_actions import (
+    GEOPOLITICS_ACTION_LABELS_EXTENDED,
+    SOCIAL_TO_GEOPOLITICS,
+)
+
 GEOPOLITICS_ACTION_MAP = {
-    "create_post": "diplomatic_statement",
-    "quote_post": "official_response",
-    "repost": "alliance_support",
-    "like_post": "tacit_approval",
-    "follow": "diplomatic_engagement",
-    "do_nothing": "strategic_observation",
+    social: geo.value for social, geo in SOCIAL_TO_GEOPOLITICS.items()
 }
 
-GEOPOLITICS_ACTION_LABELS = {
-    "diplomatic_statement": "공식 성명 발표",
-    "official_response": "타국 성명에 대한 공식 반응",
-    "alliance_support": "동맹국 입장 지지/전파",
-    "tacit_approval": "타국 입장에 대한 암묵적 동의",
-    "diplomatic_engagement": "외교적 관계 형성 의사",
-    "strategic_observation": "전략적 관망/무반응",
-}
+GEOPOLITICS_ACTION_LABELS = GEOPOLITICS_ACTION_LABELS_EXTENDED
 
 ACTOR_TYPES = {
     "superpower": {
