@@ -70,16 +70,16 @@ backend/
 
 ## 4. 마일스톤
 
-- [ ] **M1: PG 스키마** — ontology_versions 테이블, simulation_results에 버전 참조 추가
+- [x] **M1: PG 스키마** — ontology_versions 테이블, simulation_results에 버전 참조 추가
   - 검증: `alembic upgrade head` 성공
 
-- [ ] **M2: 버전 등록 + diff** — 새 버전 등록 API, 버전 간 차이 계산
+- [x] **M2: 버전 등록 + diff** — 새 버전 등록 API, 버전 간 차이 계산
   - 검증: 두 스키마 비교 → 변경 목록 반환
 
-- [ ] **M3: 하위 호환성 검증** — CompatibilityChecker 구현, breaking 변경 감지
+- [x] **M3: 하위 호환성 검증** — CompatibilityChecker 구현, breaking 변경 감지
   - 검증: 필드 제거 → is_breaking=True 자동 설정
 
-- [ ] **M4: MiroFish 연동** — 온톨로지 생성 시 자동 버전 등록
+- [x] **M4: MiroFish 연동** — 온톨로지 생성 시 자동 버전 등록
   - 검증: 시뮬레이션 실행 → simulation_results에 ontology_version 기록
 
 ## 5. 성공 기준
@@ -112,3 +112,5 @@ backend/
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-20 | Draft | v2 온톨로지 스키마 버전관리 PRD 초안 작성 |
+| 2026-03-21 | M1-M3 완료 | PG 스키마 + 버전 등록/diff API + 호환성 검증 |
+| 2026-03-21 | M4 완료 | SimulationOrchestrator에서 ontology 단계 후 자동 버전 등록 + simulation_results.ontology_version 기록. 전체 마일스톤 완료 |
