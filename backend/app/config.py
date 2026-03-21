@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     llm_model_name: str = "qwen-plus"
     database_url: str = "postgresql://osint:osint_dev@localhost:5432/osint_simulator"
 
+    graph_build_timeout: float = 600.0
+    prepare_timeout: float = 900.0
+    run_timeout: float = 7200.0
+    report_timeout: float = 900.0
+    poll_interval: float = 5.0
+
     model_config = {"env_file": _find_env_file(), "extra": "ignore"}
 
 

@@ -51,12 +51,13 @@ SIMULATION_REQUIREMENT = """\
 - 아무것도 안 함 (DO_NOTHING): 전략적 관망/무반응
 """
 
-# 폴링 설정
-GRAPH_BUILD_TIMEOUT = 600.0    # 10분
-PREPARE_TIMEOUT = 900.0        # 15분
-RUN_TIMEOUT = 1800.0           # 30분
-REPORT_TIMEOUT = 900.0         # 15분
-POLL_INTERVAL = 5.0            # 5초
+from app.config import settings
+
+GRAPH_BUILD_TIMEOUT = settings.graph_build_timeout
+PREPARE_TIMEOUT = settings.prepare_timeout
+RUN_TIMEOUT = settings.run_timeout
+REPORT_TIMEOUT = settings.report_timeout
+POLL_INTERVAL = settings.poll_interval
 
 
 class SimulationOrchestrator:
