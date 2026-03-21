@@ -36,6 +36,22 @@ services:
     depends_on:
       - dozerdb
 
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: osint_simulator
+      POSTGRES_USER: osint
+      POSTGRES_PASSWORD: osint_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osint -d osint_simulator"]
+      interval: 5s
+      retries: 5
+    restart: unless-stopped
+
   gateway:
     build: ./backend
     ports:
@@ -44,9 +60,11 @@ services:
     environment:
       - SHADOWBROKER_URL=http://shadowbroker:8000
       - MIROFISH_URL=http://mirofish:5001
+      - DATABASE_URL=postgresql://osint:osint_dev@postgres:5432/osint_simulator
     depends_on:
       - shadowbroker
       - mirofish
+      - postgres
 
   frontend:
     build: ./frontend
@@ -60,3 +78,4 @@ services:
 volumes:
   dozerdb-data:
   dozerdb-logs:
+  pgdata:

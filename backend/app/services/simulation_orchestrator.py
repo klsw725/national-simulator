@@ -18,9 +18,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-import aiosqlite
-
 from app.clients.mirofish import MiroFishClient
+from app.database import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +64,9 @@ class SimulationOrchestrator:
         scenario_id: str,
         result_id: str,
         seed_text: str,
-        db_path: str,
     ) -> dict:
         """Step 1: Ontology generation. Returns ontology_result with project_id."""
-        await self._update_status(db_path, scenario_id, result_id, "simulating:ontology")
+        await self._update_status(scenario_id, result_id, "simulating:ontology")
         logger.info("[%s] Step 1: Ontology generation", scenario_id)
 
         ontology_result = await self.mf.generate_ontology(
@@ -80,7 +78,7 @@ class SimulationOrchestrator:
         project_id = ontology_result.get("project_id", "")
         logger.info("[%s] Ontology done → project_id=%s", scenario_id, project_id)
 
-        await self._update_ids(db_path, result_id, project_id=project_id)
+        await self._update_ids(result_id, project_id=project_id)
         return ontology_result
 
     async def _step_graph_build(
@@ -88,14 +86,13 @@ class SimulationOrchestrator:
         scenario_id: str,
         result_id: str,
         project_id: str,
-        db_path: str,
     ) -> None:
         """Step 2: Graph build. Uses project_id from step 1."""
-        await self._update_status(db_path, scenario_id, result_id, "simulating:graph_build")
+        await self._update_status(scenario_id, result_id, "simulating:graph_build")
         logger.info("[%s] Step 2: Graph build", scenario_id)
 
         task_id = await self.mf.build_graph(project_id)
-        await self._update_ids(db_path, result_id, graph_task_id=task_id)
+        await self._update_ids(result_id, graph_task_id=task_id)
 
         result = await self.mf.poll_until_done(
             poll_fn=lambda: self.mf.get_task_status(task_id),
@@ -104,7 +101,7 @@ class SimulationOrchestrator:
         )
         graph_id = result.get("result", {}).get("graph_id", "") if isinstance(result.get("result"), dict) else ""
         if graph_id:
-            await self._update_ids(db_path, result_id, graph_id=graph_id)
+            await self._update_ids(result_id, graph_id=graph_id)
         logger.info("[%s] Graph build done (graph_id=%s)", scenario_id, graph_id)
 
     async def _step_create_prepare(
@@ -112,19 +109,18 @@ class SimulationOrchestrator:
         scenario_id: str,
         result_id: str,
         project_id: str,
-        db_path: str,
     ) -> str:
         """Step 3+4: Simulation create + prepare. Returns mf_simulation_id."""
-        await self._update_status(db_path, scenario_id, result_id, "simulating:create")
+        await self._update_status(scenario_id, result_id, "simulating:create")
         logger.info("[%s] Step 3: Simulation create", scenario_id)
 
         sim_result = await self.mf.create_simulation(project_id)
         mf_simulation_id = sim_result.get("simulation_id", "")
         logger.info("[%s] Simulation created → id=%s", scenario_id, mf_simulation_id)
 
-        await self._update_ids(db_path, result_id, mf_simulation_id=mf_simulation_id)
+        await self._update_ids(result_id, mf_simulation_id=mf_simulation_id)
 
-        await self._update_status(db_path, scenario_id, result_id, "simulating:prepare")
+        await self._update_status(scenario_id, result_id, "simulating:prepare")
         logger.info("[%s] Step 4: Simulation prepare", scenario_id)
 
         prepare_task_id = await self.mf.prepare_simulation(mf_simulation_id)
@@ -144,10 +140,9 @@ class SimulationOrchestrator:
         result_id: str,
         mf_simulation_id: str,
         max_rounds: int,
-        db_path: str,
     ) -> None:
         """Step 5: Start simulation and poll until done."""
-        await self._update_status(db_path, scenario_id, result_id, "simulating:running")
+        await self._update_status(scenario_id, result_id, "simulating:running")
         logger.info("[%s] Step 5: Simulation start (max_rounds=%d)", scenario_id, max_rounds)
 
         await self.mf.start_simulation(
@@ -167,10 +162,9 @@ class SimulationOrchestrator:
         scenario_id: str,
         result_id: str,
         mf_simulation_id: str,
-        db_path: str,
     ) -> None:
         """Step 6: Generate report and poll until done."""
-        await self._update_status(db_path, scenario_id, result_id, "simulating:report")
+        await self._update_status(scenario_id, result_id, "simulating:report")
         logger.info("[%s] Step 6: Report generation", scenario_id)
 
         report_task_id = await self.mf.generate_report(mf_simulation_id)
@@ -182,52 +176,43 @@ class SimulationOrchestrator:
             )
         logger.info("[%s] Report done", scenario_id)
 
-    async def _save_checkpoint_data(self, db_path: str, result_id: str, data: dict) -> None:
+    async def _save_checkpoint_data(self, result_id: str, data: dict) -> None:
         """Save intermediate result JSON to checkpoint_data column."""
-        db = await aiosqlite.connect(db_path)
-        try:
-            await db.execute(
-                "UPDATE simulation_results SET checkpoint_data = ? WHERE id = ?",
-                (json.dumps(data, ensure_ascii=False), result_id),
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE simulation_results SET checkpoint_data = $1 WHERE id = $2",
+                json.dumps(data, ensure_ascii=False),
+                result_id,
             )
-            await db.commit()
-        finally:
-            await db.close()
 
-    async def _get_checkpoint_info(self, db_path: str, result_id: str) -> dict:
+    async def _get_checkpoint_info(self, result_id: str) -> dict:
         """Read current status, checkpoint_data, and MiroFish IDs from DB."""
-        db = await aiosqlite.connect(db_path)
-        try:
-            async with db.execute(
-                """SELECT status, checkpoint_data, mirofish_project_id, mirofish_simulation_id
-                   FROM simulation_results
-                   WHERE id = ?""",
-                (result_id,),
-            ) as cursor:
-                row = await cursor.fetchone()
-        finally:
-            await db.close()
-
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT status, checkpoint_data, mirofish_project_id, mirofish_simulation_id FROM simulation_results WHERE id = $1",
+                result_id,
+            )
         if not row:
             raise ValueError(f"Simulation result not found: {result_id}")
 
-        raw_checkpoint_data = row[1] or "{}"
+        raw = row["checkpoint_data"] or "{}"
         checkpoint_data: dict[str, Any] = {}
-        if isinstance(raw_checkpoint_data, str):
-            checkpoint_data = json.loads(raw_checkpoint_data)
-        elif isinstance(raw_checkpoint_data, dict):
-            checkpoint_data = raw_checkpoint_data
+        if isinstance(raw, str):
+            checkpoint_data = json.loads(raw)
+        elif isinstance(raw, dict):
+            checkpoint_data = raw
 
         return {
-            "status": row[0] or "",
+            "status": row["status"] or "",
             "checkpoint_data": checkpoint_data,
-            "mirofish_project_id": row[2] or "",
-            "mirofish_simulation_id": row[3] or "",
+            "mirofish_project_id": row["mirofish_project_id"] or "",
+            "mirofish_simulation_id": row["mirofish_simulation_id"] or "",
         }
 
     async def _apply_edits(
         self,
-        db_path: str,
         result_id: str,
         current_status: str,
         edits: dict,
@@ -239,53 +224,49 @@ class SimulationOrchestrator:
         if not edits:
             return
 
-        db = await aiosqlite.connect(db_path)
-        try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
             if current_status == "checkpoint:seed" and (
                 "seed_text" in edits or "text" in edits
             ):
                 seed_text = edits.get("seed_text", edits.get("text", ""))
-                async with db.execute(
-                    "SELECT scenario_id FROM simulation_results WHERE id = ?",
-                    (result_id,),
-                ) as cursor:
-                    row = await cursor.fetchone()
-                if row and row[0]:
-                    scenario_id = row[0]
-                    await db.execute(
+                row = await conn.fetchrow(
+                    "SELECT scenario_id FROM simulation_results WHERE id = $1",
+                    result_id,
+                )
+                if row and row["scenario_id"]:
+                    scenario_id = row["scenario_id"]
+                    await conn.execute(
                         """UPDATE seeds
-                           SET text = ?
-                           WHERE scenario_id = ?
+                           SET text = $1
+                           WHERE scenario_id = $2
                              AND id = (
                                  SELECT id FROM seeds
-                                 WHERE scenario_id = ?
-                                 ORDER BY created_at DESC
-                                 LIMIT 1
-                             )""",
-                        (seed_text, scenario_id, scenario_id),
+                                  WHERE scenario_id = $3
+                                  ORDER BY created_at DESC
+                                  LIMIT 1
+                              )""",
+                        seed_text,
+                        scenario_id,
+                        scenario_id,
                     )
 
             if current_status == "checkpoint:config" and "max_rounds" in edits:
-                async with db.execute(
-                    "SELECT scenario_id FROM simulation_results WHERE id = ?",
-                    (result_id,),
-                ) as cursor:
-                    row = await cursor.fetchone()
-                if row and row[0]:
-                    await db.execute(
-                        "UPDATE scenarios SET max_rounds = ? WHERE id = ?",
-                        (int(edits["max_rounds"]), row[0]),
+                row = await conn.fetchrow(
+                    "SELECT scenario_id FROM simulation_results WHERE id = $1",
+                    result_id,
+                )
+                if row and row["scenario_id"]:
+                    await conn.execute(
+                        "UPDATE scenarios SET max_rounds = $1 WHERE id = $2",
+                        int(edits["max_rounds"]),
+                        row["scenario_id"],
                     )
-
-            await db.commit()
-        finally:
-            await db.close()
 
     async def run_from_checkpoint(
         self,
         scenario_id: str,
         result_id: str,
-        db_path: str,
         max_rounds: int,
         edits: dict | None = None,
     ) -> None:
@@ -298,89 +279,96 @@ class SimulationOrchestrator:
         If this is the last segment (run+report), runs to completion.
         """
         try:
-            checkpoint_info = await self._get_checkpoint_info(db_path, result_id)
+            checkpoint_info = await self._get_checkpoint_info(result_id)
             current_status = checkpoint_info["status"]
             checkpoint_data = checkpoint_info.get("checkpoint_data", {})
             project_id = checkpoint_info.get("mirofish_project_id", "")
             mf_simulation_id = checkpoint_info.get("mirofish_simulation_id", "")
 
             if edits:
-                await self._apply_edits(db_path, result_id, current_status, edits)
+                await self._apply_edits(result_id, current_status, edits)
                 if current_status == "checkpoint:config" and "max_rounds" in edits:
                     max_rounds = int(edits["max_rounds"])
 
             if current_status == "checkpoint:seed":
-                db = await aiosqlite.connect(db_path)
-                try:
-                    async with db.execute(
-                        """SELECT text FROM seeds
-                           WHERE scenario_id = ?
-                           ORDER BY created_at DESC
-                           LIMIT 1""",
-                        (scenario_id,),
-                    ) as cursor:
-                        row = await cursor.fetchone()
-                finally:
-                    await db.close()
-
-                seed_text = row[0] if row and row[0] else ""
+                pool = get_pool()
+                async with pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT text FROM seeds WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+                        scenario_id,
+                    )
+                seed_text = row["text"] if row and row["text"] else ""
                 ontology_result = await self._step_ontology(
-                    scenario_id, result_id, seed_text, db_path,
+                    scenario_id,
+                    result_id,
+                    seed_text,
                 )
                 await self._save_checkpoint_data(
-                    db_path, result_id, {"ontology": ontology_result},
+                    result_id,
+                    {"ontology": ontology_result},
                 )
                 await self._update_status(
-                    db_path, scenario_id, result_id, "checkpoint:ontology",
+                    scenario_id,
+                    result_id,
+                    "checkpoint:ontology",
                 )
                 return
 
             if current_status == "checkpoint:ontology":
                 if not project_id:
                     project_id = checkpoint_data.get("ontology", {}).get("project_id", "")
-                await self._step_graph_build(scenario_id, result_id, project_id, db_path)
+                await self._step_graph_build(scenario_id, result_id, project_id)
                 await self._save_checkpoint_data(
-                    db_path, result_id, {"step": "graph_build"},
+                    result_id,
+                    {"step": "graph_build"},
                 )
-                await self._update_status(db_path, scenario_id, result_id, "checkpoint:graph")
+                await self._update_status(scenario_id, result_id, "checkpoint:graph")
                 return
 
             if current_status == "checkpoint:graph":
                 mf_simulation_id = await self._step_create_prepare(
-                    scenario_id, result_id, project_id, db_path,
+                    scenario_id,
+                    result_id,
+                    project_id,
                 )
                 await self._save_checkpoint_data(
-                    db_path, result_id, {"mf_simulation_id": mf_simulation_id},
+                    result_id,
+                    {"mf_simulation_id": mf_simulation_id},
                 )
                 await self._update_status(
-                    db_path, scenario_id, result_id, "checkpoint:profiles",
+                    scenario_id,
+                    result_id,
+                    "checkpoint:profiles",
                 )
                 return
 
             if current_status == "checkpoint:profiles":
                 await self._save_checkpoint_data(
-                    db_path,
                     result_id,
                     {"max_rounds": max_rounds, "platform": "twitter"},
                 )
-                await self._update_status(db_path, scenario_id, result_id, "checkpoint:config")
+                await self._update_status(scenario_id, result_id, "checkpoint:config")
                 return
 
             if current_status == "checkpoint:config":
                 if not mf_simulation_id:
                     mf_simulation_id = checkpoint_data.get("mf_simulation_id", "")
                 await self._step_run_simulation(
-                    scenario_id, result_id, mf_simulation_id, max_rounds, db_path,
+                    scenario_id,
+                    result_id,
+                    mf_simulation_id,
+                    max_rounds,
                 )
-                await self._step_report(scenario_id, result_id, mf_simulation_id, db_path)
+                await self._step_report(scenario_id, result_id, mf_simulation_id)
                 await self._collect_and_store_results(
-                    db_path, scenario_id, result_id, mf_simulation_id,
+                    result_id,
+                    mf_simulation_id,
                 )
                 return
 
         except Exception:
             logger.exception("[%s] Checkpoint pipeline failed", scenario_id)
-            await self._update_status(db_path, scenario_id, result_id, "failed")
+            await self._update_status(scenario_id, result_id, "failed")
 
     async def run_pipeline(
         self,
@@ -388,7 +376,6 @@ class SimulationOrchestrator:
         result_id: str,
         seed_text: str,
         max_rounds: int,
-        db_path: str,
     ) -> None:
         """전체 파이프라인 실행 (BackgroundTask에서 호출).
 
@@ -397,31 +384,37 @@ class SimulationOrchestrator:
         """
         try:
             ontology_result = await self._step_ontology(
-                scenario_id, result_id, seed_text, db_path,
+                scenario_id,
+                result_id,
+                seed_text,
             )
             project_id = ontology_result.get("project_id", "")
-            await self._step_graph_build(scenario_id, result_id, project_id, db_path)
+            await self._step_graph_build(scenario_id, result_id, project_id)
             mf_simulation_id = await self._step_create_prepare(
-                scenario_id, result_id, project_id, db_path,
+                scenario_id,
+                result_id,
+                project_id,
             )
             await self._step_run_simulation(
-                scenario_id, result_id, mf_simulation_id, max_rounds, db_path,
+                scenario_id,
+                result_id,
+                mf_simulation_id,
+                max_rounds,
             )
-            await self._step_report(scenario_id, result_id, mf_simulation_id, db_path)
+            await self._step_report(scenario_id, result_id, mf_simulation_id)
 
             # 결과 수집 + DB 저장
             await self._collect_and_store_results(
-                db_path, scenario_id, result_id, mf_simulation_id,
+                result_id,
+                mf_simulation_id,
             )
 
         except Exception:
             logger.exception("[%s] Pipeline failed", scenario_id)
-            await self._update_status(db_path, scenario_id, result_id, "failed")
+            await self._update_status(scenario_id, result_id, "failed")
 
     async def _collect_and_store_results(
         self,
-        db_path: str,
-        scenario_id: str,
         result_id: str,
         mf_simulation_id: str,
     ) -> None:
@@ -432,45 +425,54 @@ class SimulationOrchestrator:
         try:
             report_data = await self.mf.get_report_by_simulation(mf_simulation_id)
         except Exception:
-            logger.warning("[%s] Report retrieval failed, skipping", scenario_id)
+            logger.warning("[%s] Report retrieval failed, skipping", result_id)
 
         now = datetime.now(timezone.utc).isoformat()
         results_json = json.dumps(actions, ensure_ascii=False)
         report_text = report_data.get("markdown_content", "")
 
-        db = await aiosqlite.connect(db_path)
-        try:
-            await db.execute(
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            scenario_row = await conn.fetchrow(
+                "SELECT scenario_id FROM simulation_results WHERE id = $1",
+                result_id,
+            )
+            if not scenario_row:
+                raise ValueError(f"Simulation result not found: {result_id}")
+            scenario_id = scenario_row["scenario_id"]
+
+            await conn.execute(
                 """UPDATE simulation_results
-                   SET status = 'completed', results = ?, report = ?, completed_at = ?
-                   WHERE id = ?""",
-                (results_json, report_text, now, result_id),
+                   SET status = 'completed', results = $1, report = $2, completed_at = $3
+                   WHERE id = $4""",
+                results_json,
+                report_text,
+                now,
+                result_id,
             )
-            await db.execute(
+            await conn.execute(
                 """UPDATE scenarios
-                   SET simulation_status = 'completed', status = 'completed', updated_at = ?
-                   WHERE id = ?""",
-                (now, scenario_id),
+                   SET simulation_status = 'completed', status = 'completed', updated_at = $1
+                   WHERE id = $2""",
+                now,
+                scenario_id,
             )
-            await db.commit()
-        finally:
-            await db.close()
 
         logger.info("[%s] Pipeline completed successfully", scenario_id)
 
     async def _update_status(
         self,
-        db_path: str,
         scenario_id: str,
         result_id: str,
         status: str,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
-        db = await aiosqlite.connect(db_path)
-        try:
-            await db.execute(
-                "UPDATE simulation_results SET status = ? WHERE id = ?",
-                (status, result_id),
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE simulation_results SET status = $1 WHERE id = $2",
+                status,
+                result_id,
             )
             if status == "failed":
                 sim_status = "failed"
@@ -478,45 +480,45 @@ class SimulationOrchestrator:
                 sim_status = "checkpoint"
             else:
                 sim_status = "simulating"
-            await db.execute(
-                "UPDATE scenarios SET simulation_status = ?, status = ?, updated_at = ? WHERE id = ?",
-                (sim_status, sim_status, now, scenario_id),
+            await conn.execute(
+                "UPDATE scenarios SET simulation_status = $1, status = $2, updated_at = $3 WHERE id = $4",
+                sim_status,
+                sim_status,
+                now,
+                scenario_id,
             )
-            await db.commit()
-        finally:
-            await db.close()
 
     async def _update_ids(
         self,
-        db_path: str,
         result_id: str,
         project_id: str | None = None,
         mf_simulation_id: str | None = None,
         graph_task_id: str | None = None,
         graph_id: str | None = None,
     ) -> None:
-        db = await aiosqlite.connect(db_path)
-        try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
             if project_id:
-                await db.execute(
-                    "UPDATE simulation_results SET mirofish_project_id = ? WHERE id = ?",
-                    (project_id, result_id),
+                await conn.execute(
+                    "UPDATE simulation_results SET mirofish_project_id = $1 WHERE id = $2",
+                    project_id,
+                    result_id,
                 )
             if mf_simulation_id:
-                await db.execute(
-                    "UPDATE simulation_results SET mirofish_simulation_id = ? WHERE id = ?",
-                    (mf_simulation_id, result_id),
+                await conn.execute(
+                    "UPDATE simulation_results SET mirofish_simulation_id = $1 WHERE id = $2",
+                    mf_simulation_id,
+                    result_id,
                 )
             if graph_task_id:
-                await db.execute(
-                    "UPDATE simulation_results SET graph_task_id = ? WHERE id = ?",
-                    (graph_task_id, result_id),
+                await conn.execute(
+                    "UPDATE simulation_results SET graph_task_id = $1 WHERE id = $2",
+                    graph_task_id,
+                    result_id,
                 )
             if graph_id:
-                await db.execute(
-                    "UPDATE simulation_results SET graph_id = ? WHERE id = ?",
-                    (graph_id, result_id),
+                await conn.execute(
+                    "UPDATE simulation_results SET graph_id = $1 WHERE id = $2",
+                    graph_id,
+                    result_id,
                 )
-            await db.commit()
-        finally:
-            await db.close()

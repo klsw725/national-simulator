@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.clients.mirofish import MiroFishClient
 from app.clients.shadowbroker import ShadowBrokerClient
 from app.config import settings
-from app.database import init_db
+from app.database import close_db, init_db
 from app.routers import osint, scenario, simulation
 
 
@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.mf_client.close()
     await app.state.sb_client.close()
+    await close_db()
 
 
 app = FastAPI(
@@ -25,7 +26,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Simulation router first — more specific paths under /api/scenario/{id}/*
 app.include_router(simulation.router)
 app.include_router(scenario.router)
 app.include_router(osint.router)

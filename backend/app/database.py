@@ -1,8 +1,10 @@
-from pathlib import Path
+from __future__ import annotations
 
-import aiosqlite
+import asyncpg
 
 from app.config import settings
+
+_pool: asyncpg.Pool | None = None
 
 SCHEMA = """\
 CREATE TABLE IF NOT EXISTS scenarios (
@@ -48,49 +50,31 @@ CREATE TABLE IF NOT EXISTS simulation_results (
 """
 
 
-def _db_path() -> Path:
-    return Path(settings.database_path)
+def get_pool() -> asyncpg.Pool:
+    assert _pool is not None, "Database not initialized — call init_db() first"
+    return _pool
 
 
 async def get_db():
-    """FastAPI dependency — yields an aiosqlite connection."""
-    db_path = _db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(db_path))
-    db.row_factory = aiosqlite.Row
-    await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA foreign_keys=ON")
-    try:
-        yield db
-    finally:
-        await db.close()
+    """FastAPI dependency — yields an asyncpg connection from the pool."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        yield conn
 
 
-_MIGRATIONS = [
-    ("pipeline_mode", "ALTER TABLE simulation_results ADD COLUMN pipeline_mode TEXT DEFAULT 'auto'"),
-    ("checkpoint_data", "ALTER TABLE simulation_results ADD COLUMN checkpoint_data TEXT"),
-    ("graph_task_id", "ALTER TABLE simulation_results ADD COLUMN graph_task_id TEXT"),
-    ("graph_id", "ALTER TABLE simulation_results ADD COLUMN graph_id TEXT"),
-]
+async def init_db() -> None:
+    global _pool
+    pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
+    _pool = pool
+    async with pool.acquire() as conn:
+        for statement in SCHEMA.strip().split(";"):
+            stmt = statement.strip()
+            if stmt:
+                await conn.execute(stmt + ";")
 
 
-async def _migrate(db: aiosqlite.Connection) -> None:
-    cursor = await db.execute("PRAGMA table_info(simulation_results)")
-    existing = {row[1] for row in await cursor.fetchall()}
-    for col_name, ddl in _MIGRATIONS:
-        if col_name not in existing:
-            await db.execute(ddl)
-    await db.commit()
-
-
-async def init_db():
-    """Create tables on startup."""
-    db_path = _db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(db_path))
-    try:
-        await db.executescript(SCHEMA)
-        await db.commit()
-        await _migrate(db)
-    finally:
-        await db.close()
+async def close_db() -> None:
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     llm_model_name: str = "qwen-plus"
-    database_path: str = "data/osint_simulator.db"
+    database_url: str = "postgresql://osint:osint_dev@localhost:5432/osint_simulator"
 
     model_config = {"env_file": _find_env_file(), "extra": "ignore"}
 
