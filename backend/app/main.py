@@ -6,6 +6,7 @@ from app.clients.mirofish import MiroFishClient
 from app.clients.shadowbroker import ShadowBrokerClient
 from app.config import settings
 from app.database import close_db, init_db
+from app.geopolitics.router import router as geopolitics_router
 from app.ontology.router import router as ontology_router
 from app.resolution.router import router as resolution_router
 from app.routers import actions, osint, scenario, simulation
@@ -29,6 +30,7 @@ app = FastAPI(
 )
 
 app.include_router(actions.router)
+app.include_router(geopolitics_router)
 app.include_router(ontology_router)
 app.include_router(resolution_router)
 app.include_router(simulation.router)
