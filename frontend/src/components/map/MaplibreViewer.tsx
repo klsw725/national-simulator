@@ -301,6 +301,7 @@ export default function MaplibreViewer({
           filter={["has", "point_count"]}
           layout={{
             "text-field": "{point_count_abbreviated}",
+            "text-font": ["Open Sans Regular"],
             "text-size": 11,
             visibility: layerVisibility.ships ? "visible" : "none",
           }}
@@ -346,6 +347,7 @@ export default function MaplibreViewer({
           type="symbol"
           layout={{
             "text-field": ["get", "callsign"],
+            "text-font": ["Open Sans Regular"],
             "text-size": 10,
             "text-offset": [0, 1.4],
             "text-anchor": "top",
@@ -378,10 +380,11 @@ export default function MaplibreViewer({
           }}
         />
         <Layer
-          id="satellites-label"
+           id="satellites-label"
           type="symbol"
           layout={{
             "text-field": ["get", "name"],
+            "text-font": ["Open Sans Regular"],
             "text-size": 10,
             "text-offset": [0, 1.3],
             "text-anchor": "top",
@@ -414,10 +417,11 @@ export default function MaplibreViewer({
           }}
         />
         <Layer
-          id="military-bases-label"
+           id="military-bases-label"
           type="symbol"
           layout={{
             "text-field": ["get", "name"],
+            "text-font": ["Open Sans Regular"],
             "text-size": 10,
             "text-offset": [0, 1.5],
             "text-anchor": "top",
@@ -478,10 +482,11 @@ export default function MaplibreViewer({
           }}
         />
         <Layer
-          id="simulation-actors-label"
+           id="simulation-actors-label"
           type="symbol"
           layout={{
             "text-field": ["get", "actor"],
+            "text-font": ["Open Sans Regular"],
             "text-size": 12,
             "text-offset": [0, 2],
             "text-anchor": "top",

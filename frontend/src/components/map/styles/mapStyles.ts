@@ -2,7 +2,8 @@ import type { StyleSpecification } from "maplibre-gl";
 
 export const darkStyle: StyleSpecification = {
   version: 8,
-  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  glyphs:
+    "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
   sources: {
     "carto-dark": {
       type: "raster",
