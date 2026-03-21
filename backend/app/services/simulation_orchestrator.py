@@ -20,6 +20,7 @@ from typing import Any
 
 from app.clients.mirofish import MiroFishClient
 from app.database import get_pool
+from app.ontology.versioning import OntologyVersioning
 from app.services.action_logger import ActionLogger
 from app.services.geopolitics_mapper import map_actions_to_geopolitics
 from app.services.snapshot_service import SnapshotService
@@ -349,6 +350,7 @@ class SimulationOrchestrator:
                     result_id,
                     seed_text,
                 )
+                await self._register_ontology_version(scenario_id, result_id, ontology_result)
                 await self._save_checkpoint_data(
                     result_id,
                     {"ontology": ontology_result},
@@ -461,6 +463,7 @@ class SimulationOrchestrator:
                 result_id,
                 seed_text,
             )
+            await self._register_ontology_version(scenario_id, result_id, ontology_result)
             project_id = ontology_result.get("project_id", "")
             await self._step_graph_build(scenario_id, result_id, project_id)
             mf_simulation_id = await self._step_create_prepare(
@@ -612,3 +615,49 @@ class SimulationOrchestrator:
                     graph_id,
                     result_id,
                 )
+
+    async def _register_ontology_version(
+        self,
+        scenario_id: str,
+        result_id: str,
+        ontology_result: dict,
+    ) -> None:
+        schema_json = {
+            "entity_types": ontology_result.get("entity_types", []),
+            "edge_types": ontology_result.get("edge_types", []),
+        }
+
+        if not schema_json["entity_types"] and not schema_json["edge_types"]:
+            ontology_data = ontology_result.get("ontology", {})
+            if isinstance(ontology_data, dict):
+                schema_json = {
+                    "entity_types": ontology_data.get("entity_types", []),
+                    "edge_types": ontology_data.get("edge_types", []),
+                }
+
+        if not schema_json["entity_types"] and not schema_json["edge_types"]:
+            logger.warning("[%s] Ontology result has no entity/edge types, skipping version registration", scenario_id)
+            return
+
+        now_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        version_str = f"{scenario_id}-{now_ts}"
+
+        versioning = OntologyVersioning()
+        try:
+            reg = await versioning.register(
+                version=version_str,
+                schema_json=schema_json,
+                change_summary=f"Auto-registered from simulation pipeline for {scenario_id}",
+                created_by="pipeline",
+            )
+            actual_version = reg.get("version", version_str)
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE simulation_results SET ontology_version = $1 WHERE id = $2",
+                    actual_version,
+                    result_id,
+                )
+            logger.info("[%s] Ontology version registered: %s (skipped=%s)", scenario_id, actual_version, reg.get("skipped", False))
+        except Exception:
+            logger.warning("[%s] Ontology version registration failed, continuing", scenario_id, exc_info=True)
