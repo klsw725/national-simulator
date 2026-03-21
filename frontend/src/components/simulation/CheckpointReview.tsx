@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pause, Play, Eye, Edit3, Check, ChevronRight } from "lucide-react";
 import type { CheckpointData } from "@/types/simulation";
+import { getSeed } from "@/lib/gatewayApi";
 
 const STEP_ORDER = ["seed", "ontology", "graph", "profiles", "config"] as const;
 
@@ -30,6 +31,22 @@ export default function CheckpointReview({ checkpointData, onContinue, onCancel 
   const [maxRounds, setMaxRounds] = useState<number>(
     (data?.max_rounds as number) ?? 10
   );
+  const [seedMeta, setSeedMeta] = useState<{
+    vessels_count: number;
+    actors_identified: string[];
+    resolved_entity_count: number;
+    used_observation_ids: string[];
+    web_search_count: number;
+    tension_score: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (step === "seed" && checkpointData.scenario_id) {
+      getSeed(checkpointData.scenario_id)
+        .then((res) => setSeedMeta(res.metadata))
+        .catch(() => {});
+    }
+  }, [step, checkpointData.scenario_id]);
 
   const handleContinue = () => {
     if (step === "seed" && editable) {
@@ -131,6 +148,7 @@ export default function CheckpointReview({ checkpointData, onContinue, onCancel 
             seedText={seedText}
             editable={editable}
             onChange={setSeedText}
+            metadata={seedMeta}
           />
         )}
         {step === "ontology" && <OntologyReview data={data} />}
@@ -192,11 +210,34 @@ function SeedReview({
   seedText,
   editable,
   onChange,
+  metadata,
 }: {
   seedText: string;
   editable: boolean;
   onChange: (v: string) => void;
+  metadata: {
+    vessels_count: number;
+    actors_identified: string[];
+    resolved_entity_count: number;
+    used_observation_ids: string[];
+    web_search_count: number;
+    tension_score: number;
+  } | null;
 }) {
+  const statStyle = {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 11,
+    color: "var(--text-muted)",
+    padding: "3px 0",
+  } as const;
+
+  const valStyle = {
+    fontWeight: 700,
+    fontFamily: "monospace",
+    color: "var(--text-primary)",
+  } as const;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -205,6 +246,49 @@ function SeedReview({
           Seed Text
         </span>
       </div>
+      {metadata && (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "2px 16px",
+          padding: "8px 10px",
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border-secondary)",
+          borderRadius: 4,
+          marginBottom: 4,
+        }}>
+          <div style={statStyle}>
+            <span>군함</span>
+            <span style={valStyle}>{metadata.vessels_count}</span>
+          </div>
+          <div style={statStyle}>
+            <span>긴장도</span>
+            <span style={valStyle}>{metadata.tension_score.toFixed(1)}</span>
+          </div>
+          <div style={statStyle}>
+            <span>해소 엔티티</span>
+            <span style={{
+              ...valStyle,
+              color: metadata.resolved_entity_count > 0 ? "var(--accent-cyan)" : "var(--text-muted)",
+            }}>{metadata.resolved_entity_count}</span>
+          </div>
+          <div style={statStyle}>
+            <span>관측 사용</span>
+            <span style={{
+              ...valStyle,
+              color: metadata.used_observation_ids.length > 0 ? "var(--accent-cyan)" : "var(--text-muted)",
+            }}>{metadata.used_observation_ids.length}</span>
+          </div>
+          <div style={statStyle}>
+            <span>행위자</span>
+            <span style={valStyle}>{metadata.actors_identified.length}</span>
+          </div>
+          <div style={statStyle}>
+            <span>웹 검색</span>
+            <span style={valStyle}>{metadata.web_search_count}</span>
+          </div>
+        </div>
+      )}
       <textarea
         value={seedText}
         onChange={(e) => onChange(e.target.value)}

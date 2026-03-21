@@ -63,6 +63,23 @@ export function generateSeed(
   });
 }
 
+export function getSeed(
+  scenarioId: string
+): Promise<{
+  id: string;
+  text: string;
+  metadata: {
+    vessels_count: number;
+    actors_identified: string[];
+    resolved_entity_count: number;
+    used_observation_ids: string[];
+    web_search_count: number;
+    tension_score: number;
+  };
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/seed`);
+}
+
 export function startSimulation(
   scenarioId: string,
   mode: PipelineMode = "auto"

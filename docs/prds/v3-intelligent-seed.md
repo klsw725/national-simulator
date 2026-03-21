@@ -120,7 +120,7 @@ frontend/src/components/simulation/ScenarioForm.tsx  # 시드 미리보기에 �
 - [x] **M3: scenario_observations 연결 테이블 + 감사 트레일** — 시드 생성 시 사용된 observation_id 기록. GET /api/scenario/{id}/observations API 추가. 감사 트레일 조회 가능.
   - 검증: 시드 생성 후 scenario_observations에 레코드 존재. API로 조회 가능.
 
-- [ ] **M4: 프론트엔드 시드 미리보기에 해소된 엔티티 표시** — 시드 미리보기 UI에 해소된 엔티티 목록 (이름, 타입, 국적, 신뢰도) 표시. 사용된 observations 수 표시.
+- [x] **M4: 프론트엔드 시드 미리보기에 해소된 엔티티 표시** — 시드 미리보기 UI에 해소된 엔티티 목록 (이름, 타입, 국적, 신뢰도) 표시. 사용된 observations 수 표시.
   - 검증: 시드 미리보기에서 해소된 엔티티 정보가 표시됨
 
 ## 5. 성공 기준
