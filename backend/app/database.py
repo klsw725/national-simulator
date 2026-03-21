@@ -55,12 +55,24 @@ CREATE TABLE IF NOT EXISTS stix_objects (
     stix_json TEXT NOT NULL,
     confidence REAL DEFAULT 0.0,
     source TEXT,
+    branch_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS scenario_snapshots (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
+    fast_data TEXT,
+    slow_data TEXT,
+    snapshot_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_stix_objects_type ON stix_objects(object_type);
 CREATE INDEX IF NOT EXISTS idx_stix_objects_stix_id ON stix_objects(stix_id);
+CREATE INDEX IF NOT EXISTS idx_stix_objects_branch ON stix_objects(branch_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_scenario ON scenario_snapshots(scenario_id);
 """
 
 

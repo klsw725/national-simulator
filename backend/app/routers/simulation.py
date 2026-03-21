@@ -212,7 +212,7 @@ async def start_simulation(
         scenario_id,
     )
 
-    orchestrator = SimulationOrchestrator(mf_client)
+    orchestrator = SimulationOrchestrator(mf_client, sb_client=request.app.state.sb_client)
     background_tasks.add_task(
         orchestrator.run_pipeline,
         scenario_id=scenario_id,
@@ -307,7 +307,7 @@ async def continue_pipeline(
     scn_row = await conn.fetchrow("SELECT max_rounds FROM scenarios WHERE id = $1", scenario_id)
     max_rounds = scn_row["max_rounds"] if scn_row else 10
 
-    orchestrator = SimulationOrchestrator(mf_client)
+    orchestrator = SimulationOrchestrator(mf_client, sb_client=request.app.state.sb_client)
     edits = body.edits if body else None
 
     background_tasks.add_task(
@@ -586,3 +586,45 @@ async def get_live_config(
         return await mf_client.get_config_realtime(mf_sim_id)
     except Exception:
         return {"file_exists": False, "is_generating": False}
+
+
+@router.get("/{scenario_id}/snapshot")
+async def get_snapshot_metadata(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await conn.fetchrow(
+        """SELECT id, scenario_id, snapshot_at, created_at,
+                  length(fast_data) as fast_size, length(slow_data) as slow_size
+           FROM scenario_snapshots WHERE scenario_id = $1
+           ORDER BY created_at DESC LIMIT 1""",
+        scenario_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="No snapshot found for this scenario")
+    return {
+        "id": row["id"],
+        "scenario_id": row["scenario_id"],
+        "snapshot_at": row["snapshot_at"],
+        "fast_data_size_bytes": row["fast_size"] or 0,
+        "slow_data_size_bytes": row["slow_size"] or 0,
+    }
+
+
+@router.get("/{scenario_id}/snapshot/data")
+async def get_snapshot_data(
+    scenario_id: str,
+    source: str = "fast",
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    if source not in ("fast", "slow"):
+        raise HTTPException(status_code=400, detail="source must be fast or slow")
+
+    col = "slow_data" if source == "slow" else "fast_data"
+    row = await conn.fetchrow(
+        f"SELECT {col} FROM scenario_snapshots WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not row or not row[col]:
+        raise HTTPException(status_code=404, detail="No snapshot found")
+    return json.loads(row[col])

@@ -20,6 +20,7 @@ from typing import Any
 
 from app.clients.mirofish import MiroFishClient
 from app.database import get_pool
+from app.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,9 @@ POLL_INTERVAL = 5.0            # 5초
 
 
 class SimulationOrchestrator:
-    def __init__(self, mf_client: MiroFishClient):
+    def __init__(self, mf_client: MiroFishClient, sb_client=None):
         self.mf = mf_client
+        self.sb_client = sb_client
 
     async def _step_ontology(
         self,
@@ -291,6 +293,27 @@ class SimulationOrchestrator:
                     max_rounds = int(edits["max_rounds"])
 
             if current_status == "checkpoint:seed":
+                if self.sb_client:
+                    try:
+                        snapshot_svc = SnapshotService(self.sb_client)
+                        existing = await snapshot_svc.get_snapshot_metadata(scenario_id)
+                        if not existing:
+                            pool = get_pool()
+                            async with pool.acquire() as conn:
+                                scn_row = await conn.fetchrow(
+                                    "SELECT region_bbox FROM scenarios WHERE id = $1",
+                                    scenario_id,
+                                )
+                            bbox = (
+                                json.loads(scn_row["region_bbox"])
+                                if scn_row and scn_row["region_bbox"]
+                                else None
+                            )
+                            await snapshot_svc.create_snapshot(scenario_id, bbox)
+                            logger.info("[%s] OSINT snapshot saved (checkpoint mode)", scenario_id)
+                    except Exception:
+                        logger.warning("[%s] Snapshot creation failed, continuing", scenario_id)
+
                 pool = get_pool()
                 async with pool.acquire() as conn:
                     row = await conn.fetchrow(
@@ -383,6 +406,25 @@ class SimulationOrchestrator:
         실패 시 status='failed'로 업데이트하고 종료한다.
         """
         try:
+            if self.sb_client:
+                try:
+                    snapshot_svc = SnapshotService(self.sb_client)
+                    pool = get_pool()
+                    async with pool.acquire() as conn:
+                        scn_row = await conn.fetchrow(
+                            "SELECT region_bbox FROM scenarios WHERE id = $1",
+                            scenario_id,
+                        )
+                    bbox = (
+                        json.loads(scn_row["region_bbox"])
+                        if scn_row and scn_row["region_bbox"]
+                        else None
+                    )
+                    await snapshot_svc.create_snapshot(scenario_id, bbox)
+                    logger.info("[%s] OSINT snapshot saved", scenario_id)
+                except Exception:
+                    logger.warning("[%s] Snapshot creation failed, continuing", scenario_id)
+
             ontology_result = await self._step_ontology(
                 scenario_id,
                 result_id,
