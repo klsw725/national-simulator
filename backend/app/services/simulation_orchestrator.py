@@ -189,12 +189,14 @@ class SimulationOrchestrator:
 
         platform = simulation_params.platform if simulation_params else "twitter"
         simulation_hours = simulation_params.simulation_hours if simulation_params else None
+        tools_enabled = simulation_params.web_search_enabled if simulation_params else False
 
         await self.mf.start_simulation(
             mf_simulation_id,
             platform=platform,
             max_rounds=max_rounds,
             simulation_hours=simulation_hours,
+            tools_enabled=tools_enabled,
         )
         await self.mf.poll_until_done(
             poll_fn=lambda: self.mf.get_run_status(mf_simulation_id),

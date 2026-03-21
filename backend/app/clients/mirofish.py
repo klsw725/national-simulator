@@ -152,6 +152,7 @@ class MiroFishClient:
         platform: str = "twitter",
         max_rounds: int = 10,
         simulation_hours: int | None = None,
+        tools_enabled: bool = False,
     ) -> dict[str, Any]:
         """POST /api/simulation/start → {runner_status, ...}"""
         payload: dict[str, Any] = {
@@ -161,6 +162,8 @@ class MiroFishClient:
         }
         if simulation_hours is not None:
             payload["total_simulation_hours"] = simulation_hours
+        if tools_enabled:
+            payload["tools_enabled"] = True
 
         resp = await self._client.post("/api/simulation/start", json=payload)
         resp.raise_for_status()

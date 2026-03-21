@@ -326,10 +326,11 @@ class SimulationRunner:
     def start_simulation(
         cls,
         simulation_id: str,
-        platform: str = "parallel",  # twitter / reddit / parallel
-        max_rounds: int = None,  # 최대 시뮬레이션 라운드 (선택 사항, 너무 긴 시뮬레이션 잘라내기용)
-        enable_graph_memory_update: bool = False,  # 활동을 Zep 그래프에 업데이트할지 여부
-        graph_id: str = None,  # Zep 그래프 ID (그래프 업데이트 활성화 시 필수)
+        platform: str = "parallel",
+        max_rounds: int = None,
+        enable_graph_memory_update: bool = False,
+        graph_id: str = None,
+        tools_enabled: bool = False,
     ) -> SimulationRunState:
         """
         시뮬레이션 시작
@@ -438,15 +439,17 @@ class SimulationRunner:
             #   simulation.log        - 메인 프로세스 로그
 
             cmd = [
-                sys.executable,  # Python 인터프리터
+                sys.executable,
                 script_path,
                 "--config",
-                config_path,  # 전체 설정 파일 경로 사용
+                config_path,
             ]
 
-            # 최대 라운드가 지정된 경우 명령줄 인수에 추가
             if max_rounds is not None and max_rounds > 0:
                 cmd.extend(["--max-rounds", str(max_rounds)])
+
+            if tools_enabled:
+                cmd.append("--tools-enabled")
 
             # 메인 로그 파일 생성, stdout/stderr 파이프 버퍼가 가득 차서 프로세스가 차단되는 것을 방지
             main_log_path = os.path.join(sim_dir, "simulation.log")

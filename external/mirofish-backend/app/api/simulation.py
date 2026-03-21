@@ -1515,11 +1515,10 @@ def start_simulation():
             ), 400
 
         platform = data.get("platform", "parallel")
-        max_rounds = data.get("max_rounds")  # 선택 사항: 최대 시뮬레이션 라운드 수
-        enable_graph_memory_update = data.get(
-            "enable_graph_memory_update", False
-        )  # 선택 사항: 그래프 메모리 업데이트 활성화 여부
-        force = data.get("force", False)  # 선택 사항: 강제 재시작 여부
+        max_rounds = data.get("max_rounds")
+        enable_graph_memory_update = data.get("enable_graph_memory_update", False)
+        force = data.get("force", False)
+        tools_enabled = data.get("tools_enabled", False)
 
         # max_rounds 매개변수 검증
         if max_rounds is not None:
@@ -1644,6 +1643,7 @@ def start_simulation():
             max_rounds=max_rounds,
             enable_graph_memory_update=enable_graph_memory_update,
             graph_id=graph_id,
+            tools_enabled=tools_enabled,
         )
 
         # 시뮬레이션 상태 업데이트

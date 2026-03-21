@@ -413,6 +413,7 @@ class TwitterSimulationRunner:
         self.config = self._load_config()
         self.simulation_dir = os.path.dirname(config_path)
         self.wait_for_commands = wait_for_commands
+        self.tools_enabled = False
         self.env = None
         self.agent_graph = None
         self.ipc_handler = None
@@ -591,6 +592,21 @@ class TwitterSimulationRunner:
             available_actions=self.AVAILABLE_ACTIONS,
         )
 
+        if self.tools_enabled:
+            try:
+                from camel.toolkits import SearchToolkit
+                search_tools = [SearchToolkit().search_duckduckgo]
+                for agent in self.agent_graph.get_agents():
+                    if hasattr(agent, 'tools'):
+                        agent.tools = search_tools
+                    if hasattr(agent, 'single_iteration'):
+                        agent.single_iteration = False
+                print(f"SearchToolkit 주입 완료: {len(self.agent_graph.get_agents())}개 에이전트")
+            except ImportError:
+                print("경고: camel-ai[tools] 패키지가 설치되지 않아 검색 도구를 사용할 수 없습니다")
+            except Exception as e:
+                print(f"경고: 검색 도구 주입 실패: {e}")
+
         # 데이터베이스 경로
         db_path = self._get_db_path()
         if os.path.exists(db_path):
@@ -735,10 +751,15 @@ async def main():
         default=False,
         help="시뮬레이션 완료 후 환경을 즉시 종료하고 명령 대기 모드로 진입하지 않음",
     )
+    parser.add_argument(
+        "--tools-enabled",
+        action="store_true",
+        default=False,
+        help="에이전트에 DuckDuckGo 검색 도구 주입",
+    )
 
     args = parser.parse_args()
 
-    # main 함수 시작 시 shutdown 이벤트 생성
     global _shutdown_event
     _shutdown_event = asyncio.Event()
 
@@ -746,13 +767,13 @@ async def main():
         print(f"오류: 설정 파일이 존재하지 않음: {args.config}")
         sys.exit(1)
 
-    # 시뮬레이션 로그 설정 초기화 (고정 파일 이름 사용, 이전 로그 정리)
     simulation_dir = os.path.dirname(args.config) or "."
     setup_oasis_logging(os.path.join(simulation_dir, "log"))
 
     runner = TwitterSimulationRunner(
         config_path=args.config, wait_for_commands=not args.no_wait
     )
+    runner.tools_enabled = args.tools_enabled
     await runner.run(max_rounds=args.max_rounds)
 
 
