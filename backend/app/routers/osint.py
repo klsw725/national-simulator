@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from app.clients.shadowbroker import BBox, ShadowBrokerClient
+from app.services.observation_collector import ObservationCollector
 
 logger = logging.getLogger(__name__)
 
@@ -92,3 +93,28 @@ async def proxy_all_data(request: Request):
     """SB /api/live-data 프록시 — 전체 데이터."""
     sb = _get_sb(request)
     return await _proxy(request, sb.get_all_data())
+
+
+@router.post("/collect")
+async def collect_observations(
+    request: Request,
+    source: str = Query("ship", regex="^(ship|flight|satellite)$"),
+    auto_resolve: bool = Query(True),
+    s: float | None = Query(None, ge=-90, le=90),
+    w: float | None = Query(None, ge=-180, le=180),
+    n: float | None = Query(None, ge=-90, le=90),
+    e: float | None = Query(None, ge=-180, le=180),
+):
+    """SB 데이터 수집 → observations INSERT + Entity Resolution 매칭."""
+    sb = _get_sb(request)
+    bbox = _parse_bbox(s, w, n, e)
+    collector = ObservationCollector(sb)
+    try:
+        result = await collector.collect(
+            source_type=source, bbox=bbox, auto_resolve=auto_resolve,
+        )
+    except httpx.ConnectError:
+        return JSONResponse(status_code=503, content={"detail": "ShadowBroker unavailable"})
+    except httpx.TimeoutException:
+        return JSONResponse(status_code=504, content={"detail": "ShadowBroker timeout"})
+    return result
