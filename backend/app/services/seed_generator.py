@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 
 from app.clients.shadowbroker import BBox, ShadowBrokerClient
 from app.config import settings
+from app.database import get_pool
 from app.services.gdelt_extractor import extract_gdelt_context, format_gdelt_text
 from app.services.vessel_mapper import VesselMapper
 from app.services.web_search import WebSearchService
@@ -42,6 +43,7 @@ SEED_GENERATION_PROMPT = """\
 {osint_signals}
 
 {recent_news_section}
+{resolver_context_section}
 ## 시뮬레이션 질문
 {user_question}
 
@@ -308,6 +310,34 @@ class SeedGenerator:
             else "(추가 OSINT 신호 없음)"
         )
 
+        resolver_context_section = ""
+        resolved_entity_count = 0
+        used_observation_ids: list[str] = []
+        try:
+            resolver_ctx = await self._get_resolver_context(bbox)
+            if resolver_ctx["entities"]:
+                lines = []
+                for ent in resolver_ctx["entities"][:20]:
+                    lines.append(f"- **{ent['name']}** ({ent['object_type']}) — 신뢰도 {ent['confidence']:.0%}")
+                resolved_entity_count = len(resolver_ctx["entities"])
+                used_observation_ids = resolver_ctx["observation_ids"]
+                entity_section = "\n".join(lines)
+
+                proximity_text = ""
+                if resolver_ctx["proximity_pairs"]:
+                    prox_lines = []
+                    for pair in resolver_ctx["proximity_pairs"][:10]:
+                        prox_lines.append(
+                            f"- {pair['source_type']} ↔ {pair['target_type']}: {pair['distance_km']:.1f}km"
+                        )
+                    proximity_text = "\n## 근접 엔티티 관계 (10km 이내)\n" + "\n".join(prox_lines) + "\n"
+
+                resolver_context_section = (
+                    f"## 엔티티 해소 결과 (Entity Resolution)\n{entity_section}\n{proximity_text}"
+                )
+        except Exception:
+            logger.warning("Resolver context enrichment failed, continuing without it")
+
         recent_news_section = ""
         web_search_count = 0
         if web_search_enabled:
@@ -331,6 +361,7 @@ class SeedGenerator:
             gdelt_context=gdelt_text,
             osint_signals=osint_signals,
             recent_news_section=recent_news_section,
+            resolver_context_section=resolver_context_section,
             user_question=question,
             region_name=region_name or "미지정",
         )
@@ -349,6 +380,8 @@ class SeedGenerator:
             "tension_score": gdelt_context["tension_score"],
             "osint_sources_used": len([s for s in osint_signals_parts if s]),
             "web_search_count": web_search_count,
+            "resolved_entity_count": resolved_entity_count,
+            "used_observation_ids": used_observation_ids,
             "data_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -365,8 +398,69 @@ class SeedGenerator:
 
         return {"text": seed_text, "metadata": metadata}
 
+    async def _get_resolver_context(self, bbox: list[float]) -> dict[str, Any]:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            obs_rows = await conn.fetch(
+                """SELECT id, source_type, source_id
+                   FROM observations
+                   WHERE ST_Intersects(geom, ST_MakeEnvelope($1, $2, $3, $4, 4326))
+                   LIMIT 200""",
+                bbox[0], bbox[1], bbox[2], bbox[3],
+            )
+
+            observation_ids = [row["id"] for row in obs_rows]
+            if not observation_ids:
+                return {"entities": [], "proximity_pairs": [], "observation_ids": []}
+
+            placeholders = ", ".join(f"${i+1}" for i in range(len(observation_ids)))
+            decision_rows = await conn.fetch(
+                f"""SELECT rd.observation_id, rd.resolved_stix_id, rd.confidence, rd.decision_type,
+                           so.object_type, so.stix_json
+                    FROM resolution_decisions rd
+                    JOIN stix_objects so ON so.stix_id = rd.resolved_stix_id
+                    WHERE rd.observation_id IN ({placeholders})
+                      AND rd.decision_type IN ('auto', 'manual_merge')
+                      AND rd.confidence >= 0.7
+                    ORDER BY rd.confidence DESC
+                    LIMIT 20""",
+                *observation_ids,
+            )
+
+            import json as _json
+            entities = []
+            for row in decision_rows:
+                stix_data = _json.loads(row["stix_json"]) if row["stix_json"] else {}
+                entities.append({
+                    "name": stix_data.get("name", row["resolved_stix_id"]),
+                    "object_type": row["object_type"],
+                    "confidence": row["confidence"],
+                    "stix_id": row["resolved_stix_id"],
+                })
+
+            prox_rows = await conn.fetch(
+                """SELECT a.source_type as src_type, b.source_type as tgt_type,
+                          ST_Distance(a.geom::geography, b.geom::geography) / 1000.0 as distance_km
+                   FROM observations a, observations b
+                   WHERE a.id < b.id
+                     AND ST_DWithin(a.geom::geography, b.geom::geography, 10000)
+                     AND ST_Intersects(a.geom, ST_MakeEnvelope($1, $2, $3, $4, 4326))
+                   LIMIT 10""",
+                bbox[0], bbox[1], bbox[2], bbox[3],
+            )
+
+            proximity_pairs = [
+                {"source_type": r["src_type"], "target_type": r["tgt_type"], "distance_km": r["distance_km"]}
+                for r in prox_rows
+            ]
+
+        return {
+            "entities": entities,
+            "proximity_pairs": proximity_pairs,
+            "observation_ids": observation_ids,
+        }
+
     async def _call_llm(self, prompt: str) -> str:
-        """OpenAI Compatible API로 시드 문서 생성."""
         response = await self._llm.chat.completions.create(
             model=settings.llm_model_name,
             messages=[

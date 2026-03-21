@@ -9,6 +9,9 @@ class SeedMetadata(BaseModel):
     gdelt_events_count: int = 0
     tension_score: float = 0.0
     osint_sources_used: int = 0
+    web_search_count: int = 0
+    resolved_entity_count: int = 0
+    used_observation_ids: list[str] = []
     data_timestamp: str = ""
 
 

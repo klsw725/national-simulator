@@ -95,12 +95,24 @@ async def generate_seed(
         now,
         scenario_id,
     )
+
+    used_obs_ids = result["metadata"].get("used_observation_ids", [])
+    if used_obs_ids:
+        for obs_id in used_obs_ids:
+            so_id = f"so_{uuid.uuid4().hex[:12]}"
+            await conn.execute(
+                """INSERT INTO scenario_observations (id, scenario_id, observation_id, used_in_seed, created_at)
+                   VALUES ($1, $2, $3, TRUE, $4) ON CONFLICT DO NOTHING""",
+                so_id, scenario_id, obs_id, now,
+            )
+
     await ActionLogger.log(
         "seed.generate",
         scenario_id,
         payload={
             "seed_id": seed_id,
             "vessels_count": result["metadata"].get("vessels_count", 0),
+            "resolved_entity_count": result["metadata"].get("resolved_entity_count", 0),
         },
     )
 
@@ -692,3 +704,38 @@ async def get_audit_log(
         offset=offset,
     )
     return {"scenario_id": scenario_id, "count": len(events), "events": events}
+
+
+@router.get("/{scenario_id}/observations")
+async def get_scenario_observations(
+    scenario_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    rows = await conn.fetch(
+        """SELECT so.id, so.observation_id, so.used_in_seed, so.created_at,
+                  o.source_type, o.source_id, o.observed_at
+           FROM scenario_observations so
+           LEFT JOIN observations o ON o.id = so.observation_id
+           WHERE so.scenario_id = $1
+           ORDER BY so.created_at DESC
+           LIMIT $2 OFFSET $3""",
+        scenario_id, limit, offset,
+    )
+    return {
+        "scenario_id": scenario_id,
+        "count": len(rows),
+        "observations": [
+            {
+                "id": r["id"],
+                "observation_id": r["observation_id"],
+                "source_type": r["source_type"],
+                "source_id": r["source_id"],
+                "used_in_seed": r["used_in_seed"],
+                "observed_at": r["observed_at"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ],
+    }

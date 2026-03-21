@@ -111,13 +111,13 @@ frontend/src/components/simulation/ScenarioForm.tsx  # 시드 미리보기에 �
 
 ## 4. 마일스톤
 
-- [ ] **M1: SeedGenerator에 Resolver 컨텍스트 주입** — bbox 기반 observations + resolution_decisions 조회. 해소된 엔티티의 STIX 정보 (타입, 국적, 군사력)를 시드 LLM 프롬프트에 추가. SeedMetadata에 resolved_entity_count 필드 추가.
+- [x] **M1: SeedGenerator에 Resolver 컨텍스트 주입** — bbox 기반 observations + resolution_decisions 조회. 해소된 엔티티의 STIX 정보 (타입, 국적, 군사력)를 시드 LLM 프롬프트에 추가. SeedMetadata에 resolved_entity_count 필드 추가.
   - 검증: bbox 내 해소된 엔티티가 있을 때 시드 문서에 "엔티티 해소 결과" 섹션 포함
 
-- [ ] **M2: PostGIS 공간 분석 → 시드 컨텍스트** — ST_DWithin(10km)으로 근접 엔티티 쌍 조회. 근접 관계 정보를 시드 프롬프트에 추가. 거리, 소스 타입, 해소 상태 포함.
+- [x] **M2: PostGIS 공간 분석 → 시드 컨텍스트** — ST_DWithin(10km)으로 근접 엔티티 쌍 조회. 근접 관계 정보를 시드 프롬프트에 추가. 거리, 소스 타입, 해소 상태 포함.
   - 검증: 10km 이내 두 관측이 존재할 때 시드에 "근접 엔티티 관계" 정보 반영
 
-- [ ] **M3: scenario_observations 연결 테이블 + 감사 트레일** — 시드 생성 시 사용된 observation_id 기록. GET /api/scenario/{id}/observations API 추가. 감사 트레일 조회 가능.
+- [x] **M3: scenario_observations 연결 테이블 + 감사 트레일** — 시드 생성 시 사용된 observation_id 기록. GET /api/scenario/{id}/observations API 추가. 감사 트레일 조회 가능.
   - 검증: 시드 생성 후 scenario_observations에 레코드 존재. API로 조회 가능.
 
 - [ ] **M4: 프론트엔드 시드 미리보기에 해소된 엔티티 표시** — 시드 미리보기 UI에 해소된 엔티티 목록 (이름, 타입, 국적, 신뢰도) 표시. 사용된 observations 수 표시.
@@ -157,3 +157,4 @@ frontend/src/components/simulation/ScenarioForm.tsx  # 시드 미리보기에 �
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V3-2 지능형 시드 생성 PRD 초안 작성 |
+| 2026-03-21 | M1-M3 완료 | _get_resolver_context(): bbox 내 observations → resolution_decisions JOIN stix_objects 조회 (최대 20개, confidence ≥ 0.7). ST_DWithin(10km) 근접 엔티티 쌍 조회. 시드 프롬프트에 "엔티티 해소 결과" + "근접 엔티티 관계" 섹션 주입. scenario_observations 테이블 + GET API. SeedMetadata에 resolved_entity_count, used_observation_ids 추가. M4(프론트엔드)는 향후. |

@@ -167,6 +167,16 @@ CREATE INDEX IF NOT EXISTS idx_ontology_versions_hash ON ontology_versions(schem
 CREATE INDEX IF NOT EXISTS idx_geopolitics_events_scenario ON geopolitics_events(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_geopolitics_events_actor ON geopolitics_events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_geopolitics_events_type ON geopolitics_events(action_type);
+
+CREATE TABLE IF NOT EXISTS scenario_observations (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    observation_id TEXT NOT NULL,
+    used_in_seed BOOLEAN DEFAULT FALSE,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scenario_obs_scenario ON scenario_observations(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_scenario_obs_observation ON scenario_observations(observation_id);
 """
 
 
