@@ -98,7 +98,7 @@ async def proxy_all_data(request: Request):
 @router.post("/collect")
 async def collect_observations(
     request: Request,
-    source: str = Query("ship", regex="^(ship|flight|satellite)$"),
+    source: str = Query("ship", pattern="^(ship|flight|satellite)$"),
     auto_resolve: bool = Query(True),
     s: float | None = Query(None, ge=-90, le=90),
     w: float | None = Query(None, ge=-180, le=180),

@@ -62,9 +62,12 @@ services:
       - MIROFISH_URL=http://mirofish:5001
       - DATABASE_URL=postgresql://osint:osint_dev@postgres:5432/osint_simulator
     depends_on:
-      - shadowbroker
-      - mirofish
-      - postgres
+      shadowbroker:
+        condition: service_started
+      mirofish:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
