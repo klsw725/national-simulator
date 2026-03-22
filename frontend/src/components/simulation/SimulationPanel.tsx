@@ -14,8 +14,9 @@ import IntermediateResults from "./IntermediateResults";
 import GraphTab from "./GraphTab";
 import DecisionPointView from "./DecisionPointView";
 import GeopoliticsView from "./GeopoliticsView";
+import HealthDashboard from "./HealthDashboard";
 
-type Tab = "create" | "progress" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report";
+type Tab = "create" | "progress" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "health";
 
 interface Props {
   open: boolean;
@@ -48,6 +49,7 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
     { key: "geopolitics", label: "지정학", show: isCompleted },
     { key: "timeline", label: "타임라인", show: isCompleted },
     { key: "report", label: "리포트", show: isCompleted },
+    { key: "health", label: "헬스", show: true },
   ];
 
   const visibleTabs = tabs.filter((t) => t.show);
@@ -323,6 +325,8 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
         {tab === "report" && (
           <ReportViewer markdown={sim.reportMarkdown} />
         )}
+
+        {tab === "health" && <HealthDashboard />}
       </div>
     </div>
   );

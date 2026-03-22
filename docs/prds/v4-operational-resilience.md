@@ -115,7 +115,7 @@ frontend/src/components/simulation/SimulationPanel.tsx  # 헬스체크 표시
 - [x] **M2: 파이프라인 자동 복구** — 파이프라인 실패 시 마지막 성공 체크포인트 확인. 재시도 가능한 에러(네트워크, 타임아웃)이면 자동 재시작. 영구 에러(데이터 무결성)이면 실패 유지.
   - 검증: 시뮬레이션 중 MiroFish 재시작 → 파이프라인 자동 복구 → 완료
 
-- [ ] **M3: 서비스 헬스체크 대시보드** — GET /api/health/detailed 엔드포인트. 모든 외부 서비스 상태 + 응답 시간 + 서킷 상태. 프론트엔드 HealthDashboard (서비스별 상태 인디케이터, 자동 새로고침).
+- [x] **M3: 서비스 헬스체크 대시보드** — GET /api/health/detailed 엔드포인트. 모든 외부 서비스 상태 + 응답 시간 + 서킷 상태. 프론트엔드 HealthDashboard (서비스별 상태 인디케이터, 자동 새로고침).
   - 검증: ShadowBroker 중단 → 대시보드에 "unhealthy" 표시 → 복구 후 "healthy" 전환
 
 ## 5. 성공 기준
@@ -139,3 +139,5 @@ frontend/src/components/simulation/SimulationPanel.tsx  # 헬스체크 표시
 |------|------|------|
 | 2026-03-21 | Draft | V4-6 운영 안정성 PRD 초안 작성 |
 | 2026-03-21 | M1 Complete | CircuitBreaker 구현 + MiroFishClient/ShadowBrokerClient에 tenacity 재시도(3회, 지수 백오프 2s→4s→8s) + 서킷 브레이커(5회→open, 30s→half-open) 적용. health_check는 제외. |
+| 2026-03-22 | M2 Complete | run_from_failure() — 기존 ID로 복구 지점 추론 + POST /retry 엔드포인트 + 프론트엔드 재시도 버튼 |
+| 2026-03-22 | M3 Complete | GET /api/health/detailed — MiroFish/SB/DB 상태+응답시간+서킷 상태. HealthDashboard 컴포넌트 (15초 자동 갱신) + SimulationPanel "헬스" 탭 |

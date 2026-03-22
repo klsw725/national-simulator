@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.clients.mirofish import MiroFishClient
 from app.clients.shadowbroker import ShadowBrokerClient
@@ -45,3 +45,59 @@ async def health_check():
         "service": "osint-simulator-gateway",
         "port": settings.gateway_port,
     }
+
+
+@app.get("/api/health/detailed")
+async def health_check_detailed(request: Request):
+    import time
+    results: dict = {"gateway": {"status": "healthy"}}
+
+    mf_client = request.app.state.mf_client
+    try:
+        t0 = time.monotonic()
+        ok = await mf_client.health_check()
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        results["mirofish"] = {
+            "status": "healthy" if ok else "unhealthy",
+            "latency_ms": latency_ms,
+            "circuit_breaker": mf_client._circuit_breaker.state,
+            "failure_count": mf_client._circuit_breaker.failure_count,
+        }
+    except Exception:
+        results["mirofish"] = {
+            "status": "unhealthy",
+            "circuit_breaker": mf_client._circuit_breaker.state,
+            "failure_count": mf_client._circuit_breaker.failure_count,
+        }
+
+    sb_client = request.app.state.sb_client
+    try:
+        t0 = time.monotonic()
+        await sb_client.health_check()
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        results["shadowbroker"] = {
+            "status": "healthy",
+            "latency_ms": latency_ms,
+            "circuit_breaker": sb_client._circuit_breaker.state,
+            "failure_count": sb_client._circuit_breaker.failure_count,
+        }
+    except Exception:
+        results["shadowbroker"] = {
+            "status": "unhealthy",
+            "circuit_breaker": sb_client._circuit_breaker.state,
+            "failure_count": sb_client._circuit_breaker.failure_count,
+        }
+
+    from app.database import get_pool
+    try:
+        pool = get_pool()
+        t0 = time.monotonic()
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        results["database"] = {"status": "healthy", "latency_ms": latency_ms}
+    except Exception:
+        results["database"] = {"status": "unhealthy"}
+
+    all_healthy = all(s.get("status") == "healthy" for s in results.values())
+    return {"status": "healthy" if all_healthy else "degraded", "services": results}

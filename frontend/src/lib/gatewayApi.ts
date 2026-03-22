@@ -64,6 +64,13 @@ export function generateSeed(
   });
 }
 
+export function getHealthDetailed(): Promise<{
+  status: string;
+  services: Record<string, { status: string; latency_ms?: number; circuit_breaker?: string; failure_count?: number }>;
+}> {
+  return fetchJSON("/api/health/detailed");
+}
+
 export function retrySimulation(
   scenarioId: string,
 ): Promise<{ scenario_id: string; result_id: string; recovery_point: string; message: string }> {
