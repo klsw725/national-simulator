@@ -31,8 +31,17 @@ SEED_GENERATION_PROMPT = """\
 ## 군함 배치 현황
 {vessel_deployment}
 
+## 군사 기지 배치
+{military_bases}
+
 ## 군용 항공기 활동
 {military_flights}
+
+## 특별 추적 항공기 (VIP/정부 전용기)
+{tracked_flights}
+
+## 무인기(UAV) 활동
+{uav_activity}
 
 ## 정찰/감시 위성 활동
 {satellite_activity}
@@ -151,6 +160,139 @@ class SeedGenerator:
             lines.append(f"- 무인기(UAV) {len(uavs)}대 감지 ({', '.join(uav_countries)})")
 
         return "\n".join(lines) if lines else ""
+
+    def _summarize_military_bases(self, bases: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(bases, bbox)
+        if not filtered:
+            return ""
+
+        by_country: dict[str, list[str]] = {}
+        for base in filtered:
+            country = base.get("country", "불명")
+            branch = base.get("branch", "기타")
+            by_country.setdefault(country, []).append(branch)
+
+        lines: list[str] = []
+        for country, branches in by_country.items():
+            branch_list = ", ".join(sorted(set(branches)))
+            lines.append(f"- {country}: {len(branches)}개 기지 ({branch_list})")
+
+        return "\n".join(lines) if lines else ""
+
+    def _summarize_uavs(self, uavs: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(uavs, bbox)
+        if not filtered:
+            return ""
+
+        by_country: dict[str, list[dict]] = {}
+        for uav in filtered:
+            country = uav.get("country", "불명")
+            by_country.setdefault(country, []).append(uav)
+
+        lines: list[str] = []
+        for country, country_uavs in by_country.items():
+            from collections import Counter
+
+            type_counts = Counter(u.get("uav_type", "UAV") for u in country_uavs)
+            for uav_type, count in type_counts.most_common():
+                models = sorted(
+                    {
+                        u.get("aircraft_model", "모델 불명")
+                        for u in country_uavs
+                        if u.get("uav_type", "UAV") == uav_type
+                    },
+                )
+                model_text = ", ".join(models)
+                lines.append(f"- {country}: {uav_type} {count}대 ({model_text})")
+
+        return "\n".join(lines) if lines else ""
+
+    def _summarize_tracked_flights(self, flights: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(flights, bbox)
+        if not filtered:
+            return ""
+
+        lines: list[str] = []
+        seen: set[tuple[str, str]] = set()
+        for flight in filtered:
+            callsign = flight.get("callsign", "UNKNOWN")
+            country = flight.get("country", "불명")
+            item = (callsign, country)
+            if item in seen:
+                continue
+            seen.add(item)
+            lines.append(f"- {callsign} ({country})")
+
+        return "\n".join(lines) if lines else ""
+
+    def _summarize_private_jets(self, jets: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(jets, bbox)
+        if not filtered:
+            return ""
+
+        countries = [j.get("country") for j in filtered if j.get("country")]
+        if not countries:
+            return f"- 프라이빗 제트 {len(filtered)}대 감지"
+
+        from collections import Counter
+
+        counts = Counter(countries)
+        country_text = ", ".join(f"{name} {count}대" for name, count in counts.most_common(5))
+        return f"- 프라이빗 제트 {len(filtered)}대 감지 ({country_text})"
+
+    def _summarize_kiwisdr(self, nodes: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(nodes, bbox, lng_key="lon")
+        if not filtered:
+            return ""
+        return f"- HF 수신기(KiwiSDR) {len(filtered)}개 감지 — SIGINT 가용"
+
+    def _summarize_power_plants(self, plants: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(plants, bbox)
+        if not filtered:
+            return ""
+
+        from collections import Counter
+
+        fuel_counts = Counter(p.get("fuel_type", "기타") for p in filtered)
+        fuel_types = ", ".join(f"{fuel} {count}개" for fuel, count in fuel_counts.most_common())
+        nuclear_count = sum(
+            1
+            for p in filtered
+            if str(p.get("fuel_type", "")).strip().lower() in {"nuclear", "nuclear_power"}
+        )
+        nuclear_suffix = f", 원전 {nuclear_count}개" if nuclear_count else ""
+        return f"- 발전소 {len(filtered)}개 ({fuel_types}{nuclear_suffix})"
+
+    def _summarize_datacenters(self, dcs: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(dcs, bbox)
+        if not filtered:
+            return ""
+
+        companies = sorted({dc.get("company", "미상") for dc in filtered})
+        company_text = ", ".join(companies[:8])
+        if len(companies) > 8:
+            company_text += ", ..."
+        return f"- 데이터센터 {len(filtered)}개 ({company_text})"
+
+    def _summarize_earthquakes(self, quakes: list[dict], bbox: list[float]) -> str:
+        filtered = self._filter_by_bbox(quakes, bbox)
+        strong = [q for q in filtered if q.get("mag", 0) >= 4.0]
+        if not strong:
+            return ""
+
+        max_quake = max(strong, key=lambda q: q.get("mag", 0))
+        max_mag = max_quake.get("mag", 0)
+        place = max_quake.get("place", "위치 불명")
+        return f"- 지진 {len(strong)}건 (최대 M{max_mag:.1f}, {place})"
+
+    def _summarize_space_weather(self, sw: dict | None) -> str:
+        if not isinstance(sw, dict):
+            return ""
+        kp_index = sw.get("kp_index")
+        if not isinstance(kp_index, (int, float)) or kp_index < 5:
+            return ""
+        kp_text = sw.get("kp_text", "STORM")
+        return f"- 우주 기상 경보: Kp={kp_index} ({kp_text}) — 위성·통신 교란 가능"
 
     def _summarize_satellites(self, satellites: list[dict], bbox: list[float]) -> str:
         filtered = self._filter_by_bbox(satellites, bbox)
@@ -298,6 +440,15 @@ class SeedGenerator:
         mil_flights = fast_data.get("military_flights", [])
         flights_text = self._summarize_flights(mil_flights, bbox)
 
+        military_bases = slow_data.get("military_bases", [])
+        military_bases_text = self._summarize_military_bases(military_bases, bbox)
+
+        tracked_flights = fast_data.get("tracked_flights", [])
+        tracked_text = self._summarize_tracked_flights(tracked_flights, bbox)
+
+        uavs = fast_data.get("uavs", [])
+        uav_text = self._summarize_uavs(uavs, bbox)
+
         satellites = fast_data.get("satellites", [])
         satellite_text = self._summarize_satellites(satellites, bbox)
 
@@ -308,6 +459,12 @@ class SeedGenerator:
         stocks_text = self._summarize_stocks(slow_data.get("stocks", []))
         fires_text = self._summarize_fires(slow_data.get("firms_fires", []), bbox)
         frontlines_text = self._summarize_frontlines(slow_data.get("frontlines", {}), bbox)
+        private_jets_text = self._summarize_private_jets(fast_data.get("private_jets", []), bbox)
+        kiwisdr_text = self._summarize_kiwisdr(slow_data.get("kiwisdr", []), bbox)
+        power_plants_text = self._summarize_power_plants(slow_data.get("power_plants", []), bbox)
+        datacenters_text = self._summarize_datacenters(slow_data.get("datacenters", []), bbox)
+        earthquakes_text = self._summarize_earthquakes(slow_data.get("earthquakes", []), bbox)
+        space_weather_text = self._summarize_space_weather(slow_data.get("space_weather"))
 
         osint_signals_parts = [
             s
@@ -319,6 +476,12 @@ class SeedGenerator:
                 stocks_text,
                 fires_text,
                 frontlines_text,
+                private_jets_text,
+                kiwisdr_text,
+                power_plants_text,
+                datacenters_text,
+                earthquakes_text,
+                space_weather_text,
             ]
             if s
         ]
@@ -374,11 +537,24 @@ class SeedGenerator:
 
         filtered_flights = self._filter_by_bbox(mil_flights, bbox)
         filtered_sats = self._filter_by_bbox(satellites, bbox)
+        filtered_military_bases = self._filter_by_bbox(military_bases, bbox)
+        filtered_tracked_flights = self._filter_by_bbox(tracked_flights, bbox)
+        filtered_uavs = self._filter_by_bbox(uavs, bbox)
+        filtered_private_jets = self._filter_by_bbox(fast_data.get("private_jets", []), bbox)
+        filtered_kiwisdr = self._filter_by_bbox(slow_data.get("kiwisdr", []), bbox, lng_key="lon")
+        filtered_power_plants = self._filter_by_bbox(slow_data.get("power_plants", []), bbox)
+        filtered_datacenters = self._filter_by_bbox(slow_data.get("datacenters", []), bbox)
+        filtered_earthquakes = self._filter_by_bbox(slow_data.get("earthquakes", []), bbox)
+        filtered_quakes_m4 = [q for q in filtered_earthquakes if q.get("mag", 0) >= 4.0]
+        storm_space_weather = self._summarize_space_weather(slow_data.get("space_weather"))
 
         return {
             "prompt_vars": {
                 "vessel_deployment": vessel_text or "(해역 내 군함 미감지)",
+                "military_bases": military_bases_text or "(해역 내 군사 기지 미감지)",
                 "military_flights": flights_text or "(해역 내 군용 항공기 미감지)",
+                "tracked_flights": tracked_text or "(해역 내 특별 추적 항공기 미감지)",
+                "uav_activity": uav_text or "(해역 내 UAV 활동 미감지)",
                 "satellite_activity": satellite_text or "(해역 상공 군사 위성 미감지)",
                 "gdelt_context": gdelt_text,
                 "osint_signals": osint_signals,
@@ -390,11 +566,20 @@ class SeedGenerator:
             "metadata": {
                 "vessels_count": len(military_vessels),
                 "actors_identified": list(actors.keys()),
+                "military_bases_count": len(filtered_military_bases),
                 "military_flights_count": len(filtered_flights),
+                "tracked_flights_count": len(filtered_tracked_flights),
+                "uavs_count": len(filtered_uavs),
                 "satellites_count": len(filtered_sats),
                 "gdelt_events_count": gdelt_context["event_count"],
                 "tension_score": gdelt_context["tension_score"],
                 "osint_sources_used": len([s for s in osint_signals_parts if s]),
+                "private_jets_count": len(filtered_private_jets),
+                "kiwisdr_count": len(filtered_kiwisdr),
+                "power_plants_count": len(filtered_power_plants),
+                "datacenters_count": len(filtered_datacenters),
+                "earthquakes_m4_count": len(filtered_quakes_m4),
+                "space_weather_storm": bool(storm_space_weather),
                 "web_search_count": web_search_count,
                 "resolved_entity_count": resolved_entity_count,
                 "used_observation_ids": used_observation_ids,
