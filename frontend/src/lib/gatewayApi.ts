@@ -64,6 +64,15 @@ export function generateSeed(
   });
 }
 
+export function retrySimulation(
+  scenarioId: string,
+): Promise<{ scenario_id: string; result_id: string; recovery_point: string; message: string }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/retry`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+  });
+}
+
 export function recommendParams(
   scenarioId: string,
 ): Promise<{

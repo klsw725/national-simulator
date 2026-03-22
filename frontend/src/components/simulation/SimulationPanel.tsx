@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, RotateCcw } from "lucide-react";
+import { retrySimulation } from "@/lib/gatewayApi";
 import type { UseSimulationReturn } from "@/hooks/useSimulation";
 import ScenarioForm from "./ScenarioForm";
 import PipelineProgress from "./PipelineProgress";
@@ -144,29 +145,59 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
             border: "1px solid rgba(239, 68, 68, 0.25)",
             borderRadius: 4,
             display: "flex",
-            alignItems: "flex-start",
-            gap: 8,
+            flexDirection: "column",
+            gap: 6,
             flexShrink: 0,
           }}
         >
-          <AlertTriangle size={14} color="var(--accent-red)" style={{ marginTop: 1, flexShrink: 0 }} />
-          <div style={{ fontSize: 12, color: "var(--accent-red)", lineHeight: 1.4 }}>
-            {sim.error}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <AlertTriangle size={14} color="var(--accent-red)" style={{ marginTop: 1, flexShrink: 0 }} />
+            <div style={{ fontSize: 12, color: "var(--accent-red)", lineHeight: 1.4, flex: 1 }}>
+              {sim.error}
+            </div>
+            <button
+              onClick={sim.clearError}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--accent-red)",
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              <X size={12} />
+            </button>
           </div>
-          <button
-            onClick={sim.clearError}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--accent-red)",
-              cursor: "pointer",
-              padding: 0,
-              marginLeft: "auto",
-              flexShrink: 0,
-            }}
-          >
-            <X size={12} />
-          </button>
+          {sim.pipelineStatus?.status === "failed" && sim.activeScenario && (
+            <button
+              onClick={async () => {
+                sim.clearError();
+                try {
+                  await retrySimulation(sim.activeScenario!.id);
+                  setTab("progress");
+                  sim.selectScenario(sim.activeScenario!);
+                } catch { }
+              }}
+              style={{
+                padding: "6px 10px",
+                background: "rgba(239, 68, 68, 0.15)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                borderRadius: 4,
+                color: "var(--accent-red)",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+              }}
+            >
+              <RotateCcw size={11} />
+              마지막 체크포인트에서 재시도
+            </button>
+          )}
         </div>
       )}
 

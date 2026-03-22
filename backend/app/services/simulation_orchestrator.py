@@ -798,3 +798,77 @@ class SimulationOrchestrator:
             logger.info("[%s] Ontology version registered: %s (skipped=%s)", scenario_id, actual_version, reg.get("skipped", False))
         except Exception:
             logger.warning("[%s] Ontology version registration failed, continuing", scenario_id, exc_info=True)
+
+    @staticmethod
+    def determine_recovery_point(row) -> str:
+        if not row["mirofish_project_id"]:
+            return "ontology"
+        if not row["graph_id"]:
+            return "graph_build"
+        if not row["mirofish_simulation_id"]:
+            return "create_prepare"
+        return "run_simulation"
+
+    async def run_from_failure(
+        self,
+        scenario_id: str,
+        result_id: str,
+        seed_text: str,
+        max_rounds: int,
+        recovery_point: str,
+        project_id: str = "",
+        graph_id: str = "",
+        mf_simulation_id: str = "",
+        simulation_params: SimulationParams | None = None,
+    ) -> None:
+        try:
+            logger.info(
+                "[%s] Retrying from '%s' (project=%s, graph=%s, sim=%s)",
+                scenario_id, recovery_point, project_id, graph_id, mf_simulation_id,
+            )
+            await ActionLogger.log(
+                "pipeline.retry",
+                scenario_id,
+                payload={"recovery_point": recovery_point, "result_id": result_id},
+            )
+
+            if recovery_point == "ontology":
+                ontology_result = await self._step_ontology(
+                    scenario_id, result_id, seed_text, simulation_params=simulation_params,
+                )
+                await self._register_ontology_version(scenario_id, result_id, ontology_result)
+                project_id = ontology_result.get("project_id", "")
+                recovery_point = "graph_build"
+
+            if recovery_point == "graph_build":
+                await self._step_graph_build(scenario_id, result_id, project_id)
+                recovery_point = "create_prepare"
+
+            if recovery_point == "create_prepare":
+                mf_simulation_id = await self._step_create_prepare(
+                    scenario_id, result_id, project_id, simulation_params=simulation_params,
+                )
+                recovery_point = "run_simulation"
+
+            if recovery_point == "run_simulation":
+                await self._step_run_simulation(
+                    scenario_id, result_id, mf_simulation_id,
+                    max_rounds, simulation_params=simulation_params,
+                )
+                await self._step_report(scenario_id, result_id, mf_simulation_id)
+
+            await self._collect_and_store_results(
+                result_id, mf_simulation_id, simulation_params=simulation_params,
+            )
+
+        except Exception as exc:
+            logger.exception("[%s] Retry pipeline failed", scenario_id)
+            await self._update_status(scenario_id, result_id, "failed")
+            try:
+                await ActionLogger.log(
+                    "pipeline.retry_failed",
+                    scenario_id,
+                    payload={"error": str(exc)[:500], "recovery_point": recovery_point},
+                )
+            except Exception:
+                logger.warning("[%s] Failed to log retry error", scenario_id, exc_info=True)

@@ -604,6 +604,77 @@ async def get_checkpoint(
     )
 
 
+@router.post("/{scenario_id}/retry", status_code=202)
+async def retry_simulation(
+    scenario_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await conn.fetchrow(
+        "SELECT * FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="No simulation found for this scenario")
+
+    if row["status"] != "failed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only retry failed simulations (current status: {row['status']})",
+        )
+
+    mf_client = request.app.state.mf_client
+    if not await mf_client.health_check():
+        raise HTTPException(status_code=503, detail="MiroFish service unavailable")
+
+    recovery_point = SimulationOrchestrator.determine_recovery_point(row)
+
+    seed_row = await conn.fetchrow(
+        "SELECT text FROM seeds WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not seed_row:
+        raise HTTPException(status_code=400, detail="Seed document not found")
+
+    scn_row = await conn.fetchrow(
+        "SELECT max_rounds, simulation_params FROM scenarios WHERE id = $1",
+        scenario_id,
+    )
+    max_rounds = scn_row["max_rounds"] if scn_row else 10
+    raw_params = scn_row["simulation_params"] if scn_row and "simulation_params" in scn_row else "{}"
+    sim_params = SimulationParams.model_validate_json(raw_params or "{}")
+
+    orchestrator = SimulationOrchestrator(mf_client, sb_client=request.app.state.sb_client)
+    background_tasks.add_task(
+        orchestrator.run_from_failure,
+        scenario_id=scenario_id,
+        result_id=row["id"],
+        seed_text=seed_row["text"],
+        max_rounds=max_rounds,
+        recovery_point=recovery_point,
+        project_id=row["mirofish_project_id"] or "",
+        graph_id=row["graph_id"] or "",
+        mf_simulation_id=row["mirofish_simulation_id"] or "",
+        simulation_params=sim_params,
+    )
+    await ActionLogger.log(
+        "simulation.retry",
+        scenario_id,
+        payload={
+            "result_id": row["id"],
+            "recovery_point": recovery_point,
+        },
+    )
+
+    return {
+        "scenario_id": scenario_id,
+        "result_id": row["id"],
+        "recovery_point": recovery_point,
+        "message": f"Retrying from '{recovery_point}'",
+    }
+
+
 @router.post("/{scenario_id}/continue", status_code=202)
 async def continue_pipeline(
     scenario_id: str,
