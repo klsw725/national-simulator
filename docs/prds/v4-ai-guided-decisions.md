@@ -152,7 +152,7 @@ frontend/src/lib/gatewayApi.ts              # DecisionPoint API 호출
 - [x] **M4: 프론트엔드 DecisionPointView** — 선택지 카드 UI (제목, 설명, 신뢰도 바, AI 추론). 추천 옵션 하이라이트. 커스텀 입력 지원. 선택 → resolve API 호출 → 파이프라인 재개.
   - 검증: 시드 선택 결정 지점에서 3개 옵션 카드 표시 → 선택 → 파이프라인 진행
 
-- [ ] **M5: SimulationOrchestrator interactive 모드 통합** — interactive=true일 때 시드 생성 후 일시정지. 분석관 결정 후 재개. 파라미터 권장 표시. 기존 auto 모드 유지.
+- [x] **M5: SimulationOrchestrator interactive 모드 통합** — interactive=true일 때 시드 생성 후 일시정지. 분석관 결정 후 재개. 파라미터 권장 표시. 기존 auto 모드 유지.
   - 검증: interactive 모드로 시나리오 실행 → 시드 선택 지점에서 일시정지 → 선택 후 진행
 
 ## 5. 성공 기준
@@ -187,3 +187,4 @@ frontend/src/lib/gatewayApi.ts              # DecisionPoint API 호출
 | 2026-03-21 | M2 Complete | SeedGenerator.generate_options() — 3개 관점별(군사/외교/균형) 시드 병렬 생성 + OSINT 기반 confidence + DecisionPoint 자동 저장 |
 | 2026-03-21 | M3 Complete | param_recommender.recommend_params() — quick/standard/deep 3개 파라미터 옵션 + OSINT 메타데이터 기반 자동 추천 |
 | 2026-03-21 | M4 Complete | DecisionPointView 컴포넌트 — 옵션 카드 UI + confidence 바 + AI 추천 배지 + 커스텀 입력 + SimulationPanel 통합 |
+| 2026-03-21 | M5 Complete | mode=interactive 파이프라인 — 백그라운드 옵션 생성 → checkpoint:decision 일시정지 → 분석관 선택 → 시드/파라미터 적용 → 파이프라인 재개 |

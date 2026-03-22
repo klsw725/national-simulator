@@ -189,7 +189,42 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
         )}
 
         {tab === "progress" && (
-          hasCheckpoint ? (
+          hasCheckpoint && sim.checkpointData?.step === "decision" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
+                  AI 결정 지점
+                </span>
+                <span style={{
+                  fontSize: 10, padding: "2px 6px", borderRadius: 999,
+                  background: "rgba(245, 158, 11, 0.15)", color: "var(--accent-amber, #f59e0b)", fontWeight: 600,
+                }}>
+                  선택 대기
+                </span>
+              </div>
+              <DecisionPointView
+                scenarioId={sim.activeScenario!.id}
+                type="seed_selection"
+                onResolved={() => {}}
+              />
+              <DecisionPointView
+                scenarioId={sim.activeScenario!.id}
+                type="parameter_recommendation"
+                onResolved={() => {}}
+              />
+              <button
+                onClick={() => sim.continueCheckpoint()}
+                style={{
+                  width: "100%", padding: "10px 12px",
+                  background: "var(--accent-cyan)", border: "none", borderRadius: 4,
+                  color: "var(--bg-primary)", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                }}
+              >
+                선택 완료 — 시뮬레이션 시작
+              </button>
+            </div>
+          ) : hasCheckpoint ? (
             <CheckpointReview
               checkpointData={sim.checkpointData!}
               onContinue={sim.continueCheckpoint}

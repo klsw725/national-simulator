@@ -31,7 +31,9 @@ const STEPS = [
 function activeStepIndex(status: string): number {
   switch (status) {
     case "starting":
+    case "generating_options":
     case "checkpoint:seed":
+    case "checkpoint:decision":
       return 0;
     case "simulating:ontology":
     case "checkpoint:ontology":

@@ -7,7 +7,7 @@ import asyncpg
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from app.database import get_db
+from app.database import get_db, get_pool
 from app.models.decision_point import (
     DecisionOption,
     DecisionPointCreate,
@@ -301,7 +301,88 @@ CHECKPOINT_STEPS = {
     "checkpoint:profiles": {"step": "profiles", "editable": False},
     "checkpoint:config": {"step": "config", "editable": True},
     "checkpoint:geopolitics": {"step": "geopolitics", "editable": False},
+    "checkpoint:decision": {"step": "decision", "editable": True},
 }
+
+
+async def _generate_decision_options(
+    scenario_id: str,
+    result_id: str,
+    sb_client,
+    bbox: list[float],
+    question: str,
+    region_name: str,
+    web_search_enabled: bool,
+) -> None:
+    pool = get_pool()
+    try:
+        generator = SeedGenerator(sb_client)
+        seed_result = await generator.generate_options(
+            bbox=bbox,
+            question=question,
+            region_name=region_name,
+            web_search_enabled=web_search_enabled,
+        )
+
+        param_result = recommend_params(seed_result["metadata"])
+
+        now = datetime.now(timezone.utc).isoformat()
+        async with pool.acquire() as conn:
+            seed_dp_id = f"dp_{uuid.uuid4().hex[:12]}"
+            await conn.execute(
+                """INSERT INTO decision_points
+                   (id, scenario_id, type, options, recommended, allow_custom, status, created_at)
+                   VALUES ($1, $2, 'seed_selection', $3, $4, TRUE, 'pending', $5)""",
+                seed_dp_id, scenario_id,
+                json.dumps(seed_result["options"], ensure_ascii=False),
+                seed_result["recommended"], now,
+            )
+
+            param_dp_id = f"dp_{uuid.uuid4().hex[:12]}"
+            await conn.execute(
+                """INSERT INTO decision_points
+                   (id, scenario_id, type, options, recommended, allow_custom, status, created_at)
+                   VALUES ($1, $2, 'parameter_recommendation', $3, $4, TRUE, 'pending', $5)""",
+                param_dp_id, scenario_id,
+                json.dumps(param_result["options"], ensure_ascii=False),
+                param_result["recommended"], now,
+            )
+
+            await conn.execute(
+                "UPDATE simulation_results SET status = 'checkpoint:decision' WHERE id = $1",
+                result_id,
+            )
+            await conn.execute(
+                "UPDATE scenarios SET simulation_status = 'checkpoint', status = 'checkpoint', updated_at = $1 WHERE id = $2",
+                now, scenario_id,
+            )
+
+        await ActionLogger.log(
+            "decision_options.generated",
+            scenario_id,
+            payload={"seed_dp_id": seed_dp_id, "param_dp_id": param_dp_id},
+        )
+        logger.info("[%s] Decision options generated: seed=%s, params=%s", scenario_id, seed_dp_id, param_dp_id)
+
+    except Exception as exc:
+        logger.exception("[%s] Decision options generation failed", scenario_id)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE simulation_results SET status = 'failed' WHERE id = $1",
+                result_id,
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            await conn.execute(
+                "UPDATE scenarios SET simulation_status = 'failed', status = 'failed', updated_at = $1 WHERE id = $2",
+                now, scenario_id,
+            )
+        try:
+            await ActionLogger.log(
+                "decision_options.failed", scenario_id,
+                payload={"error": str(exc)[:500]},
+            )
+        except Exception:
+            pass
 
 
 @router.post("/{scenario_id}/simulate", status_code=202)
@@ -318,8 +399,8 @@ async def start_simulation(
     mode="checkpoint": 첫 체크포인트(시드 검토)에서 일시정지
     """
     mode = (body.mode if body else "auto") or "auto"
-    if mode not in ("auto", "checkpoint"):
-        raise HTTPException(status_code=400, detail="mode must be 'auto' or 'checkpoint'")
+    if mode not in ("auto", "checkpoint", "interactive"):
+        raise HTTPException(status_code=400, detail="mode must be 'auto', 'checkpoint', or 'interactive'")
 
     scenario = await conn.fetchrow("SELECT * FROM scenarios WHERE id = $1", scenario_id)
     if not scenario:
@@ -375,6 +456,47 @@ async def start_simulation(
             "status": "checkpoint:seed",
             "pipeline_mode": "checkpoint",
             "message": "Pipeline paused at seed review checkpoint",
+        }
+
+    if mode == "interactive":
+        await conn.execute(
+            """INSERT INTO simulation_results
+               (id, scenario_id, status, platform, pipeline_mode, created_at)
+               VALUES ($1, $2, 'generating_options', $3, 'interactive', $4)""",
+            result_id,
+            scenario_id,
+            sim_params_cp.platform,
+            now,
+        )
+        await conn.execute(
+            "UPDATE scenarios SET simulation_status = 'simulating', status = 'simulating', updated_at = $1 WHERE id = $2",
+            now,
+            scenario_id,
+        )
+
+        sb_client = request.app.state.sb_client
+        background_tasks.add_task(
+            _generate_decision_options,
+            scenario_id=scenario_id,
+            result_id=result_id,
+            sb_client=sb_client,
+            bbox=json.loads(scenario["region_bbox"]),
+            question=scenario["question"],
+            region_name=scenario["region_name"],
+            web_search_enabled=sim_params_cp.web_search_enabled,
+        )
+        await ActionLogger.log(
+            "simulation.start",
+            scenario_id,
+            payload={"result_id": result_id, "mode": "interactive"},
+        )
+
+        return {
+            "scenario_id": scenario_id,
+            "result_id": result_id,
+            "status": "generating_options",
+            "pipeline_mode": "interactive",
+            "message": "Generating AI decision options",
         }
 
     raw_params = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
@@ -463,6 +585,15 @@ async def get_checkpoint(
         config["max_rounds"] = scn_row["max_rounds"] if scn_row else 10
         checkpoint_data = config
 
+    if status == "checkpoint:decision":
+        dp_rows = await conn.fetch(
+            "SELECT id, type, status FROM decision_points WHERE scenario_id = $1 AND status = 'pending' ORDER BY created_at",
+            scenario_id,
+        )
+        checkpoint_data = {
+            "pending_decisions": [{"id": r["id"], "type": r["type"]} for r in dp_rows],
+        }
+
     return CheckpointResponse(
         scenario_id=scenario_id,
         result_id=row["id"],
@@ -495,8 +626,83 @@ async def continue_pipeline(
             detail=f"Cannot continue — not at a checkpoint (current status: {status})",
         )
 
-    if row["pipeline_mode"] != "checkpoint":
-        raise HTTPException(status_code=400, detail="Pipeline is not in checkpoint mode")
+    if row["pipeline_mode"] not in ("checkpoint", "interactive"):
+        raise HTTPException(status_code=400, detail="Pipeline is not in checkpoint/interactive mode")
+
+    if status == "checkpoint:decision":
+        pending = await conn.fetch(
+            "SELECT id, type FROM decision_points WHERE scenario_id = $1 AND status = 'pending'",
+            scenario_id,
+        )
+        if pending:
+            pending_types = [r["type"] for r in pending]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unresolved decision points: {', '.join(pending_types)}",
+            )
+
+        seed_dp = await conn.fetchrow(
+            "SELECT options, selected_option_id, custom_data FROM decision_points WHERE scenario_id = $1 AND type = 'seed_selection' AND status = 'resolved' ORDER BY resolved_at DESC LIMIT 1",
+            scenario_id,
+        )
+        if seed_dp:
+            if seed_dp["selected_option_id"] and seed_dp["options"]:
+                options = json.loads(seed_dp["options"])
+                selected = next((o for o in options if o["id"] == seed_dp["selected_option_id"]), None)
+                if selected and selected.get("data", {}).get("seed_text"):
+                    await conn.execute(
+                        "UPDATE seeds SET text = $1 WHERE scenario_id = $2 AND id = (SELECT id FROM seeds WHERE scenario_id = $3 ORDER BY created_at DESC LIMIT 1)",
+                        selected["data"]["seed_text"], scenario_id, scenario_id,
+                    )
+            elif seed_dp["custom_data"]:
+                custom = json.loads(seed_dp["custom_data"])
+                if custom.get("seed_text"):
+                    await conn.execute(
+                        "UPDATE seeds SET text = $1 WHERE scenario_id = $2 AND id = (SELECT id FROM seeds WHERE scenario_id = $3 ORDER BY created_at DESC LIMIT 1)",
+                        custom["seed_text"], scenario_id, scenario_id,
+                    )
+
+        param_dp = await conn.fetchrow(
+            "SELECT options, selected_option_id, custom_data FROM decision_points WHERE scenario_id = $1 AND type = 'parameter_recommendation' AND status = 'resolved' ORDER BY resolved_at DESC LIMIT 1",
+            scenario_id,
+        )
+        if param_dp:
+            params_data = None
+            if param_dp["selected_option_id"] and param_dp["options"]:
+                options = json.loads(param_dp["options"])
+                selected = next((o for o in options if o["id"] == param_dp["selected_option_id"]), None)
+                if selected:
+                    params_data = selected.get("data", {})
+            elif param_dp["custom_data"]:
+                params_data = json.loads(param_dp["custom_data"])
+
+            if params_data:
+                if "max_rounds" in params_data:
+                    await conn.execute(
+                        "UPDATE scenarios SET max_rounds = $1 WHERE id = $2",
+                        int(params_data["max_rounds"]), scenario_id,
+                    )
+                sim_update_fields = {}
+                for key in ("platform", "simulation_hours", "geopolitics_enabled", "web_search_enabled"):
+                    if key in params_data:
+                        sim_update_fields[key] = params_data[key]
+                if sim_update_fields:
+                    scn = await conn.fetchrow("SELECT simulation_params FROM scenarios WHERE id = $1", scenario_id)
+                    current_params = json.loads(scn["simulation_params"]) if scn and scn["simulation_params"] else {}
+                    current_params.update(sim_update_fields)
+                    await conn.execute(
+                        "UPDATE scenarios SET simulation_params = $1 WHERE id = $2",
+                        json.dumps(current_params), scenario_id,
+                    )
+
+        await conn.execute(
+            "UPDATE simulation_results SET status = 'checkpoint:seed', pipeline_mode = 'checkpoint' WHERE id = $1",
+            row["id"],
+        )
+        await ActionLogger.log(
+            "decision.applied", scenario_id,
+            payload={"result_id": row["id"]},
+        )
 
     mf_client = request.app.state.mf_client
     if status != "checkpoint:profiles" and not await mf_client.health_check():

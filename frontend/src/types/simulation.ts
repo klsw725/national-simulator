@@ -22,7 +22,7 @@ export interface Scenario {
   updated_at: string;
 }
 
-export type PipelineMode = 'auto' | 'checkpoint';
+export type PipelineMode = 'auto' | 'checkpoint' | 'interactive';
 
 export interface ScenarioFormData {
   name: string;
