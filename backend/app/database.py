@@ -250,6 +250,23 @@ CREATE INDEX IF NOT EXISTS idx_osint_snapshots_time ON osint_snapshots(snapshot_
 
 CREATE INDEX IF NOT EXISTS idx_obs_source_time ON observations(source_type, source_id, observed_at);
 CREATE INDEX IF NOT EXISTS idx_obs_time_range ON observations(observed_at);
+
+CREATE TABLE IF NOT EXISTS whatif_branches (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
+    parent_result_id TEXT NOT NULL,
+    branch_result_id TEXT,
+    branch_point_round INTEGER,
+    modification TEXT NOT NULL,
+    execution_mode TEXT DEFAULT 'full_replay',
+    world_model_strategy TEXT DEFAULT 'regenerate',
+    status TEXT DEFAULT 'pending',
+    comparison_data TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_whatif_branches_scenario ON whatif_branches(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_whatif_branches_status ON whatif_branches(status);
 """
 
 

@@ -1852,3 +1852,141 @@ async def inject_event(
         "status": "pending",
         "injected_at_round": checkpoint.get("current_round", 0),
     }
+
+
+# ── What-If Counterfactual Replay ──
+
+
+@router.post("/{scenario_id}/simulation/whatif", status_code=201)
+async def create_whatif_branch(
+    scenario_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    body = await request.json()
+
+    from app.models.interactive import WhatIfCreateRequest
+    from app.services.whatif_engine import WhatIfEngine
+
+    req = WhatIfCreateRequest(**body)
+
+    mf_client = request.app.state.mf_client
+    sb_client = getattr(request.app.state, "sb_client", None)
+    engine = WhatIfEngine(mf_client, sb_client)
+
+    try:
+        result = await engine.create_branch(scenario_id, req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    background_tasks.add_task(
+        engine.run_branch_pipeline,
+        scenario_id,
+        result["branch_id"],
+        result["result_id"],
+        result["augmented_seed"],
+        result["max_rounds"],
+        result["simulation_params"],
+    )
+
+    return {
+        "branch_id": result["branch_id"],
+        "status": "running",
+        "modification": req.modification,
+    }
+
+
+@router.get("/{scenario_id}/simulation/whatif")
+async def list_whatif_branches(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    rows = await conn.fetch(
+        """SELECT id, scenario_id, parent_result_id, branch_result_id,
+                  branch_point_round, modification, execution_mode,
+                  world_model_strategy, status, comparison_data,
+                  created_at, completed_at
+           FROM whatif_branches
+           WHERE scenario_id = $1
+           ORDER BY created_at DESC""",
+        scenario_id,
+    )
+    branches = []
+    for row in rows:
+        comp = json.loads(row["comparison_data"]) if row["comparison_data"] else None
+        branches.append({
+            "id": row["id"],
+            "scenario_id": row["scenario_id"],
+            "parent_result_id": row["parent_result_id"],
+            "branch_result_id": row["branch_result_id"],
+            "branch_point_round": row["branch_point_round"],
+            "modification": row["modification"],
+            "execution_mode": row["execution_mode"],
+            "world_model_strategy": row["world_model_strategy"],
+            "status": row["status"],
+            "comparison_data": comp,
+            "created_at": row["created_at"],
+            "completed_at": row["completed_at"],
+        })
+    return branches
+
+
+@router.get("/{scenario_id}/simulation/whatif/{branch_id}")
+async def get_whatif_branch(
+    scenario_id: str,
+    branch_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await conn.fetchrow(
+        "SELECT * FROM whatif_branches WHERE id = $1 AND scenario_id = $2",
+        branch_id, scenario_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    comp = json.loads(row["comparison_data"]) if row["comparison_data"] else None
+    return {
+        "id": row["id"],
+        "scenario_id": row["scenario_id"],
+        "parent_result_id": row["parent_result_id"],
+        "branch_result_id": row["branch_result_id"],
+        "branch_point_round": row["branch_point_round"],
+        "modification": row["modification"],
+        "execution_mode": row["execution_mode"],
+        "world_model_strategy": row["world_model_strategy"],
+        "status": row["status"],
+        "comparison_data": comp,
+        "created_at": row["created_at"],
+        "completed_at": row["completed_at"],
+    }
+
+
+@router.get("/{scenario_id}/simulation/whatif/{branch_id}/compare")
+async def compare_whatif_branch(
+    scenario_id: str,
+    branch_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await conn.fetchrow(
+        "SELECT id, status FROM whatif_branches WHERE id = $1 AND scenario_id = $2",
+        branch_id, scenario_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    if row["status"] != "completed":
+        raise HTTPException(status_code=409, detail=f"Branch not completed, status: {row['status']}")
+
+    from app.services.whatif_engine import WhatIfEngine
+
+    mf_client = request.app.state.mf_client
+    sb_client = getattr(request.app.state, "sb_client", None)
+    engine = WhatIfEngine(mf_client, sb_client)
+
+    try:
+        comparison = await engine.compare(branch_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return comparison.model_dump()

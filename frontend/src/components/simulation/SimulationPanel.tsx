@@ -21,16 +21,18 @@ import AnalystDashboard from "./AnalystDashboard";
 import ScenarioSearch from "./ScenarioSearch";
 import CopilotPanel from "./CopilotPanel";
 import InteractiveSimulationView from "./InteractiveSimulationView";
+import WhatIfBranchView from "./WhatIfBranchView";
 
-type Tab = "create" | "progress" | "interactive" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
+type Tab = "create" | "progress" | "interactive" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   sim: UseSimulationReturn;
+  onOpenWhatIfCompare?: (branchId: string) => void;
 }
 
-export default function SimulationPanel({ open, onClose, sim }: Props) {
+export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompare }: Props) {
   const [tab, setTab] = useState<Tab>("create");
 
   if (!open) return null;
@@ -50,6 +52,7 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
     { key: "interactive", label: "인터랙티브", show: hasActiveScenario },
+    { key: "what_if", label: "What-If", show: hasActiveScenario },
     { key: "decisions", label: "결정", show: hasActiveScenario },
     { key: "list", label: "목록", show: true },
     { key: "graph", label: "그래프", show: showGraphTab },
@@ -296,6 +299,13 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
 
         {tab === "interactive" && (
           <InteractiveSimulationView scenarioId={sim.activeScenario?.id} />
+        )}
+
+        {tab === "what_if" && (
+          <WhatIfBranchView
+            scenarioId={sim.activeScenario?.id}
+            onOpenCompare={(branchId) => onOpenWhatIfCompare?.(branchId)}
+          />
         )}
 
         {tab === "decisions" && sim.activeScenario && (

@@ -1,6 +1,6 @@
 # PRD: 인터랙티브 시뮬레이션
 
-> Status: Partial
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: v4-ai-guided-decisions, v3-simulation-params, v2-pipeline-checkpoints
 > 관련 스펙: `specs/V4-SPEC.md` PRD V4-2
@@ -97,8 +97,8 @@ frontend/src/types/simulation.ts                 # InteractiveConfig, WhatIfBran
 - [x] **M2: 이벤트 주입 API** — POST /inject_event 엔드포인트. ManualAction으로 변환하여 MiroFish IPC 전달. 주입된 이벤트가 다음 라운드에 반영.
   - 검증: 일시정지 상태에서 이벤트 주입 → resume → 에이전트가 주입된 이벤트에 반응
 
-- [ ] **M3: What-If 분기 엔진** — 현재 라운드 상태 스냅샷. 수정 사항 적용 후 별도 시뮬레이션 실행. 원본/분기 결과 비교 API.
-  - 검증: 라운드 5에서 분기 → 분기 시뮬레이션 완료 → 원본과 비교 API 동작
+- [x] **M3: What-If 분기 엔진** — Counterfactual Replay로 재설계. augmented_seed 기반 full pipeline 재실행. MAXS-inspired 비교 메트릭. 상세: `v7-whatif-counterfactual.md`.
+  - 검증: 분기 생성 API → 파이프라인 실행 → 비교 API (tension_advantage, step/slope_variance, actor_diff)
 
 - [x] **M4: 프론트엔드 InteractiveSimulationView** — 라운드별 타임라인 + 일시정지 인디케이터. 이벤트 주입 폼. What-If 분기 생성 UI. 원본/분기 비교 뷰.
   - 검증: 일시정지 시 UI에서 이벤트 주입/분기 생성 가능
@@ -127,3 +127,5 @@ frontend/src/types/simulation.ts                 # InteractiveConfig, WhatIfBran
 |------|------|------|
 | 2026-03-21 | Draft | V4-2 인터랙티브 시뮬레이션 PRD 초안 작성 |
 | 2026-03-22 | Partial | M1,M2,M4,M5 구현. 일시정지/재개 + 이벤트 주입 + InteractiveSimulationView + TensionAnalyzer. M3(What-If) MiroFish 대기 |
+| 2026-03-23 | Partial | M3 재설계: MiroFish ManualAction 미지원 확인 → counterfactual replay 패러다임으로 전환. 별도 PRD 분리: `v7-whatif-counterfactual.md` |
+| 2026-03-23 | Complete | M3 구현 완료 (v7 PRD M1~M4). 전체 마일스톤 5/5 완료. |

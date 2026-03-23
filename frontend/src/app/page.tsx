@@ -40,6 +40,11 @@ const OSINTPanel = dynamic(
   { ssr: false }
 );
 
+const WhatIfCompareModal = dynamic(
+  () => import("@/components/simulation/WhatIfCompareModal"),
+  { ssr: false }
+);
+
 function StatusIndicator({ status }: { status: BackendStatus }) {
   const colorMap: Record<BackendStatus, string> = {
     connected: "var(--status-connected)",
@@ -145,6 +150,7 @@ export default function HomePage() {
   const summary = useOSINTSummary(polling);
   const [panelOpen, setPanelOpen] = useState(false);
   const [osintPanelOpen, setOsintPanelOpen] = useState(false);
+  const [whatIfCompareBranchId, setWhatIfCompareBranchId] = useState<string | null>(null);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(DEFAULT_LAYER_VISIBILITY);
 
   const layerCounts: Partial<Record<keyof LayerVisibility, number>> = useMemo(
@@ -220,7 +226,16 @@ export default function HomePage() {
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
         sim={sim}
+        onOpenWhatIfCompare={(branchId) => setWhatIfCompareBranchId(branchId)}
       />
+
+      {whatIfCompareBranchId && sim.activeScenario && (
+        <WhatIfCompareModal
+          scenarioId={sim.activeScenario.id}
+          branchId={whatIfCompareBranchId}
+          onClose={() => setWhatIfCompareBranchId(null)}
+        />
+      )}
 
       {!osintPanelOpen && (
         <button

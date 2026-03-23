@@ -490,3 +490,52 @@ export function getGeopoliticsTimeline(scenarioId: string): Promise<{
 }> {
   return fetchJSON(`/api/scenario/${scenarioId}/geopolitics/timeline`);
 }
+
+export interface WhatIfBranch {
+  id: string;
+  scenario_id: string;
+  parent_result_id: string;
+  branch_result_id: string | null;
+  branch_point_round: number | null;
+  modification: string;
+  execution_mode: string;
+  world_model_strategy: string;
+  status: string;
+  comparison_data: WhatIfComparison | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface WhatIfComparison {
+  branch_id: string;
+  tension_advantage: number;
+  tension_curves: { original: number[]; branch: number[] };
+  step_variance: { original: number; branch: number };
+  slope_variance: { original: number; branch: number };
+  actor_diff: { only_original: string[]; only_branch: string[]; common: string[] };
+  action_count_delta: number;
+  geopolitics_delta: number;
+}
+
+export function createWhatIfBranch(
+  scenarioId: string,
+  data: { modification: string; branch_point_round?: number },
+): Promise<{ branch_id: string; status: string; modification: string }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/whatif`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data),
+  });
+}
+
+export function getWhatIfBranches(scenarioId: string): Promise<WhatIfBranch[]> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/whatif`);
+}
+
+export function getWhatIfBranch(scenarioId: string, branchId: string): Promise<WhatIfBranch> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/whatif/${branchId}`);
+}
+
+export function getWhatIfComparison(scenarioId: string, branchId: string): Promise<WhatIfComparison> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/whatif/${branchId}/compare`);
+}
