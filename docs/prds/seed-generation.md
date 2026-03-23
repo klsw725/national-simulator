@@ -1,6 +1,6 @@
 # PRD: Seed Generation
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 1 (gateway-api-foundation), PRD 2 (shadowbroker-integration)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 3.1.1, 4 Phase 1

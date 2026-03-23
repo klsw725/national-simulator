@@ -1,6 +1,6 @@
 # PRD: 실시간 시뮬레이션 모니터링 (Realtime Monitoring)
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 4 (simulation-orchestration), PRD 6b (scenario-management-ui), PRD 6c (simulation-visualization)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 4 Phase 2-3

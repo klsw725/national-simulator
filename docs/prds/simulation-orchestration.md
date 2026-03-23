@@ -1,6 +1,6 @@
 # PRD: Simulation Orchestration
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 1 (gateway-api-foundation), PRD 3 (seed-generation)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 3.1.3, 4 Phase 2, 11

@@ -1,6 +1,6 @@
 # PRD: 운영 안정성
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: simulation-orchestration, gateway-api-foundation
 > 관련 스펙: `specs/V4-SPEC.md` PRD V4-6

@@ -1,6 +1,6 @@
 # PRD: 스냅샷 브랜칭
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: v2-postgresql-postgis
 > 관련 스펙: `specs/MVP-SPEC.md` Section 18 (시나리오/라이브 경계), Section 19 (High 리스크)

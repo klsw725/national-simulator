@@ -1,6 +1,6 @@
 # PRD: 파이프라인 체크포인트 모드 (Pipeline Checkpoints)
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 4 (simulation-orchestration), PRD 6b (scenario-management-ui)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 4 (Data Flow), Section 11 (프롬프트 커스터마이징)

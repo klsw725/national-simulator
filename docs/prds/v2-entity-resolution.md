@@ -1,6 +1,6 @@
 # PRD: Entity Resolution
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: v2-postgresql-postgis, v2-stix2-ontology
 > 관련 스펙: `specs/MVP-SPEC.md` Section 20 (Entity Resolution 설계), Section 19 (High 리스크)

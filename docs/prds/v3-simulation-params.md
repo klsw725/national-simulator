@@ -1,6 +1,6 @@
 # PRD: 시뮬레이션 파라미터 완전 제어
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: simulation-orchestration, seed-generation
 > 관련 스펙: `specs/V3-SPEC.md` PRD V3-3

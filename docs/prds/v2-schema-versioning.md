@@ -1,6 +1,6 @@
 # PRD: 온톨로지 스키마 버전관리
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: v2-stix2-ontology
 > 관련 스펙: `specs/MVP-SPEC.md` Section 17.1 (팔란티어 스키마 관리 채택)

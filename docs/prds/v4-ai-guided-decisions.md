@@ -1,6 +1,6 @@
 # PRD: AI 가이드 결정 지점
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: seed-generation, simulation-orchestration, v3-simulation-params
 > 관련 스펙: `specs/V4-SPEC.md` PRD V4-1

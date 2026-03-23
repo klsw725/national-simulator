@@ -1,6 +1,6 @@
 # PRD: Simulation Visualization
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 5 (result-projection), PRD 6a (frontend-foundation), PRD 6b (scenario-management-ui)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 4 Phase 3, 5.5

@@ -1,6 +1,6 @@
 # PRD: stix2 온톨로지 표준화
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: v2-postgresql-postgis
 > 관련 스펙: `specs/MVP-SPEC.md` Section 17.2 (OpenCTI 대신 stix2), Section 18 (Layer 2 ONTOLOGY)

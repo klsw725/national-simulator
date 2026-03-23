@@ -1,6 +1,6 @@
 # PRD: ShadowBroker Integration
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 1 (gateway-api-foundation)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 3.1.2, 3.2

@@ -1,6 +1,6 @@
 # PRD: PostgreSQL + PostGIS 마이그레이션
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: MVP 완료 (PRD 1-6c)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 14 (v2 로드맵), Section 19 (Oracle 리뷰 High 리스크)

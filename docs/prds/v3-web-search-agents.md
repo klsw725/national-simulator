@@ -1,6 +1,6 @@
 # PRD: DuckDuckGo 웹 검색 통합
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: seed-generation, v3-simulation-params
 > 관련 스펙: `specs/V3-SPEC.md` PRD V3-4

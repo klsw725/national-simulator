@@ -1,6 +1,6 @@
 # PRD: Scenario Management UI
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 1 (gateway-api-foundation), PRD 6a (frontend-foundation)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 4 Phase 1-2

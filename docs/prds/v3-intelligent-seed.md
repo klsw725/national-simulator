@@ -1,6 +1,6 @@
 # PRD: 지능형 시드 생성 (ER + Observations 연동)
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: v2-entity-resolution, v2-postgresql-postgis, seed-generation, v3-simulation-params
 > 관련 스펙: `specs/V3-SPEC.md` PRD V3-2

@@ -1,6 +1,6 @@
 # PRD: Action Layer
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: v2-postgresql-postgis
 > 관련 스펙: `specs/MVP-SPEC.md` Section 18 (Layer 3 ACTION LAYER), Section 19 (High 리스크)

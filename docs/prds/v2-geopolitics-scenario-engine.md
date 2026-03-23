@@ -1,6 +1,6 @@
 # PRD: 지정학 시나리오 엔진
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: v2-oasis-platform-subclassing
 > 관련 스펙: `specs/MVP-SPEC.md` Section 18 (Layer 4 SIMULATION), Section 19 (Critical 리스크 OASIS 커플링)

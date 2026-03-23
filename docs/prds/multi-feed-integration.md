@@ -1,6 +1,6 @@
 # PRD: 다중 피드 통합 (Multi-Feed Integration)
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: PRD 6a (frontend-foundation)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 14 (v2 로드맵), Section 21 (Performance Analysis)

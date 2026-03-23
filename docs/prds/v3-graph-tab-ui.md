@@ -1,6 +1,6 @@
 # PRD: 그래프 뷰어 상시 접근
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: simulation-visualization
 > 관련 스펙: `specs/V3-SPEC.md` PRD V3-5

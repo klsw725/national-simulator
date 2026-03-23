@@ -1,6 +1,6 @@
 # PRD: 지정학 엔진 ↔ 시뮬레이션 통합
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: v2-geopolitics-scenario-engine, v2-pipeline-checkpoints, v3-simulation-params, v3-intelligent-seed
 > 관련 스펙: `specs/V3-SPEC.md` PRD V3-1

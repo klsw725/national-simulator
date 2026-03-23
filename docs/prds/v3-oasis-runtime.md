@@ -1,6 +1,6 @@
 # PRD: OASIS 런타임 통합 테스트
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: v2-oasis-platform-subclassing, v2-geopolitics-scenario-engine, v3-geopolitics-integration
 > 관련 스펙: `specs/V3-SPEC.md` PRD V3-6

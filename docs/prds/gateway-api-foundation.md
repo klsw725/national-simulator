@@ -1,6 +1,6 @@
 # PRD: Gateway API Foundation
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-20
 > Dependencies: 없음 (첫 번째 PRD)
 > 관련 스펙: `specs/MVP-SPEC.md` Section 2, 6, 7, 8
