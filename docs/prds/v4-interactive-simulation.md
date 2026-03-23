@@ -1,6 +1,6 @@
 # PRD: 인터랙티브 시뮬레이션
 
-> Status: Draft
+> Status: Partial
 > Created: 2026-03-21
 > Dependencies: v4-ai-guided-decisions, v3-simulation-params, v2-pipeline-checkpoints
 > 관련 스펙: `specs/V4-SPEC.md` PRD V4-2
@@ -91,19 +91,19 @@ frontend/src/types/simulation.ts                 # InteractiveConfig, WhatIfBran
 
 ## 4. 마일스톤
 
-- [ ] **M1: 라운드별 일시정지 API** — InteractiveSimulationConfig 모델. pause_at_rounds 설정. MiroFish IPC로 pause/resume 명령 전달. 일시정지 시 현재 라운드 데이터 반환.
+- [x] **M1: 라운드별 일시정지 API** — InteractiveSimulationConfig 모델. pause_at_rounds 설정. MiroFish IPC로 pause/resume 명령 전달. 일시정지 시 현재 라운드 데이터 반환.
   - 검증: pause_at_rounds=[5]로 실행 → 라운드 5에서 일시정지 → resume 후 진행
 
-- [ ] **M2: 이벤트 주입 API** — POST /inject_event 엔드포인트. ManualAction으로 변환하여 MiroFish IPC 전달. 주입된 이벤트가 다음 라운드에 반영.
+- [x] **M2: 이벤트 주입 API** — POST /inject_event 엔드포인트. ManualAction으로 변환하여 MiroFish IPC 전달. 주입된 이벤트가 다음 라운드에 반영.
   - 검증: 일시정지 상태에서 이벤트 주입 → resume → 에이전트가 주입된 이벤트에 반응
 
 - [ ] **M3: What-If 분기 엔진** — 현재 라운드 상태 스냅샷. 수정 사항 적용 후 별도 시뮬레이션 실행. 원본/분기 결과 비교 API.
   - 검증: 라운드 5에서 분기 → 분기 시뮬레이션 완료 → 원본과 비교 API 동작
 
-- [ ] **M4: 프론트엔드 InteractiveSimulationView** — 라운드별 타임라인 + 일시정지 인디케이터. 이벤트 주입 폼. What-If 분기 생성 UI. 원본/분기 비교 뷰.
+- [x] **M4: 프론트엔드 InteractiveSimulationView** — 라운드별 타임라인 + 일시정지 인디케이터. 이벤트 주입 폼. What-If 분기 생성 UI. 원본/분기 비교 뷰.
   - 검증: 일시정지 시 UI에서 이벤트 주입/분기 생성 가능
 
-- [ ] **M5: AI 개입 제안 엔진** — 라운드별 긴장도 분석. 이상 패턴 감지 (긴장도 급등, 극단적 행동). 감지 시 DecisionPoint 생성 → 프론트엔드 알림.
+- [x] **M5: AI 개입 제안 엔진** — 라운드별 긴장도 분석. 이상 패턴 감지 (긴장도 급등, 극단적 행동). 감지 시 DecisionPoint 생성 → 프론트엔드 알림.
   - 검증: 시뮬레이션 중 긴장도가 0.7 초과 시 AI가 "개입하시겠습니까?" 제안
 
 ## 5. 성공 기준
@@ -126,3 +126,4 @@ frontend/src/types/simulation.ts                 # InteractiveConfig, WhatIfBran
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V4-2 인터랙티브 시뮬레이션 PRD 초안 작성 |
+| 2026-03-22 | Partial | M1,M2,M4,M5 구현. 일시정지/재개 + 이벤트 주입 + InteractiveSimulationView + TensionAnalyzer. M3(What-If) MiroFish 대기 |

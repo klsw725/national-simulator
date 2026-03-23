@@ -1,6 +1,6 @@
 # PRD: 전체 OSINT 피드 통합 + 상황 인식 패널
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-22
 > Dependencies: multi-feed-integration, frontend-foundation, shadowbroker-integration, seed-generation
 > 관련 스펙: `specs/MVP-SPEC.md` Section 14 (v2 로드맵), Section 18 (Action Layer)
@@ -567,28 +567,28 @@ frontend/src/app/page.tsx                            # OSINTPanel 추가, 레이
 
 ## 6. 마일스톤
 
-- [ ] **M1: 타입 + 폴링 확장** — `dashboard.ts`에 12개 신규 타입 추가. `useDataPolling`이 SB fast/slow 응답의 전체 필드를 파싱하여 반환.
+- [x] **M1: 타입 + 폴링 확장** — `dashboard.ts`에 12개 신규 타입 추가. `useDataPolling`이 SB fast/slow 응답의 전체 필드를 파싱하여 반환.
   - 검증: `console.log`로 uavs, tracked_flights, military_bases 등 데이터 수신 확인
 
-- [ ] **M2: 시드 생성 확장** — `seed_generator.py`에 `_summarize_military_bases`, `_summarize_uavs` 등 9개 메서드 추가. `_collect_and_summarize`에서 호출. 시드 프롬프트에 3개 섹션 추가.
+- [x] **M2: 시드 생성 확장** — `seed_generator.py`에 `_summarize_military_bases`, `_summarize_uavs` 등 9개 메서드 추가. `_collect_and_summarize`에서 호출. 시드 프롬프트에 3개 섹션 추가.
   - 검증: 시드 생성 시 군사기지/UAV/추적기 정보가 시드 문서에 포함됨
 
-- [ ] **M3: GeoJSON 빌더 + 지도 레이어** — `geoJSONBuilders.ts`에 10개 빌더 추가. `MaplibreViewer.tsx`에 10개 Source/Layer 등록. 팝업 확장.
+- [x] **M3: GeoJSON 빌더 + 지도 레이어** — `geoJSONBuilders.ts`에 10개 빌더 추가. `MaplibreViewer.tsx`에 10개 Source/Layer 등록. 팝업 확장.
   - 검증: 지도에 UAV, GPS 재밍, 발전소 등 추가 레이어 표시
 
-- [ ] **M4: 레이어 토글 리팩토링** — `LayerToggle.tsx`를 카테고리 그룹 토글로 확장. 카테고리 전체 on/off + 개별 레이어 on/off.
+- [x] **M4: 레이어 토글 리팩토링** — `LayerToggle.tsx`를 카테고리 그룹 토글로 확장. 카테고리 전체 on/off + 개별 레이어 on/off.
   - 검증: 군사/인프라/SIGINT/환경/정보 카테고리별 토글 동작
 
-- [ ] **M5: OSINT 상황 패널 — 기본 구조** — `OSINTPanel.tsx` + 4개 탭 컴포넌트 생성. 좌측 400px 고정, 접이식. page.tsx에 통합.
+- [x] **M5: OSINT 상황 패널 — 기본 구조** — `OSINTPanel.tsx` + 4개 탭 컴포넌트 생성. 좌측 400px 고정, 접이식. page.tsx에 통합.
   - 검증: 좌측 패널 열기/닫기, 4개 탭 전환 동작
 
-- [ ] **M6: 상황 요약 + 자산 탭** — `OverviewTab`, `AssetsTab` 구현. 긴장도 게이지, 자산 국가별 분류, flyTo 연동.
+- [x] **M6: 상황 요약 + 자산 탭** — `OverviewTab`, `AssetsTab` 구현. 긴장도 게이지, 자산 국가별 분류, flyTo 연동.
   - 검증: 자산 항목 클릭 → 지도 이동, 긴장도 수치 표시
 
-- [ ] **M7: 피드 + 선도 탭** — `FeedTab`, `FreshnessTab` 구현. 실시간 이벤트 스트림, 데이터 소스별 선도 표시.
+- [x] **M7: 피드 + 선도 탭** — `FeedTab`, `FreshnessTab` 구현. 실시간 이벤트 스트림, 데이터 소스별 선도 표시.
   - 검증: 피드 필터링, 선도 상태 표시 (정상/지연/오류)
 
-- [ ] **M8: 빌드 검증 + 성능** — `npm run build` 성공. 전체 레이어 + 패널 동시 동작 시 성능 확인.
+- [x] **M8: 빌드 검증 + 성능** — `npm run build` 성공. 전체 레이어 + 패널 동시 동작 시 성능 확인.
   - 검증: TypeScript 에러 0, 빌드 성공, FPS ≥ 30 (20개 레이어 활성 시)
 
 ## 7. 성공 기준
@@ -629,3 +629,4 @@ frontend/src/app/page.tsx                            # OSINTPanel 추가, 레이
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-22 | Draft | 전체 OSINT 통합 + 상황 패널 PRD 초안 작성 |
+| 2026-03-22 | Complete | M1-M8 전체 구현. 타입+폴링 확장, 시드 생성 확장, GeoJSON+레이어, 카테고리 토글, OSINT 패널 4탭, 빌드 검증 |

@@ -1,6 +1,6 @@
 # PRD: AI 코파일럿
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: v4-ai-guided-decisions, v4-interactive-simulation
 > 관련 스펙: `specs/V4-SPEC.md` PRD V4-4
@@ -87,16 +87,16 @@ frontend/src/lib/gatewayApi.ts                 # 코파일럿 API 호출
 
 ## 4. 마일스톤
 
-- [ ] **M1: 코파일럿 API + 컨텍스트 빌더** — POST /api/copilot/chat 엔드포인트. CopilotContextBuilder로 시나리오 컨텍스트 구성. LLM 호출 (OpenAI Compatible). 대화 이력 관리.
+- [x] **M1: 코파일럿 API + 컨텍스트 빌더** — POST /api/copilot/chat 엔드포인트. CopilotContextBuilder로 시나리오 컨텍스트 구성. LLM 호출 (OpenAI Compatible). 대화 이력 관리.
   - 검증: "이 시나리오를 요약해줘" → 시드 + 결과 기반 요약 응답
 
-- [ ] **M2: 코파일럿 도구 구현** — 7개 도구 (search_observations, count_entities, analyze_actions 등). LLM Function Calling으로 도구 자동 선택/실행. 도구 결과를 응답에 통합.
+- [x] **M2: 코파일럿 도구 구현** — 7개 도구 (search_observations, count_entities, analyze_actions 등). LLM Function Calling으로 도구 자동 선택/실행. 도구 결과를 응답에 통합.
   - 검증: "남중국해에 군함 몇 척?" → search_observations 도구 호출 → 정확한 수 응답
 
-- [ ] **M3: 코파일럿 도구 확장 (What-If, 비교)** — suggest_whatif: What-If 파라미터 제안. compare_scenarios: 2개 시나리오 diff. generate_summary: 핵심 발견 3-5개 추출.
+- [x] **M3: 코파일럿 도구 확장 (What-If, 비교)** — suggest_whatif: What-If 파라미터 제안. compare_scenarios: 2개 시나리오 diff. generate_summary: 핵심 발견 3-5개 추출.
   - 검증: "이전 시뮬레이션과 뭐가 달라졌나?" → diff 분석 응답
 
-- [ ] **M4: 프론트엔드 CopilotPanel** — 채팅 UI (메시지 입력 + 응답 표시). 도구 사용 표시 (어떤 데이터를 검색했는지). 소스 링크 (관측/시드/결과). 제안 버튼 (다음 질문 추천).
+- [x] **M4: 프론트엔드 CopilotPanel** — 채팅 UI (메시지 입력 + 응답 표시). 도구 사용 표시 (어떤 데이터를 검색했는지). 소스 링크 (관측/시드/결과). 제안 버튼 (다음 질문 추천).
   - 검증: 채팅으로 질문 → AI 응답 + 소스 표시 + 제안 버튼
 
 ## 5. 성공 기준
@@ -118,3 +118,4 @@ frontend/src/lib/gatewayApi.ts                 # 코파일럿 API 호출
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V4-4 AI 코파일럿 PRD 초안 작성 |
+| 2026-03-22 | Complete | M1-M4 전체 구현. CopilotContextBuilder + 7개 도구 + CopilotService (tool-use loop) + CopilotPanel |

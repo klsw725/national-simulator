@@ -1,6 +1,6 @@
 # PRD: 결과 내보내기 + 브리핑 생성
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-21
 > Dependencies: simulation-visualization, v3-geopolitics-integration
 > 관련 스펙: `specs/V4-SPEC.md` PRD V4-3
@@ -72,16 +72,16 @@ frontend/src/lib/gatewayApi.ts                   # 내보내기 API 호출
 
 ## 4. 마일스톤
 
-- [ ] **M1: 데이터 내보내기 API** — JSON/CSV 내보내기 엔드포인트 구현. 시나리오 전체 데이터, 시뮬레이션 액션, 관측 데이터, 지정학 이벤트 각각 내보내기 가능. Content-Disposition 헤더로 파일 다운로드.
+- [x] **M1: 데이터 내보내기 API** — JSON/CSV 내보내기 엔드포인트 구현. 시나리오 전체 데이터, 시뮬레이션 액션, 관측 데이터, 지정학 이벤트 각각 내보내기 가능. Content-Disposition 헤더로 파일 다운로드.
   - 검증: GET /export?format=json → 전체 시나리오 데이터 다운로드
 
-- [ ] **M2: AI 브리핑 생성기** — BriefingGenerator 구현. 시뮬레이션 결과 + 지정학 분석 + 보고서를 LLM에 입력하여 브리핑 초안 생성. 마크다운 형식. briefings 테이블에 저장.
+- [x] **M2: AI 브리핑 생성기** — BriefingGenerator 구현. 시뮬레이션 결과 + 지정학 분석 + 보고서를 LLM에 입력하여 브리핑 초안 생성. 마크다운 형식. briefings 테이블에 저장.
   - 검증: 완료된 시뮬레이션 → POST /briefing/generate → 마크다운 브리핑 생성
 
-- [ ] **M3: 프론트엔드 내보내기 UI** — SimulationPanel 각 탭에 다운로드 버튼 추가. 포맷 선택 (JSON/CSV). 브리핑 생성 버튼. 다운로드 진행률 표시.
+- [x] **M3: 프론트엔드 내보내기 UI** — SimulationPanel 각 탭에 다운로드 버튼 추가. 포맷 선택 (JSON/CSV). 브리핑 생성 버튼. 다운로드 진행률 표시.
   - 검증: 보고서 탭에서 "내보내기" 클릭 → JSON/CSV 파일 다운로드
 
-- [ ] **M4: 브리핑 편집기** — AI 생성 브리핑 초안을 마크다운 편집기에서 수정. 섹션별 편집. 수정 후 저장. 최종 버전 내보내기.
+- [x] **M4: 브리핑 편집기** — AI 생성 브리핑 초안을 마크다운 편집기에서 수정. 섹션별 편집. 수정 후 저장. 최종 버전 내보내기.
   - 검증: AI 브리핑 초안 생성 → 편집기에서 수정 → 저장 → 마크다운 다운로드
 
 ## 5. 성공 기준
@@ -103,3 +103,4 @@ frontend/src/lib/gatewayApi.ts                   # 내보내기 API 호출
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-21 | Draft | V4-3 결과 내보내기 + 브리핑 PRD 초안 작성 |
+| 2026-03-22 | Complete | M1-M4 전체 구현. DataExporter + BriefingGenerator + ExportPanel + BriefingEditor |
