@@ -1,6 +1,6 @@
 # PRD: 품질 강화 + 성능 최적화
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-22
 > Dependencies: 없음 (기존 코드 개선)
 > 버전: v6.0
@@ -157,25 +157,25 @@ backend/app/services/data_exporter.py            # LIMIT 추가
 
 ## 6. 마일스톤
 
-- [ ] **M1: 인덱스 추가** — database.py에 6개 인덱스 추가. 코드 변경 없이 쿼리 성능 즉시 개선.
+- [x] **M1: 인덱스 추가** — database.py에 6개 인덱스 추가. 코드 변경 없이 쿼리 성능 즉시 개선.
   - 검증: EXPLAIN ANALYZE로 인덱스 사용 확인
 
-- [ ] **M2: 에러 핸들링 표준화** — simulation.py의 사일런트 폴백 3곳 → 적절한 HTTP 에러 코드. useSimulation.ts의 에러 삼킴 → 에러 상태 전파. 프론트엔드 컴포넌트 에러 상태 추가.
+- [x] **M2: 에러 핸들링 표준화** — simulation.py의 사일런트 폴백 3곳 → 적절한 HTTP 에러 코드. useSimulation.ts의 에러 삼킴 → 에러 상태 전파. 프론트엔드 컴포넌트 에러 상태 추가.
   - 검증: API 에러 시 클라이언트에서 에러 상태 표시
 
-- [ ] **M3: 폴링 상태 통합** — useDataPolling.ts의 24개 useState → useReducer 단일 상태. 배치 업데이트로 리렌더 ~90% 감소.
+- [x] **M3: 폴링 상태 통합** — useDataPolling.ts의 24개 useState → useReducer 단일 상태. 배치 업데이트로 리렌더 ~90% 감소.
   - 검증: React DevTools Profiler로 pollFast 시 리렌더 1회 확인
 
-- [ ] **M4: MaplibreViewer 최적화** — 13개 팝업 상태 통합, 라벨 minzoom:6, 클러스터링 확장 (flights, satellites, bases), React.memo 래핑.
+- [x] **M4: MaplibreViewer 최적화** — 13개 팝업 상태 통합, 라벨 minzoom:6, 클러스터링 확장 (flights, satellites, bases), React.memo 래핑.
   - 검증: 20개 레이어 활성 시 FPS ≥ 30
 
-- [ ] **M5: 코드 스플리팅** — SimulationPanel, OSINTPanel을 dynamic import. 초기 번들에서 ~200-300KB 절감.
+- [x] **M5: 코드 스플리팅** — SimulationPanel, OSINTPanel을 dynamic import. 초기 번들에서 ~200-300KB 절감.
   - 검증: 초기 JS 번들 크기 측정 (before/after)
 
-- [ ] **M6: N+1 배치화 + SELECT 최적화** — 루프 INSERT → executemany. SELECT * → 필요 컬럼. 무제한 쿼리 → LIMIT.
+- [x] **M6: N+1 배치화 + SELECT 최적화** — 루프 INSERT → executemany. SELECT * → 필요 컬럼. 무제한 쿼리 → LIMIT.
   - 검증: 100건 이상 geopolitics INSERT 시 쿼리 수 1회로 감소
 
-- [ ] **M7: 폴링 안정성** — 요청 중복 방지, 에러 백오프, 적응형 간격.
+- [x] **M7: 폴링 안정성** — 요청 중복 방지, 에러 백오프, 적응형 간격.
   - 검증: 네트워크 에러 시 백오프 동작 + 복구 후 정상 간격 복원
 
 ## 7. 성공 기준
@@ -200,3 +200,4 @@ backend/app/services/data_exporter.py            # LIMIT 추가
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-22 | Draft | 코드베이스 감사 기반 품질+성능 PRD 초안 작성 |
+| 2026-03-23 | Complete | M1-M7 전체 구현. 6개 인덱스, useReducer 폴링, 에러 표준화, MaplibreViewer 최적화, 코드 스플리팅, 배치 INSERT, 폴링 안정성 |

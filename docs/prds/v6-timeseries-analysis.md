@@ -1,6 +1,6 @@
 # PRD: OSINT 시계열 분석
 
-> Status: Draft
+> Status: Complete
 > Created: 2026-03-22
 > Dependencies: v5-full-osint-integration, v6-quality-performance (권장)
 > 버전: v6.0
@@ -269,22 +269,22 @@ package.json                                         # lightweight-charts, recha
 
 ## 6. 마일스톤
 
-- [ ] **M1: 데이터 레이어** — osint_metrics_hourly + osint_snapshots 테이블 생성. MetricsAggregator 서비스. 인덱스 추가. 보존 정책 (observations 7일 TTL).
+- [x] **M1: 데이터 레이어** — osint_metrics_hourly + osint_snapshots 테이블 생성. MetricsAggregator 서비스. 인덱스 추가. 보존 정책 (observations 7일 TTL).
   - 검증: 1시간 치 데이터가 osint_metrics_hourly에 집계됨
 
-- [ ] **M2: 트렌드 API** — GET /api/analytics/trend 엔드포인트. source_type, hours, interval, region 파라미터. 시간 버킷별 카운트 + 국가 분포 반환.
+- [x] **M2: 트렌드 API** — GET /api/analytics/trend 엔드포인트. source_type, hours, interval, region 파라미터. 시간 버킷별 카운트 + 국가 분포 반환.
   - 검증: GET /api/analytics/trend?source_type=ships&hours=24 → 24개 데이터 포인트
 
-- [ ] **M3: 이상 탐지** — AnomalyDetector 서비스. 4가지 알고리즘 (asset_surge, asset_departure, new_signal, tension_spike). GET /api/analytics/anomalies 엔드포인트.
+- [x] **M3: 이상 탐지** — AnomalyDetector 서비스. 4가지 알고리즘 (asset_surge, asset_departure, new_signal, tension_spike). GET /api/analytics/anomalies 엔드포인트.
   - 검증: 군함 수가 2σ 초과 → anomaly 반환
 
-- [ ] **M4: 자산 추이 차트** — lightweight-charts 설치. AssetTrendChart 컴포넌트. 자산 유형별 라인 차트 (24h/7d/30d). 줌/팬/크로스헤어.
+- [x] **M4: 자산 추이 차트** — lightweight-charts 설치. AssetTrendChart 컴포넌트. 자산 유형별 라인 차트 (24h/7d/30d). 줌/팬/크로스헤어.
   - 검증: OSINT 패널 트렌드 탭에서 자산 추이 차트 표시
 
-- [ ] **M5: 긴장도 + 이상 + 비교** — TensionChart (에어리어 차트 + 이상 하이라이트). AnomalyList (심각도별 목록). PeriodCompare (recharts 막대). OSINTPanel 트렌드 탭 통합.
+- [x] **M5: 긴장도 + 이상 + 비교** — TensionChart (에어리어 차트 + 이상 하이라이트). AnomalyList (심각도별 목록). PeriodCompare (recharts 막대). OSINTPanel 트렌드 탭 통합.
   - 검증: 긴장도 차트에 이상 구간 표시, 기간 비교 동작
 
-- [ ] **M6: 집계 스케줄러 + 빌드 검증** — 매시간 자동 집계. 보존 정책 실행. npm run build 성공. 전체 트렌드 탭 동작 확인.
+- [x] **M6: 집계 스케줄러 + 빌드 검증** — 매시간 자동 집계. 보존 정책 실행. npm run build 성공. 전체 트렌드 탭 동작 확인.
   - 검증: 스케줄러 실행 → metrics 집계 + 오래된 데이터 삭제
 
 ## 7. 성공 기준
@@ -332,3 +332,4 @@ package.json                                         # lightweight-charts, recha
 | 날짜 | 상태 | 내용 |
 |------|------|------|
 | 2026-03-22 | Draft | 코드베이스 감사 기반 시계열 분석 PRD 초안 작성 |
+| 2026-03-23 | Complete | M1-M6 전체 구현. 집계 테이블, MetricsAggregator, analytics API (trend/anomalies/compare), AssetTrendChart (lightweight-charts), TrendTab, 스케줄러 |
