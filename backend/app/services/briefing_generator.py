@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,37 +24,64 @@ BRIEFING_PROMPT = """\
 - 지역: {region_name}
 - 핵심 질문: {question}
 
-## 시드 상황 분석
+## 시드 상황 분석 (시나리오 생성 시점 OSINT)
 {seed_text}
 
-## 시뮬레이션 액션 요약
+## 시뮬레이션 행동 분석
 {simulation_summary}
 
-## 지정학 이벤트 요약
+## 지정학 이벤트 분석 (긴장도·인과관계 포함)
 {geopolitics_summary}
 
-## MiroFish 보고서
+## 긴장도 궤적
+{tension_trajectory}
+
+## MiroFish 분석 보고서
 {report_text}
 
 {current_osint_section}
 다음 구조를 정확히 따라 작성하세요:
 
 # 상황 브리핑: [시나리오명]
-## 1. 상황 요약
-## 2. 핵심 발견 (3-5개)
-## 3. 행위자 분석
-## 4. 시뮬레이션 결과 요약
-## 5. 지정학적 함의
-## 6. 권장 조치
-## 7. 현재 상황 대비 변화 (시드 생성 이후)
-## 부록: 데이터 소스, 방법론, 신뢰도
 
-요구사항:
-- 과장 없이 근거 중심으로 작성하세요.
-- 수치/사실이 없는 경우 추측하지 말고 "데이터 제한"을 명시하세요.
-- 정책 결정자가 바로 읽을 수 있도록 간결하게 작성하세요.
-- "## 7. 현재 상황 대비 변화"에서는 시드 생성 시점의 데이터와 현재 OSINT 데이터를 비교 분석하세요.
-  현재 OSINT 데이터가 없는 경우 해당 섹션을 "데이터 없음"으로 표기하세요.
+## 1. 상황 요약 (200자 이내)
+핵심 긴장 요인을 1문단으로 요약합니다. 반드시 구체적 수치(행위자 수, 액션 건수, 최대 긴장도)를 포함하세요.
+
+## 2. 핵심 발견 (3~5개)
+각 발견은 "**[발견 제목]**: [설명]" 형식으로 작성합니다.
+반드시 시뮬레이션 데이터의 구체적 숫자나 행위자 이름을 인용하세요.
+데이터가 없는 발견은 작성하지 마세요.
+
+## 3. 행위자별 분석
+각 행위자에 대해:
+- 행동 건수와 유형 분포 (예: "미국: 공식 성명 12건, 동맹 지지 5건")
+- 주요 대상 행위자 (누구에게 반응했는가)
+- 긴장도 기여도 (해당 행위자의 행동이 긴장을 높였는가/낮췄는가)
+- 대표 행동 1~2건 원문 인용
+
+## 4. 시뮬레이션 라운드별 진행
+라운드별로 핵심 사건을 시간순으로 서술합니다.
+"라운드 N: [핵심 사건] (긴장도 X.XX)" 형식을 사용하세요.
+에스컬레이션/디에스컬레이션 전환점을 명시하세요.
+
+## 5. 지정학적 함의
+시뮬레이션 결과에서 도출되는 전략적 시사점을 작성합니다.
+추측이 아닌 시뮬레이션 데이터에서 관찰된 패턴만 기술하세요.
+
+## 6. 권장 조치
+정책 결정자에게 권고할 구체적 행동을 제안합니다.
+
+{extra_sections}
+## 부록: 데이터 소스 및 신뢰도
+- 시뮬레이션 액션 N건, 지정학 이벤트 N건 (구체적 숫자 기입)
+- 사용된 데이터 소스 나열
+- 시뮬레이션 한계점 명시 (예: "소셜미디어 메타포 기반이므로 실제 군사작전과 1:1 대응하지 않음")
+
+필수 규칙:
+- 모든 주장에 입력 데이터의 구체적 수치·행위자명·라운드 번호를 인용하세요.
+- 데이터가 없는 섹션은 "해당 데이터 없음"으로 명시하고, 추측으로 채우지 마세요.
+- 같은 인용문을 여러 섹션에서 반복하지 마세요.
+- 각 섹션은 고유한 분석 관점을 제공해야 합니다.
 """
 
 
@@ -65,6 +92,214 @@ class BriefingGenerator:
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         )
+
+    def _parse_actions(self, results_raw: str | None) -> list[dict[str, Any]]:
+        if not results_raw:
+            return []
+        try:
+            parsed = json.loads(results_raw)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, dict) and isinstance(parsed.get("actions"), list):
+            return [a for a in parsed["actions"] if isinstance(a, dict)]
+        if isinstance(parsed, list):
+            return [a for a in parsed if isinstance(a, dict)]
+        return []
+
+    def _summarize_simulation_actions(self, results_raw: str | None) -> str:
+        actions = self._parse_actions(results_raw)
+        if not actions:
+            return "시뮬레이션 액션 데이터 없음"
+
+        actor_counter: Counter[str] = Counter()
+        geo_label_counter: Counter[str] = Counter()
+        round_actions: dict[int, list[dict]] = defaultdict(list)
+        interaction_pairs: Counter[str] = Counter()
+
+        for action in actions:
+            actor = action.get("agent_name") or action.get("actor_id") or "unknown"
+            actor_counter[str(actor)] += 1
+
+            geo_label = action.get("geopolitics_label") or action.get("action_type") or "unknown"
+            geo_label_counter[str(geo_label)] += 1
+
+            rnd = action.get("round", 0)
+            round_actions[rnd].append(action)
+
+            target = action.get("target") or action.get("quoted_agent") or ""
+            if target and str(target) != str(actor):
+                interaction_pairs[f"{actor} → {target}"] += 1
+
+        lines = [
+            f"총 {len(actions)}건의 시뮬레이션 액션이 {len(round_actions)}개 라운드에 걸쳐 실행됨.",
+            "",
+            "### 행위자별 활동량",
+        ]
+        for actor, count in actor_counter.most_common():
+            actor_actions = [a for a in actions if (a.get("agent_name") or a.get("actor_id")) == actor]
+            actor_types = Counter(
+                a.get("geopolitics_label") or a.get("action_type") or "unknown"
+                for a in actor_actions
+            )
+            type_desc = ", ".join(f"{t} {c}건" for t, c in actor_types.most_common(3))
+            lines.append(f"- **{actor}**: {count}건 ({type_desc})")
+
+        lines.append("")
+        lines.append("### 행동 유형 분포")
+        for label, count in geo_label_counter.most_common():
+            pct = count / len(actions) * 100
+            lines.append(f"- {label}: {count}건 ({pct:.0f}%)")
+
+        if interaction_pairs:
+            lines.append("")
+            lines.append("### 행위자 간 상호작용 (인용·리포스트·반응)")
+            for pair, count in interaction_pairs.most_common(10):
+                lines.append(f"- {pair}: {count}건")
+
+        lines.append("")
+        lines.append("### 라운드별 핵심 행동")
+        for rnd in sorted(round_actions.keys()):
+            rnd_acts = round_actions[rnd]
+            rnd_types = Counter(
+                a.get("geopolitics_label") or a.get("action_type") or ""
+                for a in rnd_acts
+            )
+            dominant = rnd_types.most_common(1)[0][0] if rnd_types else "N/A"
+            lines.append(f"- 라운드 {rnd}: {len(rnd_acts)}건 (주요: {dominant})")
+
+            top_action = max(
+                rnd_acts,
+                key=lambda a: len(a.get("content") or a.get("post_content") or ""),
+                default=None,
+            )
+            if top_action:
+                actor = top_action.get("agent_name") or top_action.get("actor_id") or "?"
+                content = (
+                    top_action.get("content")
+                    or top_action.get("post_content")
+                    or top_action.get("text")
+                    or ""
+                )
+                if content:
+                    lines.append(f"  > [{actor}] {content[:300]}")
+
+        return "\n".join(lines)
+
+    def _summarize_geopolitics_events(self, rows: list[Any]) -> str:
+        if not rows:
+            return "지정학 이벤트 데이터 없음"
+
+        round_data: dict[int, list[dict]] = defaultdict(list)
+        actor_targets: dict[str, Counter] = defaultdict(Counter)
+        magnitude_sum = 0.0
+        magnitude_count = 0
+
+        for row in rows:
+            rnd = row.get("round_number") or 0
+            round_data[rnd].append(row)
+
+            actor = row.get("actor_id") or "unknown"
+            targets_raw = row.get("target_actor_ids")
+            if targets_raw:
+                try:
+                    targets = json.loads(targets_raw) if isinstance(targets_raw, str) else targets_raw
+                except (json.JSONDecodeError, TypeError):
+                    targets = []
+                for t in (targets if isinstance(targets, list) else []):
+                    actor_targets[str(actor)][str(t)] += 1
+
+            mag = row.get("magnitude")
+            if mag is not None:
+                magnitude_sum += float(mag)
+                magnitude_count += 1
+
+        avg_magnitude = magnitude_sum / magnitude_count if magnitude_count else 0.0
+
+        lines = [
+            f"총 {len(rows)}건의 지정학 이벤트, 평균 긴장도(magnitude): {avg_magnitude:.2f}",
+            "",
+            "### 라운드별 긴장도 추이",
+        ]
+        for rnd in sorted(round_data.keys()):
+            events = round_data[rnd]
+            mags = [float(e.get("magnitude") or 0) for e in events]
+            avg_mag = sum(mags) / len(mags) if mags else 0
+            types = Counter(e.get("action_type") or "" for e in events)
+            dominant = types.most_common(1)[0][0] if types else "N/A"
+            lines.append(
+                f"- 라운드 {rnd}: {len(events)}건, 평균 긴장도 {avg_mag:.2f}, 주요 유형: {dominant}"
+            )
+
+        if actor_targets:
+            lines.append("")
+            lines.append("### 행위자 → 대상 관계")
+            for actor, targets in sorted(actor_targets.items()):
+                target_desc = ", ".join(f"{t}({c}건)" for t, c in targets.most_common(5))
+                lines.append(f"- **{actor}** → {target_desc}")
+
+        peak_events = sorted(rows, key=lambda r: float(r.get("magnitude") or 0), reverse=True)[:5]
+        if peak_events and any(e.get("magnitude") for e in peak_events):
+            lines.append("")
+            lines.append("### 최고 긴장도 이벤트 (상위 5건)")
+            for evt in peak_events:
+                mag = float(evt.get("magnitude") or 0)
+                if mag == 0:
+                    continue
+                actor = evt.get("actor_id") or "?"
+                rnd = evt.get("round_number") or "?"
+                atype = evt.get("action_type") or "?"
+                content = (evt.get("content") or "")[:200]
+                lines.append(f"- [라운드 {rnd}] {actor}: {atype} (긴장도 {mag:.2f}) — {content}")
+
+        return "\n".join(lines)
+
+    async def _build_tension_trajectory(self, scenario_id: str) -> str:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            round_rows = await conn.fetch(
+                """SELECT round_number, COUNT(*) as cnt,
+                          AVG(magnitude) as avg_mag,
+                          MAX(magnitude) as max_mag
+                   FROM geopolitics_events
+                   WHERE scenario_id = $1 AND magnitude IS NOT NULL
+                   GROUP BY round_number
+                   ORDER BY round_number""",
+                scenario_id,
+            )
+            dp_rows = await conn.fetch(
+                """SELECT type, options, status, created_at
+                   FROM decision_points
+                   WHERE scenario_id = $1
+                   ORDER BY created_at""",
+                scenario_id,
+            )
+
+        if not round_rows:
+            return "긴장도 데이터 없음 (지정학 이벤트에 magnitude 미포함)"
+
+        lines = ["라운드별 긴장도 변화:"]
+        peak_round = 0
+        peak_mag = 0.0
+        for row in round_rows:
+            rnd = row["round_number"]
+            avg = float(row["avg_mag"] or 0)
+            mx = float(row["max_mag"] or 0)
+            cnt = row["cnt"]
+            bar = "█" * int(avg * 20)
+            lines.append(f"  라운드 {rnd:>2}: {bar} {avg:.2f} (최대 {mx:.2f}, {cnt}건)")
+            if mx > peak_mag:
+                peak_mag = mx
+                peak_round = rnd
+
+        if peak_mag > 0:
+            lines.append(f"\n최대 긴장 지점: 라운드 {peak_round} (긴장도 {peak_mag:.2f})")
+
+        if dp_rows:
+            lines.append(f"\nAI 개입 제안 발생: {len(dp_rows)}건")
+            for dp in dp_rows:
+                lines.append(f"  - 유형: {dp['type']}, 상태: {dp['status']}")
+
+        return "\n".join(lines)
 
     async def _collect_current_osint(self, bbox: list[float]) -> str:
         if not self._sb or len(bbox) < 4:
@@ -90,13 +325,22 @@ class BriefingGenerator:
             gps_jamming = [j for j in fast_data.get("gps_jamming", []) if _in_bbox(j)]
             bases = [b for b in slow_data.get("military_bases", []) if _in_bbox(b)]
 
+            ship_countries = Counter(s.get("country", "불명") for s in ships)
+            flight_countries = Counter(f.get("country", "불명") for f in mil_flights)
+
             lines = [
                 f"- 군함: {len(ships)}척",
-                f"- 군용기: {len(mil_flights)}대",
+            ]
+            if ship_countries:
+                lines.append(f"  국가별: {', '.join(f'{c} {n}척' for c, n in ship_countries.most_common(5))}")
+            lines.append(f"- 군용기: {len(mil_flights)}대")
+            if flight_countries:
+                lines.append(f"  국가별: {', '.join(f'{c} {n}대' for c, n in flight_countries.most_common(5))}")
+            lines.extend([
                 f"- UAV: {len(uavs)}대",
                 f"- 정찰위성: {len(satellites)}기",
                 f"- 군사기지: {len(bases)}개",
-            ]
+            ])
             if gps_jamming:
                 lines.append(f"- GPS 교란: {len(gps_jamming)}건")
 
@@ -133,106 +377,18 @@ class BriefingGenerator:
             logger.warning("Failed to collect current OSINT for briefing")
             return "(현재 OSINT 데이터 수집 실패 — ShadowBroker 연결 불가)"
 
-    def _summarize_simulation_actions(self, results_raw: str | None) -> str:
-        if not results_raw:
-            return "시뮬레이션 액션 데이터 없음"
-
-        try:
-            parsed = json.loads(results_raw)
-        except json.JSONDecodeError:
-            return "시뮬레이션 액션 데이터 파싱 실패"
-
-        actions: list[dict[str, Any]] = []
-        if isinstance(parsed, dict) and isinstance(parsed.get("actions"), list):
-            actions = [a for a in parsed["actions"] if isinstance(a, dict)]
-        elif isinstance(parsed, list):
-            actions = [a for a in parsed if isinstance(a, dict)]
-
-        if not actions:
-            return "시뮬레이션 액션 없음"
-
-        actor_counter: Counter[str] = Counter()
-        action_counter: Counter[str] = Counter()
-        key_events: list[str] = []
-
-        for action in actions:
-            actor = action.get("agent_name") or action.get("actor_id") or "unknown"
-            action_type = action.get("action_type") or "unknown"
-            actor_counter[str(actor)] += 1
-            action_counter[str(action_type)] += 1
-
-            event_text = (
-                action.get("content")
-                or action.get("post_content")
-                or action.get("text")
-                or ""
-            )
-            if event_text and event_text not in key_events and len(key_events) < 5:
-                key_events.append(str(event_text).strip().replace("\n", " ")[:180])
-
-        actor_summary = ", ".join(
-            f"{actor} {count}건" for actor, count in actor_counter.most_common(8)
-        )
-        action_summary = ", ".join(
-            f"{action_type} {count}건"
-            for action_type, count in action_counter.most_common(8)
-        )
-
-        lines = [
-            f"- 총 액션 수: {len(actions)}건",
-            f"- 행위자별 액션: {actor_summary or '없음'}",
-            f"- 액션 유형 분포: {action_summary or '없음'}",
-        ]
-        if key_events:
-            lines.append("- 주요 이벤트:")
-            lines.extend(f"  - {event}" for event in key_events)
-
-        return "\n".join(lines)
-
-    def _summarize_geopolitics_events(self, rows: list[Any]) -> str:
-        if not rows:
-            return "지정학 이벤트 데이터 없음"
-
-        actor_counter: Counter[str] = Counter()
-        action_counter: Counter[str] = Counter()
-        key_events: list[str] = []
-
-        for row in rows:
-            actor = row.get("actor_id") or "unknown"
-            action_type = row.get("action_type") or "unknown"
-            actor_counter[str(actor)] += 1
-            action_counter[str(action_type)] += 1
-
-            content = row.get("content")
-            if content and content not in key_events and len(key_events) < 5:
-                key_events.append(str(content).strip().replace("\n", " ")[:180])
-
-        actor_summary = ", ".join(
-            f"{actor} {count}건" for actor, count in actor_counter.most_common(8)
-        )
-        action_summary = ", ".join(
-            f"{action_type} {count}건"
-            for action_type, count in action_counter.most_common(8)
-        )
-
-        lines = [
-            f"- 총 이벤트 수: {len(rows)}건",
-            f"- 행위자별 이벤트: {actor_summary or '없음'}",
-            f"- 이벤트 유형 분포: {action_summary or '없음'}",
-        ]
-        if key_events:
-            lines.append("- 주요 이벤트:")
-            lines.extend(f"  - {event}" for event in key_events)
-
-        return "\n".join(lines)
-
     async def _call_llm(self, prompt: str) -> str:
         response = await self._llm.chat.completions.create(
             model=settings.llm_model_name,
             messages=[
                 {
                     "role": "system",
-                    "content": "당신은 지정학 브리핑 작성 전문가입니다. 입력 데이터에 근거한 구조화된 문서를 작성합니다.",
+                    "content": (
+                        "당신은 지정학 브리핑 작성 전문가입니다. "
+                        "입력 데이터에 근거한 정량적·구조화된 문서를 작성합니다. "
+                        "모든 주장에 구체적 숫자와 행위자명을 인용하세요. "
+                        "데이터가 없는 내용은 추측하지 말고 '데이터 없음'으로 표기하세요."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -264,11 +420,12 @@ class BriefingGenerator:
                 scenario_id,
             )
             geopolitics_rows = await conn.fetch(
-                """SELECT actor_id, action_type, content, round_number, event_at
+                """SELECT actor_id, action_type, content, round_number,
+                          magnitude, target_actor_ids, event_at
                    FROM geopolitics_events
                    WHERE scenario_id = $1
-                   ORDER BY round_number DESC, event_at DESC
-                   LIMIT 500""",
+                   ORDER BY round_number, event_at
+                   LIMIT 1000""",
                 scenario_id,
             )
             version_row = await conn.fetchrow(
@@ -281,14 +438,19 @@ class BriefingGenerator:
         simulation_summary = self._summarize_simulation_actions(
             sim_row["results"] if sim_row else None,
         )
-        geopolitics_summary = self._summarize_geopolitics_events(list(geopolitics_rows))
+        geopolitics_summary = self._summarize_geopolitics_events(
+            [dict(r) for r in geopolitics_rows],
+        )
         report_text = (
             sim_row["report"]
             if sim_row and sim_row["report"]
             else "MiroFish 보고서 없음"
         )
 
+        tension_trajectory = await self._build_tension_trajectory(scenario_id)
+
         current_osint_section = ""
+        extra_sections = ""
         try:
             bbox = json.loads(scenario["region_bbox"])
         except (json.JSONDecodeError, TypeError):
@@ -304,6 +466,11 @@ class BriefingGenerator:
                     f"현재와 차이가 있을 수 있습니다.\n\n"
                     f"{osint_snapshot}"
                 )
+                extra_sections = (
+                    "## 7. 현재 상황 대비 변화 (시드 생성 이후)\n"
+                    "시드 생성 시점과 현재 OSINT 데이터를 비교하여 주요 변화를 기술하세요.\n"
+                    "현재 OSINT 데이터가 없는 경우 '데이터 없음'으로 표기하세요.\n"
+                )
 
         prompt = BRIEFING_PROMPT.format(
             scenario_name=scenario["name"],
@@ -312,8 +479,10 @@ class BriefingGenerator:
             seed_text=seed_text,
             simulation_summary=simulation_summary,
             geopolitics_summary=geopolitics_summary,
+            tension_trajectory=tension_trajectory,
             report_text=report_text,
             current_osint_section=current_osint_section,
+            extra_sections=extra_sections,
         )
         content = await self._call_llm(prompt)
 
