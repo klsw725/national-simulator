@@ -680,7 +680,7 @@ class SimulationOrchestrator:
                     await self._step_geopolitics_analysis(scenario_id, result_id, action_list)
                 except Exception:
                     logger.warning("[%s] Geopolitics analysis failed, continuing", scenario_id)
-                    await self._update_status(scenario_id, result_id, "completed")
+                await self._update_status(scenario_id, result_id, "completed")
 
         await ActionLogger.log(
             "pipeline.completed",
@@ -706,6 +706,8 @@ class SimulationOrchestrator:
             )
             if status == "failed":
                 sim_status = "failed"
+            elif status == "completed":
+                sim_status = "completed"
             elif status.startswith("checkpoint:"):
                 sim_status = "checkpoint"
             else:

@@ -3,7 +3,9 @@ import uuid
 from datetime import datetime, timezone
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import get_db
 from app.models.scenario import (
@@ -54,10 +56,61 @@ async def create_scenario(
     )
 
 
-@router.get("", response_model=list[ScenarioResponse])
-async def list_scenarios(conn: asyncpg.Connection = Depends(get_db)):
-    rows = await conn.fetch("SELECT * FROM scenarios ORDER BY created_at DESC")
-    return [_row_to_response(row) for row in rows]
+@router.get("")
+async def list_scenarios(
+    q: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    region: Optional[str] = Query(None),
+    created_after: Optional[str] = Query(None),
+    created_before: Optional[str] = Query(None),
+    sort: str = Query("created_at"),
+    order: str = Query("desc"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    conditions: list[str] = []
+    params: list = []
+    idx = 1
+
+    if q:
+        conditions.append(f"(name ILIKE ${idx} OR question ILIKE ${idx} OR region_name ILIKE ${idx})")
+        params.append(f"%{q}%")
+        idx += 1
+
+    if status:
+        conditions.append(f"status = ${idx}")
+        params.append(status)
+        idx += 1
+
+    if region:
+        conditions.append(f"region_name ILIKE ${idx}")
+        params.append(f"%{region}%")
+        idx += 1
+
+    if created_after:
+        conditions.append(f"created_at >= ${idx}")
+        params.append(created_after)
+        idx += 1
+
+    if created_before:
+        conditions.append(f"created_at <= ${idx}")
+        params.append(created_before)
+        idx += 1
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    sort_col = sort if sort in ("created_at", "updated_at", "name", "status") else "created_at"
+    sort_dir = "ASC" if order.lower() == "asc" else "DESC"
+
+    count_row = await conn.fetchrow(f"SELECT COUNT(*) as total FROM scenarios{where}", *params)
+    total = count_row["total"] if count_row else 0
+
+    rows = await conn.fetch(
+        f"SELECT * FROM scenarios{where} ORDER BY {sort_col} {sort_dir} LIMIT ${idx} OFFSET ${idx + 1}",
+        *params, limit, offset,
+    )
+
+    return {"scenarios": [_row_to_response(row) for row in rows], "total": total}
 
 
 @router.get("/{scenario_id}", response_model=ScenarioResponse)
@@ -78,6 +131,21 @@ async def delete_scenario(
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Scenario not found")
     await ActionLogger.log("scenario.delete", scenario_id)
+
+
+@router.get("/{scenario_id_a}/compare/{scenario_id_b}")
+async def compare_scenarios(
+    scenario_id_a: str,
+    scenario_id_b: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    from app.services.scenario_comparator import ScenarioComparator
+
+    try:
+        result = await ScenarioComparator().compare(scenario_id_a, scenario_id_b)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return result
 
 
 def _row_to_response(row: asyncpg.Record) -> ScenarioResponse:

@@ -15,8 +15,13 @@ import GraphTab from "./GraphTab";
 import DecisionPointView from "./DecisionPointView";
 import GeopoliticsView from "./GeopoliticsView";
 import HealthDashboard from "./HealthDashboard";
+import ExportPanel from "./ExportPanel";
+import ComparisonView from "./ComparisonView";
+import AnalystDashboard from "./AnalystDashboard";
+import ScenarioSearch from "./ScenarioSearch";
+import CopilotPanel from "./CopilotPanel";
 
-type Tab = "create" | "progress" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "health";
+type Tab = "create" | "progress" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
 
 interface Props {
   open: boolean;
@@ -49,6 +54,10 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
     { key: "geopolitics", label: "지정학", show: isCompleted },
     { key: "timeline", label: "타임라인", show: isCompleted },
     { key: "report", label: "리포트", show: isCompleted },
+    { key: "export", label: "내보내기", show: isCompleted },
+    { key: "copilot", label: "코파일럿", show: hasActiveScenario },
+    { key: "compare", label: "비교", show: true },
+    { key: "dashboard", label: "대시보드", show: true },
     { key: "health", label: "헬스", show: true },
   ];
 
@@ -299,15 +308,22 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
         )}
 
         {tab === "list" && (
-          <ScenarioList
-            scenarios={sim.scenarios}
-            activeId={sim.activeScenario?.id ?? null}
-            onSelect={(s) => {
-              sim.selectScenario(s);
-              setTab("progress");
-            }}
-            onDelete={sim.deleteScenario}
-          />
+          <>
+            <ScenarioSearch
+              onResults={(scenarios) => {
+                sim.setFilteredScenarios?.(scenarios);
+              }}
+            />
+            <ScenarioList
+              scenarios={sim.filteredScenarios ?? sim.scenarios}
+              activeId={sim.activeScenario?.id ?? null}
+              onSelect={(s) => {
+                sim.selectScenario(s);
+                setTab("progress");
+              }}
+              onDelete={sim.deleteScenario}
+            />
+          </>
         )}
 
         {tab === "timeline" && (
@@ -325,6 +341,20 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
         {tab === "report" && (
           <ReportViewer markdown={sim.reportMarkdown} />
         )}
+
+        {tab === "export" && (
+          <ExportPanel scenarioId={sim.activeScenario?.id} />
+        )}
+
+        {tab === "copilot" && (
+          <CopilotPanel scenarioId={sim.activeScenario?.id} />
+        )}
+
+        {tab === "compare" && (
+          <ComparisonView scenarios={sim.scenarios} />
+        )}
+
+        {tab === "dashboard" && <AnalystDashboard />}
 
         {tab === "health" && <HealthDashboard />}
       </div>

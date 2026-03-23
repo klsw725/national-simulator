@@ -248,6 +248,126 @@ export function resolveDecisionPoint(
 
 // ── Geopolitics ──
 
+// ── Export ──
+
+export function exportScenarioJSON(scenarioId: string): Promise<unknown> {
+  return fetchJSON(`/api/scenario/${scenarioId}/export?format=json`);
+}
+
+export async function downloadExport(scenarioId: string, type: "csv" | "observations" | "geopolitics" | "report"): Promise<Blob> {
+  const urlMap: Record<string, string> = {
+    csv: `/api/scenario/${scenarioId}/export?format=csv`,
+    observations: `/api/scenario/${scenarioId}/export/observations`,
+    geopolitics: `/api/scenario/${scenarioId}/export/geopolitics`,
+    report: `/api/scenario/${scenarioId}/export/report`,
+  };
+  const res = await fetch(urlMap[type]);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`API ${res.status}: ${body || res.statusText}`);
+  }
+  return res.blob();
+}
+
+export function generateBriefing(scenarioId: string): Promise<{
+  id: string;
+  scenario_id: string;
+  content: string;
+  version: number;
+  created_at: string;
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/briefing/generate`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+  });
+}
+
+export function getBriefing(scenarioId: string): Promise<{
+  id: string;
+  scenario_id: string;
+  content: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+} | null> {
+  return fetchJSON(`/api/scenario/${scenarioId}/briefing`);
+}
+
+export function updateBriefing(scenarioId: string, content: string): Promise<{
+  id: string;
+  content: string;
+  version: number;
+  updated_at: string;
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/briefing`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ content }),
+  });
+}
+
+// ── Search / Compare / Dashboard ──
+
+export function searchScenarios(params: {
+  q?: string;
+  status?: string;
+  region?: string;
+  created_after?: string;
+  created_before?: string;
+  sort?: string;
+  order?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ scenarios: Scenario[]; total: number }> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null && v !== "") qs.set(k, String(v));
+  }
+  return fetchJSON(`/api/scenario?${qs.toString()}`);
+}
+
+export function compareScenarios(idA: string, idB: string): Promise<{
+  scenario_a: { id: string; name: string; region_name: string; status: string; actors: string[]; action_count: number; geopolitics_events: number };
+  scenario_b: { id: string; name: string; region_name: string; status: string; actors: string[]; action_count: number; geopolitics_events: number };
+  diff: { actors_only_a: string[]; actors_only_b: string[]; actors_common: string[]; action_count_delta: number; geopolitics_events_delta: number };
+}> {
+  return fetchJSON(`/api/scenario/${idA}/compare/${idB}`);
+}
+
+export function getDashboard(): Promise<{
+  total_scenarios: number;
+  by_status: Record<string, number>;
+  by_region: Record<string, number>;
+  recent_activity: Array<{ scenario_id: string; action: string; actor: string; timestamp: string }>;
+  running_simulations: Array<{ id: string; name: string; status: string }>;
+}> {
+  return fetchJSON("/api/dashboard");
+}
+
+// ── Copilot ──
+
+export function copilotChat(
+  scenarioId: string,
+  message: string,
+  conversationId?: string,
+): Promise<{
+  response: string;
+  conversation_id: string;
+  sources: string[];
+  tools_used: string[];
+  suggestions: string[];
+}> {
+  return fetchJSON("/api/copilot/chat", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      scenario_id: scenarioId,
+      message,
+      conversation_id: conversationId,
+    }),
+  });
+}
+
 export function getGeopoliticsTimeline(scenarioId: string): Promise<{
   scenario_id: string;
   timeline: Array<{

@@ -193,6 +193,16 @@ CREATE TABLE IF NOT EXISTS decision_points (
 );
 CREATE INDEX IF NOT EXISTS idx_decision_points_scenario ON decision_points(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_status ON decision_points(status);
+
+CREATE TABLE IF NOT EXISTS briefings (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
+    content TEXT NOT NULL,
+    version INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_briefings_scenario ON briefings(scenario_id);
 """
 
 

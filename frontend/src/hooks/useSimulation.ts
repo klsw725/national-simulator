@@ -25,6 +25,8 @@ export interface UseSimulationReturn {
   clearError: () => void;
   continueCheckpoint: (edits?: Record<string, unknown>) => Promise<void>;
   setPipelineMode: (mode: PipelineMode) => void;
+  filteredScenarios: Scenario[] | null;
+  setFilteredScenarios: (scenarios: Scenario[] | null) => void;
 }
 
 export function useSimulation(): UseSimulationReturn {
@@ -38,6 +40,7 @@ export function useSimulation(): UseSimulationReturn {
   const [reportMarkdown, setReportMarkdown] = useState("");
   const [checkpointData, setCheckpointData] = useState<CheckpointData | null>(null);
   const [pipelineMode, setPipelineMode] = useState<PipelineMode>("auto");
+  const [filteredScenarios, setFilteredScenarios] = useState<Scenario[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
@@ -254,5 +257,7 @@ export function useSimulation(): UseSimulationReturn {
     clearError,
     continueCheckpoint,
     setPipelineMode,
+    filteredScenarios,
+    setFilteredScenarios,
   };
 }
