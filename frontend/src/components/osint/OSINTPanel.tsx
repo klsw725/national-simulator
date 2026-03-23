@@ -7,14 +7,16 @@ import OverviewTab from "./OverviewTab";
 import AssetsTab from "./AssetsTab";
 import FeedTab from "./FeedTab";
 import FreshnessTab from "./FreshnessTab";
+import TrendTab from "./TrendTab";
 
-type TabId = "overview" | "assets" | "feed" | "freshness";
+type TabId = "overview" | "assets" | "feed" | "freshness" | "trend";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "요약" },
   { id: "assets", label: "자산" },
   { id: "feed", label: "피드" },
   { id: "freshness", label: "선도" },
+  { id: "trend", label: "트렌드" },
 ];
 
 interface OSINTPanelProps {
@@ -133,6 +135,7 @@ export default function OSINTPanel({
         {activeTab === "freshness" && (
           <FreshnessTab polling={polling} />
         )}
+        {activeTab === "trend" && <TrendTab />}
       </div>
     </div>
   );

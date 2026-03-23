@@ -344,6 +344,79 @@ export function getDashboard(): Promise<{
   return fetchJSON("/api/dashboard");
 }
 
+// ── Analytics ──
+
+export function getAnalyticsTrend(params: {
+  source_type: string;
+  hours?: number;
+  interval?: string;
+  region?: string;
+}): Promise<{
+  source_type: string;
+  interval: string;
+  data_points: Array<{ time: string; count: number; countries: Record<string, number> }>;
+  summary: { min: number; max: number; avg: number; trend: string };
+}> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null) qs.set(k, String(v));
+  }
+  return fetchJSON(`/api/analytics/trend?${qs.toString()}`);
+}
+
+export function getAnalyticsAnomalies(params?: {
+  hours?: number;
+  region?: string;
+}): Promise<{
+  anomalies: Array<{
+    type: string;
+    source_type: string;
+    detected_at: string;
+    severity: string;
+    detail: string;
+    current: number;
+    baseline: number;
+    sigma: number;
+  }>;
+}> {
+  const qs = new URLSearchParams();
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v != null) qs.set(k, String(v));
+    }
+  }
+  return fetchJSON(`/api/analytics/anomalies?${qs.toString()}`);
+}
+
+export function getAnalyticsCompare(params: {
+  source_type: string;
+  period_a: string;
+  period_b: string;
+  hours?: number;
+}): Promise<{
+  source_type: string;
+  period_a: { avg: number; max: number; min: number; trend: string };
+  period_b: { avg: number; max: number; min: number; trend: string };
+  delta: { avg: number; max: number; pct_change: string };
+}> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null) qs.set(k, String(v));
+  }
+  return fetchJSON(`/api/analytics/compare?${qs.toString()}`);
+}
+
+export function getAnalyticsSnapshots(hours?: number): Promise<{
+  snapshots: Array<{
+    time: string;
+    assets: Record<string, number>;
+    tension: Record<string, number>;
+  }>;
+}> {
+  const qs = hours ? `?hours=${hours}` : "";
+  return fetchJSON(`/api/analytics/snapshots${qs}`);
+}
+
 // ── Interactive Simulation ──
 
 export function getInteractiveStatus(scenarioId: string): Promise<{

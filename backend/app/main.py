@@ -17,6 +17,8 @@ async def lifespan(app: FastAPI):
     await init_db()
     app.state.sb_client = ShadowBrokerClient(settings.shadowbroker_url)
     app.state.mf_client = MiroFishClient(settings.mirofish_url)
+    from app.tasks.aggregation_scheduler import start_background_tasks
+    start_background_tasks()
     yield
     await app.state.mf_client.close()
     await app.state.sb_client.close()
