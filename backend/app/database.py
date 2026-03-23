@@ -216,6 +216,14 @@ CREATE TABLE IF NOT EXISTS injected_events (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_injected_events_scenario ON injected_events(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_injected_events_scenario_status ON injected_events(scenario_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_simulation_results_scenario ON simulation_results(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_seeds_scenario ON seeds(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_scenarios_status ON scenarios(status);
+CREATE INDEX IF NOT EXISTS idx_decision_points_scenario_status ON decision_points(scenario_id, status);
+CREATE INDEX IF NOT EXISTS idx_decision_points_scenario_type_status ON decision_points(scenario_id, type, status);
+CREATE INDEX IF NOT EXISTS idx_action_log_scenario_type ON action_log(scenario_id, action_type);
 """
 
 

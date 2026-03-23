@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
   BackendStatus,
   Ship,
@@ -47,35 +47,99 @@ export interface PollingResult {
   backendStatus: BackendStatus;
 }
 
+type Action =
+  | { type: "POLL_FAST"; payload: Record<string, unknown> }
+  | { type: "POLL_SLOW"; payload: Record<string, unknown> }
+  | { type: "STATUS"; payload: BackendStatus };
+
+const INITIAL_STATE: PollingResult = {
+  ships: [],
+  militaryFlights: [],
+  satellites: [],
+  militaryBases: [],
+  uavs: [],
+  trackedFlights: [],
+  cctv: [],
+  gpsJamming: [],
+  liveuamap: [],
+  gdelt: [],
+  news: [],
+  stocks: [],
+  earthquakes: [],
+  kiwisdr: [],
+  internetOutages: [],
+  firmsFires: [],
+  datacenters: [],
+  powerPlants: [],
+  spaceWeather: null,
+  frontlines: null,
+  freshness: {},
+  backendStatus: "connecting",
+};
+
+function pollingReducer(state: PollingResult, action: Action): PollingResult {
+  switch (action.type) {
+    case "POLL_FAST": {
+      const d = action.payload;
+      const nested = (d.data ?? {}) as Record<string, unknown>;
+      return {
+        ...state,
+        ships: (d.ships ?? nested.ships ?? state.ships) as Ship[],
+        militaryFlights: (d.military_flights ?? state.militaryFlights) as Flight[],
+        satellites: (d.satellites ?? state.satellites) as Satellite[],
+        uavs: (d.uavs ?? state.uavs) as UAV[],
+        trackedFlights: (d.tracked_flights ?? state.trackedFlights) as Flight[],
+        cctv: (d.cctv ?? state.cctv) as CCTV[],
+        gpsJamming: (d.gps_jamming ?? state.gpsJamming) as GPSJamming[],
+        liveuamap: (d.liveuamap ?? state.liveuamap) as unknown[],
+        freshness: d.freshness
+          ? { ...state.freshness, ...(d.freshness as Record<string, string>) }
+          : state.freshness,
+        backendStatus: "connected",
+      };
+    }
+    case "POLL_SLOW": {
+      const d = action.payload;
+      const nested = (d.data ?? {}) as Record<string, unknown>;
+      return {
+        ...state,
+        gdelt: (d.gdelt ?? nested.gdelt ?? state.gdelt) as unknown[],
+        militaryBases: (d.military_bases ?? state.militaryBases) as MilitaryBase[],
+        news: (d.news ?? state.news) as unknown[],
+        stocks: (d.stocks ?? state.stocks) as unknown[],
+        earthquakes: (d.earthquakes ?? state.earthquakes) as Earthquake[],
+        kiwisdr: (d.kiwisdr ?? state.kiwisdr) as KiwiSDR[],
+        internetOutages: (d.internet_outages ?? state.internetOutages) as InternetOutage[],
+        firmsFires: (d.firms_fires ?? state.firmsFires) as FIRMSFire[],
+        datacenters: (d.datacenters ?? state.datacenters) as Datacenter[],
+        powerPlants: (d.power_plants ?? state.powerPlants) as PowerPlant[],
+        spaceWeather: (d.space_weather ?? state.spaceWeather) as SpaceWeather | null,
+        frontlines: d.frontlines ?? state.frontlines,
+        freshness: d.freshness
+          ? { ...state.freshness, ...(d.freshness as Record<string, string>) }
+          : state.freshness,
+      };
+    }
+    case "STATUS":
+      return { ...state, backendStatus: action.payload };
+    default:
+      return state;
+  }
+}
+
 export function useDataPolling(): PollingResult {
-  const [ships, setShips] = useState<Ship[]>([]);
-  const [militaryFlights, setMilitaryFlights] = useState<Flight[]>([]);
-  const [satellites, setSatellites] = useState<Satellite[]>([]);
-  const [militaryBases, setMilitaryBases] = useState<MilitaryBase[]>([]);
-  const [uavs, setUavs] = useState<UAV[]>([]);
-  const [trackedFlights, setTrackedFlights] = useState<Flight[]>([]);
-  const [cctv, setCctv] = useState<CCTV[]>([]);
-  const [gpsJamming, setGpsJamming] = useState<GPSJamming[]>([]);
-  const [liveuamap, setLiveuamap] = useState<unknown[]>([]);
-  const [gdelt, setGdelt] = useState<unknown[]>([]);
-  const [news, setNews] = useState<unknown[]>([]);
-  const [stocks, setStocks] = useState<unknown[]>([]);
-  const [earthquakes, setEarthquakes] = useState<Earthquake[]>([]);
-  const [kiwisdr, setKiwisdr] = useState<KiwiSDR[]>([]);
-  const [internetOutages, setInternetOutages] = useState<InternetOutage[]>([]);
-  const [firmsFires, setFirmsFires] = useState<FIRMSFire[]>([]);
-  const [datacenters, setDatacenters] = useState<Datacenter[]>([]);
-  const [powerPlants, setPowerPlants] = useState<PowerPlant[]>([]);
-  const [spaceWeather, setSpaceWeather] = useState<SpaceWeather | null>(null);
-  const [frontlines, setFrontlines] = useState<unknown>(null);
-  const [freshness, setFreshness] = useState<Record<string, string>>({});
-  const [backendStatus, setBackendStatus] =
-    useState<BackendStatus>("connecting");
+  const [state, dispatch] = useReducer(pollingReducer, INITIAL_STATE);
 
   const fastEtag = useRef<string | null>(null);
   const slowEtag = useRef<string | null>(null);
+  const fastInFlight = useRef(false);
+  const slowInFlight = useRef(false);
+  const fastFailCount = useRef(0);
+  const slowFailCount = useRef(0);
 
   const pollFast = useCallback(async () => {
+    if (fastInFlight.current) return;
+    fastInFlight.current = true;
     try {
       const headers: HeadersInit = {};
       if (fastEtag.current) {
@@ -83,64 +147,56 @@ export function useDataPolling(): PollingResult {
       }
       const res = await fetch("/api/osint/live_data/fast", { headers });
       if (res.status === 304) {
-        setBackendStatus("connected");
+        dispatch({ type: "STATUS", payload: "connected" });
+        fastFailCount.current = 0;
         return;
       }
       if (!res.ok) {
-        setBackendStatus("disconnected");
+        fastFailCount.current++;
+        dispatch({ type: "STATUS", payload: "disconnected" });
         return;
       }
       const etag = res.headers.get("etag");
       if (etag) fastEtag.current = etag;
 
       const data = await res.json();
-      setShips(data.ships ?? data.data?.ships ?? []);
-      setMilitaryFlights(data.military_flights ?? []);
-      setSatellites(data.satellites ?? []);
-      setUavs(data.uavs ?? []);
-      setTrackedFlights(data.tracked_flights ?? []);
-      setCctv(data.cctv ?? []);
-      setGpsJamming(data.gps_jamming ?? []);
-      setLiveuamap(data.liveuamap ?? []);
-      if (data.freshness) {
-        setFreshness((prev) => ({ ...prev, ...data.freshness }));
-      }
-      setBackendStatus("connected");
+      dispatch({ type: "POLL_FAST", payload: data });
+      fastFailCount.current = 0;
     } catch {
-      setBackendStatus("disconnected");
+      fastFailCount.current++;
+      dispatch({ type: "STATUS", payload: "disconnected" });
+    } finally {
+      fastInFlight.current = false;
     }
   }, []);
 
   const pollSlow = useCallback(async () => {
+    if (slowInFlight.current) return;
+    slowInFlight.current = true;
     try {
       const headers: HeadersInit = {};
       if (slowEtag.current) {
         headers["If-None-Match"] = slowEtag.current;
       }
       const res = await fetch("/api/osint/live_data/slow", { headers });
-      if (res.status === 304) return;
-      if (!res.ok) return;
+      if (res.status === 304) {
+        slowFailCount.current = 0;
+        return;
+      }
+      if (!res.ok) {
+        slowFailCount.current++;
+        return;
+      }
       const etag = res.headers.get("etag");
       if (etag) slowEtag.current = etag;
 
       const data = await res.json();
-      setGdelt(data.gdelt ?? data.data?.gdelt ?? []);
-      setMilitaryBases(data.military_bases ?? []);
-      setNews(data.news ?? []);
-      setStocks(data.stocks ?? []);
-      setEarthquakes(data.earthquakes ?? []);
-      setKiwisdr(data.kiwisdr ?? []);
-      setInternetOutages(data.internet_outages ?? []);
-      setFirmsFires(data.firms_fires ?? []);
-      setDatacenters(data.datacenters ?? []);
-      setPowerPlants(data.power_plants ?? []);
-      setSpaceWeather(data.space_weather ?? null);
-      setFrontlines(data.frontlines ?? null);
-      if (data.freshness) {
-        setFreshness((prev) => ({ ...prev, ...data.freshness }));
-      }
+      dispatch({ type: "POLL_SLOW", payload: data });
+      slowFailCount.current = 0;
     } catch {
-      // slow poll failure is non-critical
+      slowFailCount.current++;
+    } finally {
+      slowInFlight.current = false;
     }
   }, []);
 
@@ -148,8 +204,19 @@ export function useDataPolling(): PollingResult {
     pollFast();
     pollSlow();
 
-    const fastTimer = setInterval(pollFast, FAST_INTERVAL);
-    const slowTimer = setInterval(pollSlow, SLOW_INTERVAL);
+    const fastTimer = setInterval(() => {
+      const backoff = Math.min(fastFailCount.current, 3);
+      if (backoff === 0 || Math.random() < 1 / (1 << backoff)) {
+        pollFast();
+      }
+    }, FAST_INTERVAL);
+
+    const slowTimer = setInterval(() => {
+      const backoff = Math.min(slowFailCount.current, 3);
+      if (backoff === 0 || Math.random() < 1 / (1 << backoff)) {
+        pollSlow();
+      }
+    }, SLOW_INTERVAL);
 
     return () => {
       clearInterval(fastTimer);
@@ -157,28 +224,5 @@ export function useDataPolling(): PollingResult {
     };
   }, [pollFast, pollSlow]);
 
-  return {
-    ships,
-    militaryFlights,
-    satellites,
-    militaryBases,
-    uavs,
-    trackedFlights,
-    cctv,
-    gpsJamming,
-    liveuamap,
-    gdelt,
-    news,
-    stocks,
-    earthquakes,
-    kiwisdr,
-    internetOutages,
-    firmsFires,
-    datacenters,
-    powerPlants,
-    spaceWeather,
-    frontlines,
-    freshness,
-    backendStatus,
-  };
+  return state;
 }

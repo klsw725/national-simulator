@@ -22,13 +22,21 @@ import {
 } from "@/components/map/geoJSONBuilders";
 import type { BackendStatus } from "@/types/dashboard";
 import { Crosshair, Radio } from "lucide-react";
-import SimulationPanel from "@/components/simulation/SimulationPanel";
 import LayerToggle, { type LayerVisibility } from "@/components/map/LayerToggle";
-import OSINTPanel from "@/components/osint/OSINTPanel";
 import { useOSINTSummary } from "@/hooks/useOSINTSummary";
 
 const MaplibreViewer = dynamic(
   () => import("@/components/map/MaplibreViewer"),
+  { ssr: false }
+);
+
+const SimulationPanel = dynamic(
+  () => import("@/components/simulation/SimulationPanel"),
+  { ssr: false }
+);
+
+const OSINTPanel = dynamic(
+  () => import("@/components/osint/OSINTPanel"),
   { ssr: false }
 );
 

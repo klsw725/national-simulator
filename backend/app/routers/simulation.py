@@ -105,13 +105,14 @@ async def generate_seed(
 
     used_obs_ids = result["metadata"].get("used_observation_ids", [])
     if used_obs_ids:
-        for obs_id in used_obs_ids:
-            so_id = f"so_{uuid.uuid4().hex[:12]}"
-            await conn.execute(
-                """INSERT INTO scenario_observations (id, scenario_id, observation_id, used_in_seed, created_at)
-                   VALUES ($1, $2, $3, TRUE, $4) ON CONFLICT DO NOTHING""",
-                so_id, scenario_id, obs_id, now,
-            )
+        values = [
+            (f"so_{uuid.uuid4().hex[:12]}", scenario_id, obs_id, False, now)
+            for obs_id in used_obs_ids
+        ]
+        await conn.executemany(
+            "INSERT INTO scenario_observations (id, scenario_id, observation_id, used_in_seed, created_at) VALUES ($1, $2, $3, $4, $5)",
+            values,
+        )
 
     await ActionLogger.log(
         "seed.generate",
@@ -1003,8 +1004,9 @@ async def get_live_actions(
             limit=limit,
             offset=offset,
         )
-    except Exception:
-        return {"actions": [], "count": 0}
+    except Exception as e:
+        logger.exception("Failed to fetch live actions for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail="Upstream service error") from e
 
 
 @router.get("/{scenario_id}/live/graph_task")
@@ -1022,8 +1024,9 @@ async def get_live_graph_task(
     mf_client = request.app.state.mf_client
     try:
         return await mf_client.get_task_status(task_id)
-    except Exception:
-        return {"status": "unknown", "progress": 0}
+    except Exception as e:
+        logger.exception("Failed to fetch live graph task for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail="Upstream service error") from e
 
 
 @router.get("/{scenario_id}/live/graph_data")
@@ -1041,8 +1044,9 @@ async def get_live_graph_data(
     mf_client = request.app.state.mf_client
     try:
         return await mf_client.get_graph_data(graph_id)
-    except Exception:
-        return {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+    except Exception as e:
+        logger.exception("Failed to fetch live graph data for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail="Upstream service error") from e
 
 
 @router.get("/{scenario_id}/live/profiles")
