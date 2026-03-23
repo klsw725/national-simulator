@@ -1457,6 +1457,7 @@ async def resolve_decision_point(
 @router.post("/{scenario_id}/briefing/generate", status_code=201)
 async def generate_briefing(
     scenario_id: str,
+    request: Request,
     conn: asyncpg.Connection = Depends(get_db),
 ):
     scenario = await conn.fetchrow(
@@ -1470,7 +1471,8 @@ async def generate_briefing(
 
     from app.services.briefing_generator import BriefingGenerator
 
-    generator = BriefingGenerator()
+    sb_client = request.app.state.sb_client
+    generator = BriefingGenerator(sb_client=sb_client)
     try:
         briefing = await generator.generate(scenario_id)
     except ValueError as exc:

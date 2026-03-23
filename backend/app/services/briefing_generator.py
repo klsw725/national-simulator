@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -8,8 +9,11 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from app.clients.shadowbroker import BBox, ShadowBrokerClient
 from app.config import settings
 from app.database import get_pool
+
+logger = logging.getLogger(__name__)
 
 BRIEFING_PROMPT = """\
 당신은 지정학 위기 브리핑 작성 전문가입니다.
@@ -32,6 +36,7 @@ BRIEFING_PROMPT = """\
 ## MiroFish 보고서
 {report_text}
 
+{current_osint_section}
 다음 구조를 정확히 따라 작성하세요:
 
 # 상황 브리핑: [시나리오명]
@@ -41,21 +46,92 @@ BRIEFING_PROMPT = """\
 ## 4. 시뮬레이션 결과 요약
 ## 5. 지정학적 함의
 ## 6. 권장 조치
+## 7. 현재 상황 대비 변화 (시드 생성 이후)
 ## 부록: 데이터 소스, 방법론, 신뢰도
 
 요구사항:
 - 과장 없이 근거 중심으로 작성하세요.
 - 수치/사실이 없는 경우 추측하지 말고 "데이터 제한"을 명시하세요.
 - 정책 결정자가 바로 읽을 수 있도록 간결하게 작성하세요.
+- "## 7. 현재 상황 대비 변화"에서는 시드 생성 시점의 데이터와 현재 OSINT 데이터를 비교 분석하세요.
+  현재 OSINT 데이터가 없는 경우 해당 섹션을 "데이터 없음"으로 표기하세요.
 """
 
 
 class BriefingGenerator:
-    def __init__(self):
+    def __init__(self, sb_client: ShadowBrokerClient | None = None):
+        self._sb = sb_client
         self._llm = AsyncOpenAI(
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         )
+
+    async def _collect_current_osint(self, bbox: list[float]) -> str:
+        if not self._sb or len(bbox) < 4:
+            return ""
+        try:
+            sb_bbox = BBox(s=bbox[1], w=bbox[0], n=bbox[3], e=bbox[2])
+            fast_data = await self._sb.get_fast_data(sb_bbox)
+            slow_data = await self._sb.get_slow_data(sb_bbox)
+
+            min_lng, min_lat, max_lng, max_lat = bbox
+
+            def _in_bbox(item: dict, lng_key: str = "lng") -> bool:
+                lat = item.get("lat")
+                lng = item.get(lng_key)
+                if lat is None or lng is None:
+                    return False
+                return min_lat <= lat <= max_lat and min_lng <= lng <= max_lng
+
+            ships = [s for s in fast_data.get("ships", []) if _in_bbox(s)]
+            mil_flights = [f for f in fast_data.get("military_flights", []) if _in_bbox(f)]
+            uavs = [u for u in fast_data.get("uavs", []) if _in_bbox(u)]
+            satellites = [s for s in fast_data.get("satellites", []) if _in_bbox(s)]
+            gps_jamming = [j for j in fast_data.get("gps_jamming", []) if _in_bbox(j)]
+            bases = [b for b in slow_data.get("military_bases", []) if _in_bbox(b)]
+
+            lines = [
+                f"- 군함: {len(ships)}척",
+                f"- 군용기: {len(mil_flights)}대",
+                f"- UAV: {len(uavs)}대",
+                f"- 정찰위성: {len(satellites)}기",
+                f"- 군사기지: {len(bases)}개",
+            ]
+            if gps_jamming:
+                lines.append(f"- GPS 교란: {len(gps_jamming)}건")
+
+            gdelt = slow_data.get("gdelt", [])
+            headlines: list[str] = []
+            for feature in gdelt:
+                coords = feature.get("geometry", {}).get("coordinates", [])
+                if len(coords) >= 2:
+                    lng, lat = coords[0], coords[1]
+                    if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
+                        continue
+                for h in feature.get("properties", {}).get("_headlines_list", [])[:2]:
+                    if h and h not in headlines:
+                        headlines.append(h)
+            if headlines:
+                lines.append("- GDELT 주요 뉴스:")
+                for h in headlines[:5]:
+                    lines.append(f"  - {h}")
+
+            news = slow_data.get("news", [])
+            bbox_news = [n for n in news if _in_bbox(n)]
+            bbox_news.sort(key=lambda n: n.get("risk_score", 0), reverse=True)
+            if bbox_news:
+                lines.append("- 최신 뉴스:")
+                for item in bbox_news[:3]:
+                    title = item.get("title", "")
+                    source = item.get("source", "")
+                    if title:
+                        lines.append(f"  - [{source}] {title}")
+
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            return f"(데이터 기준: {now})\n" + "\n".join(lines)
+        except Exception:
+            logger.warning("Failed to collect current OSINT for briefing")
+            return "(현재 OSINT 데이터 수집 실패 — ShadowBroker 연결 불가)"
 
     def _summarize_simulation_actions(self, results_raw: str | None) -> str:
         if not results_raw:
@@ -169,14 +245,14 @@ class BriefingGenerator:
         pool = get_pool()
         async with pool.acquire() as conn:
             scenario = await conn.fetchrow(
-                "SELECT id, name, region_name, question FROM scenarios WHERE id = $1",
+                "SELECT id, name, region_name, region_bbox, question FROM scenarios WHERE id = $1",
                 scenario_id,
             )
             if not scenario:
                 raise ValueError("Scenario not found")
 
             seed_row = await conn.fetchrow(
-                "SELECT text FROM seeds WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+                "SELECT text, created_at FROM seeds WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
                 scenario_id,
             )
             sim_row = await conn.fetchrow(
@@ -201,6 +277,7 @@ class BriefingGenerator:
             )
 
         seed_text = seed_row["text"] if seed_row and seed_row["text"] else "시드 문서 없음"
+        seed_created = seed_row["created_at"] if seed_row else None
         simulation_summary = self._summarize_simulation_actions(
             sim_row["results"] if sim_row else None,
         )
@@ -211,6 +288,23 @@ class BriefingGenerator:
             else "MiroFish 보고서 없음"
         )
 
+        current_osint_section = ""
+        try:
+            bbox = json.loads(scenario["region_bbox"])
+        except (json.JSONDecodeError, TypeError):
+            bbox = []
+        if bbox:
+            osint_snapshot = await self._collect_current_osint(bbox)
+            if osint_snapshot:
+                seed_time_label = str(seed_created)[:19] if seed_created else "불명"
+                current_osint_section = (
+                    f"## 현재 OSINT 상황 (브리핑 생성 시점)\n"
+                    f"아래는 브리핑 생성 시점의 실시간 OSINT 데이터입니다.\n"
+                    f"시드 상황 분석은 시나리오 생성 시점({seed_time_label})의 데이터이므로, "
+                    f"현재와 차이가 있을 수 있습니다.\n\n"
+                    f"{osint_snapshot}"
+                )
+
         prompt = BRIEFING_PROMPT.format(
             scenario_name=scenario["name"],
             region_name=scenario["region_name"],
@@ -219,6 +313,7 @@ class BriefingGenerator:
             simulation_summary=simulation_summary,
             geopolitics_summary=geopolitics_summary,
             report_text=report_text,
+            current_osint_section=current_osint_section,
         )
         content = await self._call_llm(prompt)
 
