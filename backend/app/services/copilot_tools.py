@@ -199,7 +199,14 @@ async def _analyze_simulation_actions(scenario_id: str) -> str:
     if not result or not result["results"]:
         return json.dumps({"error": "시뮬레이션 결과 없음"})
 
-    actions = json.loads(result["results"])
+    parsed = json.loads(result["results"])
+    if isinstance(parsed, dict) and isinstance(parsed.get("actions"), list):
+        actions = parsed["actions"]
+    elif isinstance(parsed, list):
+        actions = parsed
+    else:
+        return json.dumps({"error": "시뮬레이션 결과 형식 불명"})
+
     actor_counts: dict[str, int] = {}
     type_counts: dict[str, int] = {}
     round_counts: dict[int, int] = {}
@@ -281,7 +288,13 @@ async def _generate_summary(scenario_id: str) -> str:
         geo_count = await conn.fetchval(
             "SELECT COUNT(*) FROM geopolitics_events WHERE scenario_id = $1", scenario_id)
 
-    actions = json.loads(result["results"]) if result and result["results"] else []
+    raw = json.loads(result["results"]) if result and result["results"] else []
+    if isinstance(raw, dict) and isinstance(raw.get("actions"), list):
+        actions = raw["actions"]
+    elif isinstance(raw, list):
+        actions = raw
+    else:
+        actions = []
     actors = set()
     for act in actions:
         actor = act.get("actor", act.get("author", ""))

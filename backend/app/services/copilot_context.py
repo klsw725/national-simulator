@@ -59,7 +59,13 @@ class CopilotContextBuilder:
             parts.append(f"\n## 시뮬레이션 결과")
             parts.append(f"- 상태: {result['status']}")
             parts.append(f"- 플랫폼: {result['platform']}")
-            actions = json.loads(result["results"]) if result["results"] else []
+            raw_results = json.loads(result["results"]) if result["results"] else []
+            if isinstance(raw_results, dict) and isinstance(raw_results.get("actions"), list):
+                actions = raw_results["actions"]
+            elif isinstance(raw_results, list):
+                actions = raw_results
+            else:
+                actions = []
             parts.append(f"- 총 액션: {len(actions)}건")
 
             if actions:

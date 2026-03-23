@@ -63,18 +63,36 @@ class CopilotService:
         sources: list[str] = []
 
         for _ in range(MAX_TOOL_ROUNDS):
-            response = await self._llm.chat.completions.create(
-                model=settings.llm_model_name,
-                messages=history,
-                tools=TOOL_DEFINITIONS,
-                temperature=0.3,
-                max_tokens=2048,
-            )
+            try:
+                response = await self._llm.chat.completions.create(
+                    model=settings.llm_model_name,
+                    messages=history,
+                    tools=TOOL_DEFINITIONS,
+                    temperature=0.3,
+                    max_tokens=2048,
+                )
+            except Exception:
+                logger.warning("LLM tool-calling failed, retrying without tools")
+                response = await self._llm.chat.completions.create(
+                    model=settings.llm_model_name,
+                    messages=history,
+                    temperature=0.3,
+                    max_tokens=2048,
+                )
 
             choice = response.choices[0]
 
             if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
-                history.append(choice.message.model_dump())
+                msg = {"role": "assistant", "content": choice.message.content or ""}
+                msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in choice.message.tool_calls
+                ]
+                history.append(msg)
 
                 for tool_call in choice.message.tool_calls:
                     fn_name = tool_call.function.name

@@ -29,9 +29,13 @@ async def copilot_chat(
     from app.services.copilot import CopilotService
 
     service = CopilotService()
-    result = await service.chat(
-        scenario_id=body.scenario_id,
-        message=body.message,
-        conversation_id=body.conversation_id,
-    )
+    try:
+        result = await service.chat(
+            scenario_id=body.scenario_id,
+            message=body.message,
+            conversation_id=body.conversation_id,
+        )
+    except Exception:
+        logger.exception("Copilot chat failed for scenario %s", body.scenario_id)
+        raise HTTPException(status_code=502, detail="Copilot LLM 호출 실패")
     return result
