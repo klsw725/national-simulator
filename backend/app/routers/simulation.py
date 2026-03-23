@@ -1637,3 +1637,214 @@ async def export_report(
         content=md,
         headers={"Content-Disposition": f'attachment; filename="{scenario["name"]}_report.md"'},
     )
+
+
+# ── Interactive Simulation ──
+
+
+@router.get("/{scenario_id}/interactive_status")
+async def get_interactive_status(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    scenario = await conn.fetchrow(
+        "SELECT id, status, simulation_status FROM scenarios WHERE id = $1", scenario_id
+    )
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    result = await conn.fetchrow(
+        "SELECT status, checkpoint_data FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+
+    injected_count = await conn.fetchval(
+        "SELECT COUNT(*) FROM injected_events WHERE scenario_id = $1 AND status = 'pending'",
+        scenario_id,
+    )
+
+    tension_count = await conn.fetchval(
+        "SELECT COUNT(*) FROM decision_points WHERE scenario_id = $1 AND type = 'tension_alert' AND status = 'pending'",
+        scenario_id,
+    )
+
+    checkpoint = json.loads(result["checkpoint_data"]) if result and result["checkpoint_data"] else {}
+    sim_status = result["status"] if result else "pending"
+    is_paused = sim_status.startswith("paused:")
+
+    return {
+        "scenario_id": scenario_id,
+        "simulation_status": sim_status,
+        "current_round": checkpoint.get("current_round", 0),
+        "max_rounds": checkpoint.get("max_rounds", 10),
+        "is_paused": is_paused,
+        "pause_reason": checkpoint.get("pause_reason") if is_paused else None,
+        "injected_events_count": injected_count,
+        "tension_alerts": tension_count,
+    }
+
+
+@router.post("/{scenario_id}/simulation/pause")
+async def pause_simulation(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    result = await conn.fetchrow(
+        "SELECT id, status, mirofish_simulation_id, checkpoint_data FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="No simulation found")
+
+    status = result["status"]
+    if not status.startswith("simulating:"):
+        raise HTTPException(status_code=409, detail=f"Cannot pause simulation in status: {status}")
+
+    mf_sim_id = result["mirofish_simulation_id"]
+    if mf_sim_id:
+        from app.clients.mirofish import MiroFishClient
+        from app.config import settings
+        client = MiroFishClient(settings.mirofish_url)
+        try:
+            await client.stop_simulation(mf_sim_id)
+        finally:
+            await client.close()
+
+    checkpoint = json.loads(result["checkpoint_data"]) if result["checkpoint_data"] else {}
+    checkpoint["pause_reason"] = "manual"
+    now = datetime.now(timezone.utc).isoformat()
+
+    await conn.execute(
+        "UPDATE simulation_results SET status = $1, checkpoint_data = $2 WHERE id = $3",
+        f"paused:round_{checkpoint.get('current_round', 0)}",
+        json.dumps(checkpoint),
+        result["id"],
+    )
+    await conn.execute(
+        "UPDATE scenarios SET simulation_status = 'paused', updated_at = $1 WHERE id = $2",
+        now, scenario_id,
+    )
+
+    return {"status": "paused", "round": checkpoint.get("current_round", 0)}
+
+
+@router.post("/{scenario_id}/simulation/resume")
+async def resume_simulation(
+    scenario_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    result = await conn.fetchrow(
+        "SELECT id, status, checkpoint_data, mirofish_simulation_id, mirofish_project_id, graph_id FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="No simulation found")
+
+    status = result["status"]
+    if not status.startswith("paused:"):
+        raise HTTPException(status_code=409, detail=f"Simulation not paused, status: {status}")
+
+    checkpoint = json.loads(result["checkpoint_data"]) if result["checkpoint_data"] else {}
+    scenario = await conn.fetchrow("SELECT * FROM scenarios WHERE id = $1", scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    sim_params_raw = scenario["simulation_params"]
+    sim_params = SimulationParams.model_validate_json(sim_params_raw or "{}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await conn.execute(
+        "UPDATE simulation_results SET status = 'simulating:running' WHERE id = $1",
+        result["id"],
+    )
+    await conn.execute(
+        "UPDATE scenarios SET simulation_status = 'simulating:running', updated_at = $1 WHERE id = $2",
+        now, scenario_id,
+    )
+
+    seed = await conn.fetchrow(
+        "SELECT text FROM seeds WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    seed_text = seed["text"] if seed else ""
+
+    current_round = checkpoint.get("current_round", 0)
+    remaining_rounds = scenario["max_rounds"] - current_round
+
+    if remaining_rounds <= 0:
+        await conn.execute(
+            "UPDATE simulation_results SET status = 'completed' WHERE id = $1",
+            result["id"],
+        )
+        return {"status": "completed", "message": "All rounds already completed"}
+
+    recovery_point = "run_simulation"
+
+    mf_client = request.app.state.mf_client
+    orchestrator = SimulationOrchestrator(mf_client, sb_client=request.app.state.sb_client)
+    background_tasks.add_task(
+        orchestrator.run_from_failure,
+        scenario_id,
+        result["id"],
+        seed_text,
+        remaining_rounds,
+        recovery_point,
+        result["mirofish_project_id"] or "",
+        result["graph_id"] or "",
+        result["mirofish_simulation_id"] or "",
+        sim_params,
+    )
+
+    return {
+        "status": "resuming",
+        "from_round": current_round,
+        "remaining_rounds": remaining_rounds,
+    }
+
+
+@router.post("/{scenario_id}/simulation/inject_event", status_code=201)
+async def inject_event(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    scenario = await conn.fetchrow("SELECT id FROM scenarios WHERE id = $1", scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    result = await conn.fetchrow(
+        "SELECT id, status, checkpoint_data FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="No simulation found")
+
+    body = await request.json()
+
+    from app.models.interactive import InjectEventRequest
+    event_data = InjectEventRequest(**body)
+
+    checkpoint = json.loads(result["checkpoint_data"]) if result["checkpoint_data"] else {}
+    event_id = f"evt_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    await conn.execute(
+        """INSERT INTO injected_events (id, scenario_id, result_id, event_type, content, target_agents, injected_at_round, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)""",
+        event_id,
+        scenario_id,
+        result["id"],
+        event_data.event_type,
+        event_data.content,
+        json.dumps(event_data.target_agents),
+        checkpoint.get("current_round", 0),
+        now,
+    )
+
+    return {
+        "event_id": event_id,
+        "status": "pending",
+        "injected_at_round": checkpoint.get("current_round", 0),
+    }

@@ -20,8 +20,9 @@ import ComparisonView from "./ComparisonView";
 import AnalystDashboard from "./AnalystDashboard";
 import ScenarioSearch from "./ScenarioSearch";
 import CopilotPanel from "./CopilotPanel";
+import InteractiveSimulationView from "./InteractiveSimulationView";
 
-type Tab = "create" | "progress" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
+type Tab = "create" | "progress" | "interactive" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
 
 interface Props {
   open: boolean;
@@ -48,6 +49,7 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
+    { key: "interactive", label: "인터랙티브", show: hasActiveScenario },
     { key: "decisions", label: "결정", show: hasActiveScenario },
     { key: "list", label: "목록", show: true },
     { key: "graph", label: "그래프", show: showGraphTab },
@@ -290,6 +292,10 @@ export default function SimulationPanel({ open, onClose, sim }: Props) {
               }}
             />
           )
+        )}
+
+        {tab === "interactive" && (
+          <InteractiveSimulationView scenarioId={sim.activeScenario?.id} />
         )}
 
         {tab === "decisions" && sim.activeScenario && (

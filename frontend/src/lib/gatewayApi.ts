@@ -344,6 +344,43 @@ export function getDashboard(): Promise<{
   return fetchJSON("/api/dashboard");
 }
 
+// ── Interactive Simulation ──
+
+export function getInteractiveStatus(scenarioId: string): Promise<{
+  scenario_id: string;
+  simulation_status: string;
+  current_round: number;
+  max_rounds: number;
+  is_paused: boolean;
+  pause_reason: string | null;
+  injected_events_count: number;
+  tension_alerts: number;
+}> {
+  return fetchJSON(`/api/scenario/${scenarioId}/interactive_status`);
+}
+
+export function pauseSimulation(scenarioId: string): Promise<{ status: string; round: number }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/pause`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+  });
+}
+
+export function resumeSimulation(scenarioId: string): Promise<{ status: string; from_round: number; remaining_rounds: number }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/resume`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+  });
+}
+
+export function injectEvent(scenarioId: string, data: { event_type: string; content: string; target_agents: string[] }): Promise<{ event_id: string; status: string; injected_at_round: number }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/simulation/inject_event`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Copilot ──
 
 export function copilotChat(
