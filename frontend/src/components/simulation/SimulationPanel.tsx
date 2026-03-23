@@ -25,6 +25,22 @@ import WhatIfBranchView from "./WhatIfBranchView";
 
 type Tab = "create" | "progress" | "interactive" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
 
+type TabGroup = "scenario" | "simulation" | "analysis" | "system";
+
+const TAB_GROUPS: { key: TabGroup; label: string; tabs: Tab[] }[] = [
+  { key: "scenario", label: "시나리오", tabs: ["create", "list", "compare"] },
+  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "interactive", "what_if", "decisions"] },
+  { key: "analysis", label: "분석", tabs: ["graph", "geopolitics", "timeline", "report", "export", "copilot"] },
+  { key: "system", label: "시스템", tabs: ["dashboard", "health"] },
+];
+
+const getGroupForTab = (t: Tab): TabGroup => {
+  for (const g of TAB_GROUPS) {
+    if (g.tabs.includes(t)) return g.key;
+  }
+  return "scenario";
+};
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -67,7 +83,17 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
     { key: "health", label: "헬스", show: true },
   ];
 
-  const visibleTabs = tabs.filter((t) => t.show);
+  const tabMap = new Map(tabs.map(t => [t.key, t]));
+  const activeGroup = getGroupForTab(tab);
+  const activeGroupDef = TAB_GROUPS.find(g => g.key === activeGroup)!;
+  const visibleSubTabs = activeGroupDef.tabs.filter(key => tabMap.get(key)?.show);
+
+  const handleGroupClick = (groupKey: TabGroup) => {
+    if (groupKey === activeGroup) return;
+    const group = TAB_GROUPS.find(g => g.key === groupKey)!;
+    const firstVisible = group.tabs.find(key => tabMap.get(key)?.show);
+    if (firstVisible) setTab(firstVisible);
+  };
 
   return (
     <div
@@ -122,34 +148,81 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tab groups */}
       <div
         style={{
           display: "flex",
+          gap: 4,
+          padding: "8px 12px",
           borderBottom: "1px solid var(--border-secondary)",
           flexShrink: 0,
+          background: "var(--bg-primary)",
         }}
       >
-        {visibleTabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              flex: 1,
-              padding: "10px 0",
-              background: "transparent",
-              border: "none",
-              borderBottom: `2px solid ${tab === t.key ? "var(--accent-cyan)" : "transparent"}`,
-              color: tab === t.key ? "var(--accent-cyan)" : "var(--text-muted)",
-              fontSize: 12,
-              fontWeight: tab === t.key ? 600 : 400,
-              cursor: "pointer",
-              transition: "color 0.15s, border-color 0.15s",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {TAB_GROUPS.map((g) => {
+          const hasVisible = g.tabs.some(key => tabMap.get(key)?.show);
+          const isActive = g.key === activeGroup;
+          return (
+            <button
+              key={g.key}
+              onClick={() => handleGroupClick(g.key)}
+              disabled={!hasVisible}
+              style={{
+                flex: 1,
+                padding: "6px 0",
+                background: isActive ? "rgba(34, 211, 238, 0.12)" : "transparent",
+                border: isActive ? "1px solid var(--accent-cyan)" : "1px solid var(--border-secondary)",
+                borderRadius: 6,
+                color: isActive ? "var(--accent-cyan)" : hasVisible ? "var(--text-muted)" : "var(--border-secondary)",
+                fontSize: 11,
+                fontWeight: isActive ? 700 : 500,
+                cursor: hasVisible ? "pointer" : "default",
+                transition: "all 0.15s ease",
+                opacity: hasVisible ? 1 : 0.4,
+              }}
+            >
+              {g.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Sub-tabs */}
+      <div
+        style={{
+          display: "flex",
+          overflowX: "auto",
+          scrollbarWidth: "none",
+          borderBottom: "1px solid var(--border-secondary)",
+          flexShrink: 0,
+          minHeight: 36,
+        }}
+      >
+        {visibleSubTabs.map((key) => {
+          const t = tabMap.get(key)!;
+          const isActive = tab === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              style={{
+                padding: "8px 14px",
+                background: "transparent",
+                border: "none",
+                borderBottom: `2px solid ${isActive ? "var(--accent-cyan)" : "transparent"}`,
+                color: isActive ? "var(--accent-cyan)" : "var(--text-muted)",
+                fontSize: 12,
+                fontWeight: isActive ? 600 : 400,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                transition: "color 0.15s, border-color 0.15s",
+                flexShrink: 0,
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Error banner */}
