@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import Map, {
   Source,
   Layer,
@@ -38,132 +38,6 @@ interface MaplibreViewerProps {
   internetOutagesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
 }
 
-interface ShipPopupData {
-  lng: number;
-  lat: number;
-  name: string;
-  type: string;
-  mmsi: string;
-  sog: number;
-  country: string;
-}
-
-interface FlightPopupData {
-  lng: number;
-  lat: number;
-  callsign: string;
-  country: string;
-  force: string;
-  military_type: string;
-  model: string;
-  alt: number;
-  speed_knots: number;
-}
-
-interface SatellitePopupData {
-  lng: number;
-  lat: number;
-  name: string;
-  country: string;
-  mission: string;
-  sat_type: string;
-  alt_km: number;
-}
-
-interface BasePopupData {
-  lng: number;
-  lat: number;
-  name: string;
-  country: string;
-  branch: string;
-  operator: string;
-}
-
-interface ActorPopupData {
-  lng: number;
-  lat: number;
-  actor: string;
-  stance: string;
-  tension_level: number;
-  key_statement: string;
-  post_count: number;
-  color: string;
-}
-
-interface UavPopupData {
-  lng: number;
-  lat: number;
-  callsign: string;
-  country: string;
-  alt: number;
-  speed_knots: number;
-  model: string;
-}
-
-interface TrackedFlightPopupData {
-  lng: number;
-  lat: number;
-  callsign: string;
-  country: string;
-  alt: number;
-  speed_knots: number;
-  model: string;
-  airline: string;
-}
-
-interface KiwisdrPopupData {
-  lng: number;
-  lat: number;
-  location_name: string;
-  frequency: string;
-  band: string;
-  url: string;
-}
-
-interface GpsJammingPopupData {
-  lng: number;
-  lat: number;
-  severity: number;
-  source: string;
-  region: string;
-  affected_area_km: number;
-}
-
-interface EarthquakePopupData {
-  lng: number;
-  lat: number;
-  place: string;
-  mag: number;
-  depth_km: number;
-  time: string;
-}
-
-interface PowerPlantPopupData {
-  lng: number;
-  lat: number;
-  name: string;
-  fuel_type: string;
-  capacity_mw: number;
-  country: string;
-}
-
-interface DatacenterPopupData {
-  lng: number;
-  lat: number;
-  name: string;
-  operator: string;
-  country: string;
-}
-
-interface InternetOutagePopupData {
-  lng: number;
-  lat: number;
-  region_name: string;
-  severity: number;
-  provider: string;
-  affected_users: number;
-}
-
 const INITIAL_VIEW = {
   longitude: 115,
   latitude: 15,
@@ -175,7 +49,692 @@ const EMPTY_GEOJSON: GeoJSON.FeatureCollection = {
   features: [],
 };
 
-export default function MaplibreViewer({
+const LAYER_TO_POPUP_TYPE: Record<string, string> = {
+  "ship-icons": "ship",
+  "military-flights-layer": "flight",
+  "satellites-layer": "satellite",
+  "military-bases-layer": "base",
+  "simulation-actors-layer": "actor",
+  "uavs-layer": "uav",
+  "tracked-flights-layer": "tracked-flight",
+  "kiwisdr-layer": "kiwisdr",
+  "gps-jamming-layer": "gps-jamming",
+  "earthquakes-layer": "earthquake",
+  "power-plants-layer": "power-plant",
+  "datacenters-layer": "datacenter",
+  "internet-outages-layer": "internet-outage",
+};
+
+const stanceColor = (stance: string) => {
+  const s = stance.toLowerCase();
+  if (s.includes("hostile") || s.includes("aggressive")) return "#ef4444";
+  if (s.includes("neutral")) return "#facc15";
+  if (s.includes("friendly") || s.includes("cooperative")) return "#22c55e";
+  return "#22d3ee";
+};
+
+function renderPopupContent(type: string, props: Record<string, unknown>) {
+  switch (type) {
+    case "actor": {
+      const actor = String(props.actor ?? "");
+      const stance = String(props.stance ?? "");
+      const tension_level = Number(props.tension_level) || 0;
+      const key_statement = String(props.key_statement ?? "");
+      const post_count = Number(props.post_count) || 0;
+      const color = String(props.color ?? "var(--accent-cyan)");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 8,
+              color,
+            }}
+          >
+            {actor}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: stanceColor(stance),
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              {stance}
+            </span>
+            <span style={{ color: "rgb(107, 114, 128)", fontSize: 11 }}>
+              posts: {post_count}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: 6 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10,
+                color: "rgb(107, 114, 128)",
+                marginBottom: 3,
+              }}
+            >
+              <span>Tension</span>
+              <span>{(tension_level * 100).toFixed(0)}%</span>
+            </div>
+            <div
+              style={{
+                height: 4,
+                borderRadius: 2,
+                background: "rgba(255,255,255,0.1)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${tension_level * 100}%`,
+                  borderRadius: 2,
+                  background:
+                    tension_level > 0.7
+                      ? "#ef4444"
+                      : tension_level > 0.4
+                        ? "#facc15"
+                        : "#22c55e",
+                }}
+              />
+            </div>
+          </div>
+
+          {key_statement && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: "6px 8px",
+                background: "rgba(255,255,255,0.05)",
+                borderRadius: 4,
+                borderLeft: `3px solid ${color}`,
+                fontSize: 11,
+                fontStyle: "italic",
+                color: "rgb(209, 213, 219)",
+              }}
+            >
+              {key_statement}
+            </div>
+          )}
+        </>
+      );
+    }
+
+    case "ship": {
+      const name = String(props.name ?? "Unknown");
+      const shipType = String(props.type ?? "unknown");
+      const mmsi = String(props.id ?? "");
+      const sog = Number(props.sog) || 0;
+      const country = String(props.country ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#22d3ee",
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: shipType === "military_vessel" ? "#facc15" : "#3b82f6",
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              {shipType.replace(/_/g, " ")}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>MMSI</span>
+              <span>{mmsi}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>SOG</span>
+              <span>{sog.toFixed(1)} kn</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "flight": {
+      const callsign = String(props.callsign ?? "");
+      const country = String(props.country ?? "");
+      const force = String(props.force ?? "");
+      const military_type = String(props.military_type ?? "");
+      const model = String(props.model ?? "");
+      const alt = Number(props.alt) || 0;
+      const speed_knots = Number(props.speed_knots) || 0;
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#f97316",
+            }}
+          >
+            {callsign}
+          </div>
+          {force && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: "#f97316",
+                  color: "#000",
+                  textTransform: "uppercase",
+                }}
+              >
+                {force}
+              </span>
+              {military_type && (
+                <span style={{ color: "rgb(107, 114, 128)", fontSize: 11 }}>
+                  {military_type}
+                </span>
+              )}
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
+              <span>{model || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
+              <span>{alt.toLocaleString()} ft</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
+              <span>{speed_knots.toFixed(0)} kn</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "satellite": {
+      const name = String(props.name ?? "");
+      const country = String(props.country ?? "");
+      const mission = String(props.mission ?? "");
+      const sat_type = String(props.sat_type ?? "");
+      const alt_km = Number(props.alt_km) || 0;
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#a855f7",
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: "#a855f7",
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              {sat_type}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Mission</span>
+              <span>{mission || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
+              <span>{alt_km.toLocaleString()} km</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "base": {
+      const name = String(props.name ?? "");
+      const country = String(props.country ?? "");
+      const branch = String(props.branch ?? "");
+      const operator = String(props.operator ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#ef4444",
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: "#ef4444",
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              {branch}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Operator</span>
+              <span>{operator || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "uav": {
+      const callsign = String(props.callsign ?? "");
+      const country = String(props.country ?? "");
+      const model = String(props.model ?? "");
+      const alt = Number(props.alt) || 0;
+      const speed_knots = Number(props.speed_knots) || 0;
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#eab308",
+            }}
+          >
+            {callsign}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
+              <span>{model || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
+              <span>{alt.toLocaleString()} ft</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
+              <span>{speed_knots.toFixed(0)} kn</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "tracked-flight": {
+      const callsign = String(props.callsign ?? "");
+      const country = String(props.country ?? "");
+      const model = String(props.model ?? "");
+      const alt = Number(props.alt) || 0;
+      const speed_knots = Number(props.speed_knots) || 0;
+      const airline = String(props.airline ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#ec4899",
+            }}
+          >
+            {callsign}
+          </div>
+          {airline && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: "#ec4899",
+                  color: "#000",
+                  textTransform: "uppercase",
+                }}
+              >
+                {airline}
+              </span>
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
+              <span>{model || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
+              <span>{alt.toLocaleString()} ft</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
+              <span>{speed_knots.toFixed(0)} kn</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "kiwisdr": {
+      const location_name = String(props.location_name ?? "");
+      const frequency = String(props.frequency ?? "");
+      const band = String(props.band ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#14b8a6",
+            }}
+          >
+            {location_name}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Frequency</span>
+              <span>{frequency || "\u2014"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Band</span>
+              <span>{band || "\u2014"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "gps-jamming": {
+      const severity = Number(props.severity) || 0;
+      const source = String(props.source ?? "");
+      const region = String(props.region ?? "");
+      const affected_area_km = Number(props.affected_area_km) || 0;
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#dc2626",
+            }}
+          >
+            GPS Jamming
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: "#dc2626",
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              Severity: {severity}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Region</span>
+              <span>{region || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Source</span>
+              <span>{source || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Area</span>
+              <span>{affected_area_km.toLocaleString()} km</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "earthquake": {
+      const place = String(props.place ?? "");
+      const mag = Number(props.mag) || 0;
+      const depth_km = Number(props.depth_km) || 0;
+      const time = String(props.time ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#b91c1c",
+            }}
+          >
+            {place}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: "#b91c1c",
+                color: "#fff",
+                textTransform: "uppercase",
+              }}
+            >
+              M {mag.toFixed(1)}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Depth</span>
+              <span>{depth_km.toFixed(1)} km</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Time</span>
+              <span>{time || "\u2014"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "power-plant": {
+      const name = String(props.name ?? "");
+      const fuel_type = String(props.fuel_type ?? "");
+      const capacity_mw = Number(props.capacity_mw) || 0;
+      const country = String(props.country ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#f59e0b",
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: "#f59e0b",
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              {fuel_type}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Capacity</span>
+              <span>{capacity_mw.toLocaleString()} MW</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "datacenter": {
+      const name = String(props.name ?? "");
+      const operator = String(props.operator ?? "");
+      const country = String(props.country ?? "");
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#6366f1",
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Operator</span>
+              <span>{operator || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
+              <span>{country || "Unknown"}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    case "internet-outage": {
+      const region_name = String(props.region_name ?? "");
+      const severity = Number(props.severity) || 0;
+      const provider = String(props.provider ?? "");
+      const affected_users = Number(props.affected_users) || 0;
+      return (
+        <>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 6,
+              color: "#7c3aed",
+            }}
+          >
+            {region_name}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 600,
+                background: "#7c3aed",
+                color: "#fff",
+                textTransform: "uppercase",
+              }}
+            >
+              Severity: {severity}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Provider</span>
+              <span>{provider || "Unknown"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgb(107, 114, 128)" }}>Affected Users</span>
+              <span>{affected_users.toLocaleString()}</span>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    default:
+      return null;
+  }
+}
+
+function MaplibreViewer({
   shipsGeoJSON,
   militaryFlightsGeoJSON,
   satellitesGeoJSON,
@@ -194,19 +753,12 @@ export default function MaplibreViewer({
   internetOutagesGeoJSON,
 }: MaplibreViewerProps) {
   const mapRef = useRef<MapRef>(null);
-  const [popup, setPopup] = useState<ActorPopupData | null>(null);
-  const [shipPopup, setShipPopup] = useState<ShipPopupData | null>(null);
-  const [flightPopup, setFlightPopup] = useState<FlightPopupData | null>(null);
-  const [satPopup, setSatPopup] = useState<SatellitePopupData | null>(null);
-  const [basePopup, setBasePopup] = useState<BasePopupData | null>(null);
-  const [uavPopup, setUavPopup] = useState<UavPopupData | null>(null);
-  const [trackedFlightPopup, setTrackedFlightPopup] = useState<TrackedFlightPopupData | null>(null);
-  const [kiwisdrPopup, setKiwisdrPopup] = useState<KiwisdrPopupData | null>(null);
-  const [gpsJammingPopup, setGpsJammingPopup] = useState<GpsJammingPopupData | null>(null);
-  const [earthquakePopup, setEarthquakePopup] = useState<EarthquakePopupData | null>(null);
-  const [powerPlantPopup, setPowerPlantPopup] = useState<PowerPlantPopupData | null>(null);
-  const [datacenterPopup, setDatacenterPopup] = useState<DatacenterPopupData | null>(null);
-  const [internetOutagePopup, setInternetOutagePopup] = useState<InternetOutagePopupData | null>(null);
+  const [popup, setPopup] = useState<{
+    type: string;
+    lng: number;
+    lat: number;
+    properties: Record<string, unknown>;
+  } | null>(null);
 
   const actorsGeoJSON = useMemo(
     () => buildSimulationActorsGeoJSON(simulationGeoJSON) ?? EMPTY_GEOJSON,
@@ -281,18 +833,6 @@ export default function MaplibreViewer({
 
   const clearPopups = useCallback(() => {
     setPopup(null);
-    setShipPopup(null);
-    setFlightPopup(null);
-    setSatPopup(null);
-    setBasePopup(null);
-    setUavPopup(null);
-    setTrackedFlightPopup(null);
-    setKiwisdrPopup(null);
-    setGpsJammingPopup(null);
-    setEarthquakePopup(null);
-    setPowerPlantPopup(null);
-    setDatacenterPopup(null);
-    setInternetOutagePopup(null);
   }, []);
 
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
@@ -300,145 +840,19 @@ export default function MaplibreViewer({
     if (!feature || !feature.properties) return;
 
     const layerId = feature.layer?.id;
+    if (!layerId) return;
+
+    const popupType = LAYER_TO_POPUP_TYPE[layerId];
+    if (!popupType) return;
+
     const coords = (feature.geometry as GeoJSON.Point).coordinates;
-    clearPopups();
-
-    if (layerId === "ship-icons") {
-      setShipPopup({
-        lng: coords[0],
-        lat: coords[1],
-        name: feature.properties.name ?? "Unknown",
-        type: feature.properties.type ?? "unknown",
-        mmsi: feature.properties.id ?? "",
-        sog: Number(feature.properties.sog) || 0,
-        country: feature.properties.country ?? "",
-      });
-    } else if (layerId === "military-flights-layer") {
-      setFlightPopup({
-        lng: coords[0],
-        lat: coords[1],
-        callsign: feature.properties.callsign ?? "",
-        country: feature.properties.country ?? "",
-        force: feature.properties.force ?? "",
-        military_type: feature.properties.military_type ?? "",
-        model: feature.properties.model ?? "",
-        alt: Number(feature.properties.alt) || 0,
-        speed_knots: Number(feature.properties.speed_knots) || 0,
-      });
-    } else if (layerId === "satellites-layer") {
-      setSatPopup({
-        lng: coords[0],
-        lat: coords[1],
-        name: feature.properties.name ?? "",
-        country: feature.properties.country ?? "",
-        mission: feature.properties.mission ?? "",
-        sat_type: feature.properties.sat_type ?? "",
-        alt_km: Number(feature.properties.alt_km) || 0,
-      });
-    } else if (layerId === "military-bases-layer") {
-      setBasePopup({
-        lng: coords[0],
-        lat: coords[1],
-        name: feature.properties.name ?? "",
-        country: feature.properties.country ?? "",
-        branch: feature.properties.branch ?? "",
-        operator: feature.properties.operator ?? "",
-      });
-    } else if (layerId === "simulation-actors-layer") {
-      setPopup({
-        lng: coords[0],
-        lat: coords[1],
-        actor: feature.properties.actor ?? "",
-        stance: feature.properties.stance ?? "",
-        tension_level: Number(feature.properties.tension_level) || 0,
-        key_statement: feature.properties.key_statement ?? "",
-        post_count: Number(feature.properties.post_count) || 0,
-        color: feature.properties.color ?? "var(--accent-cyan)",
-      });
-    } else if (layerId === "uavs-layer") {
-      setUavPopup({
-        lng: coords[0],
-        lat: coords[1],
-        callsign: feature.properties.callsign ?? "",
-        country: feature.properties.country ?? "",
-        alt: Number(feature.properties.alt) || 0,
-        speed_knots: Number(feature.properties.speed_knots) || 0,
-        model: feature.properties.model ?? "",
-      });
-    } else if (layerId === "tracked-flights-layer") {
-      setTrackedFlightPopup({
-        lng: coords[0],
-        lat: coords[1],
-        callsign: feature.properties.callsign ?? "",
-        country: feature.properties.country ?? "",
-        alt: Number(feature.properties.alt) || 0,
-        speed_knots: Number(feature.properties.speed_knots) || 0,
-        model: feature.properties.model ?? "",
-        airline: feature.properties.airline ?? "",
-      });
-    } else if (layerId === "kiwisdr-layer") {
-      setKiwisdrPopup({
-        lng: coords[0],
-        lat: coords[1],
-        location_name: feature.properties.location_name ?? "",
-        frequency: feature.properties.frequency ?? "",
-        band: feature.properties.band ?? "",
-        url: feature.properties.url ?? "",
-      });
-    } else if (layerId === "gps-jamming-layer") {
-      setGpsJammingPopup({
-        lng: coords[0],
-        lat: coords[1],
-        severity: Number(feature.properties.severity) || 0,
-        source: feature.properties.source ?? "",
-        region: feature.properties.region ?? "",
-        affected_area_km: Number(feature.properties.affected_area_km) || 0,
-      });
-    } else if (layerId === "earthquakes-layer") {
-      setEarthquakePopup({
-        lng: coords[0],
-        lat: coords[1],
-        place: feature.properties.place ?? "",
-        mag: Number(feature.properties.mag) || 0,
-        depth_km: Number(feature.properties.depth_km) || 0,
-        time: feature.properties.time ?? "",
-      });
-    } else if (layerId === "power-plants-layer") {
-      setPowerPlantPopup({
-        lng: coords[0],
-        lat: coords[1],
-        name: feature.properties.name ?? "",
-        fuel_type: feature.properties.fuel_type ?? "",
-        capacity_mw: Number(feature.properties.capacity_mw) || 0,
-        country: feature.properties.country ?? "",
-      });
-    } else if (layerId === "datacenters-layer") {
-      setDatacenterPopup({
-        lng: coords[0],
-        lat: coords[1],
-        name: feature.properties.name ?? "",
-        operator: feature.properties.operator ?? "",
-        country: feature.properties.country ?? "",
-      });
-    } else if (layerId === "internet-outages-layer") {
-      setInternetOutagePopup({
-        lng: coords[0],
-        lat: coords[1],
-        region_name: feature.properties.region_name ?? "",
-        severity: Number(feature.properties.severity) || 0,
-        provider: feature.properties.provider ?? "",
-        affected_users: Number(feature.properties.affected_users) || 0,
-      });
-    }
-  }, [clearPopups]);
-
-  const stanceColor = (stance: string) => {
-    const s = stance.toLowerCase();
-    if (s.includes("hostile") || s.includes("aggressive")) return "#ef4444";
-    if (s.includes("neutral")) return "#facc15";
-    if (s.includes("friendly") || s.includes("cooperative")) return "#22c55e";
-    return "#22d3ee";
-  };
+    setPopup({
+      type: popupType,
+      lng: coords[0],
+      lat: coords[1],
+      properties: feature.properties as Record<string, unknown>,
+    });
+  }, []);
 
   return (
     <Map
@@ -531,10 +945,37 @@ export default function MaplibreViewer({
         id="military-flights"
         type="geojson"
         data={militaryFlightsGeoJSON ?? EMPTY_FC}
+        cluster={true}
+        clusterMaxZoom={5}
+        clusterRadius={40}
       >
+        <Layer
+          id="military-flights-cluster"
+          type="circle"
+          filter={["has", "point_count"]}
+          layout={{ visibility: layerVisibility.militaryFlights ? "visible" : "none" }}
+          paint={{
+            "circle-color": "#f97316",
+            "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 50, 25],
+            "circle-opacity": 0.7,
+          }}
+        />
+        <Layer
+          id="military-flights-cluster-count"
+          type="symbol"
+          filter={["has", "point_count"]}
+          layout={{
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-font": ["Open Sans Regular"],
+            "text-size": 10,
+            visibility: layerVisibility.militaryFlights ? "visible" : "none",
+          }}
+          paint={{ "text-color": "#ffffff" }}
+        />
         <Layer
           id="military-flights-layer"
           type="circle"
+          filter={["!", ["has", "point_count"]]}
           layout={{ visibility: layerVisibility.militaryFlights ? "visible" : "none" }}
           paint={{
             "circle-radius": 5,
@@ -547,6 +988,8 @@ export default function MaplibreViewer({
         <Layer
           id="military-flights-label"
           type="symbol"
+          minzoom={6}
+          filter={["!", ["has", "point_count"]]}
           layout={{
             "text-field": ["get", "callsign"],
             "text-font": ["Open Sans Regular"],
@@ -568,10 +1011,37 @@ export default function MaplibreViewer({
         id="satellites"
         type="geojson"
         data={satellitesGeoJSON ?? EMPTY_FC}
+        cluster={true}
+        clusterMaxZoom={4}
+        clusterRadius={50}
       >
+        <Layer
+          id="satellites-cluster"
+          type="circle"
+          filter={["has", "point_count"]}
+          layout={{ visibility: layerVisibility.satellites ? "visible" : "none" }}
+          paint={{
+            "circle-color": "#a855f7",
+            "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 50, 25],
+            "circle-opacity": 0.7,
+          }}
+        />
+        <Layer
+          id="satellites-cluster-count"
+          type="symbol"
+          filter={["has", "point_count"]}
+          layout={{
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-font": ["Open Sans Regular"],
+            "text-size": 10,
+            visibility: layerVisibility.satellites ? "visible" : "none",
+          }}
+          paint={{ "text-color": "#ffffff" }}
+        />
         <Layer
           id="satellites-layer"
           type="circle"
+          filter={["!", ["has", "point_count"]]}
           layout={{ visibility: layerVisibility.satellites ? "visible" : "none" }}
           paint={{
             "circle-radius": 4,
@@ -582,8 +1052,10 @@ export default function MaplibreViewer({
           }}
         />
         <Layer
-           id="satellites-label"
+          id="satellites-label"
           type="symbol"
+          minzoom={6}
+          filter={["!", ["has", "point_count"]]}
           layout={{
             "text-field": ["get", "name"],
             "text-font": ["Open Sans Regular"],
@@ -605,10 +1077,37 @@ export default function MaplibreViewer({
         id="military-bases"
         type="geojson"
         data={militaryBasesGeoJSON ?? EMPTY_FC}
+        cluster={true}
+        clusterMaxZoom={6}
+        clusterRadius={30}
       >
+        <Layer
+          id="military-bases-cluster"
+          type="circle"
+          filter={["has", "point_count"]}
+          layout={{ visibility: layerVisibility.militaryBases ? "visible" : "none" }}
+          paint={{
+            "circle-color": "#ef4444",
+            "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 50, 25],
+            "circle-opacity": 0.7,
+          }}
+        />
+        <Layer
+          id="military-bases-cluster-count"
+          type="symbol"
+          filter={["has", "point_count"]}
+          layout={{
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-font": ["Open Sans Regular"],
+            "text-size": 10,
+            visibility: layerVisibility.militaryBases ? "visible" : "none",
+          }}
+          paint={{ "text-color": "#ffffff" }}
+        />
         <Layer
           id="military-bases-layer"
           type="circle"
+          filter={["!", ["has", "point_count"]]}
           layout={{ visibility: layerVisibility.militaryBases ? "visible" : "none" }}
           paint={{
             "circle-radius": 7,
@@ -619,8 +1118,10 @@ export default function MaplibreViewer({
           }}
         />
         <Layer
-           id="military-bases-label"
+          id="military-bases-label"
           type="symbol"
+          minzoom={6}
+          filter={["!", ["has", "point_count"]]}
           layout={{
             "text-field": ["get", "name"],
             "text-font": ["Open Sans Regular"],
@@ -658,6 +1159,7 @@ export default function MaplibreViewer({
         <Layer
           id="uavs-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "callsign"],
             "text-font": ["Open Sans Regular"],
@@ -695,6 +1197,7 @@ export default function MaplibreViewer({
         <Layer
           id="tracked-flights-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "callsign"],
             "text-font": ["Open Sans Regular"],
@@ -752,6 +1255,7 @@ export default function MaplibreViewer({
         <Layer
           id="kiwisdr-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "location_name"],
             "text-font": ["Open Sans Regular"],
@@ -825,6 +1329,7 @@ export default function MaplibreViewer({
         <Layer
           id="earthquakes-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "place"],
             "text-font": ["Open Sans Regular"],
@@ -882,6 +1387,7 @@ export default function MaplibreViewer({
         <Layer
           id="power-plants-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "name"],
             "text-font": ["Open Sans Regular"],
@@ -919,6 +1425,7 @@ export default function MaplibreViewer({
         <Layer
           id="datacenters-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "name"],
             "text-font": ["Open Sans Regular"],
@@ -964,6 +1471,7 @@ export default function MaplibreViewer({
         <Layer
           id="internet-outages-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "region_name"],
             "text-font": ["Open Sans Regular"],
@@ -1027,8 +1535,9 @@ export default function MaplibreViewer({
           }}
         />
         <Layer
-           id="simulation-actors-label"
+          id="simulation-actors-label"
           type="symbol"
+          minzoom={6}
           layout={{
             "text-field": ["get", "actor"],
             "text-font": ["Open Sans Regular"],
@@ -1044,7 +1553,6 @@ export default function MaplibreViewer({
         />
       </Source>
 
-      {/* Actor Popup */}
       {popup && (
         <Popup
           longitude={popup.lng}
@@ -1062,842 +1570,18 @@ export default function MaplibreViewer({
               color: "#f3f4f6",
               padding: 12,
               borderRadius: 6,
-              minWidth: 200,
-              maxWidth: 280,
+              minWidth: popup.type === "actor" ? 200 : 180,
+              maxWidth: popup.type === "actor" ? 280 : 260,
               fontSize: 12,
               lineHeight: 1.5,
             }}
           >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 8,
-                color: popup.color,
-              }}
-            >
-              {popup.actor}
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: stanceColor(popup.stance),
-                  color: "#000",
-                  textTransform: "uppercase",
-                }}
-              >
-                {popup.stance}
-              </span>
-              <span style={{ color: "rgb(107, 114, 128)", fontSize: 11 }}>
-                posts: {popup.post_count}
-              </span>
-            </div>
-
-            <div style={{ marginBottom: 6 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 10,
-                  color: "rgb(107, 114, 128)",
-                  marginBottom: 3,
-                }}
-              >
-                <span>Tension</span>
-                <span>{(popup.tension_level * 100).toFixed(0)}%</span>
-              </div>
-              <div
-                style={{
-                  height: 4,
-                  borderRadius: 2,
-                  background: "rgba(255,255,255,0.1)",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${popup.tension_level * 100}%`,
-                    borderRadius: 2,
-                    background:
-                      popup.tension_level > 0.7
-                        ? "#ef4444"
-                        : popup.tension_level > 0.4
-                          ? "#facc15"
-                          : "#22c55e",
-                  }}
-                />
-              </div>
-            </div>
-
-            {popup.key_statement && (
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: "6px 8px",
-                  background: "rgba(255,255,255,0.05)",
-                  borderRadius: 4,
-                  borderLeft: `3px solid ${popup.color}`,
-                  fontSize: 11,
-                  fontStyle: "italic",
-                  color: "rgb(209, 213, 219)",
-                }}
-              >
-                {popup.key_statement}
-              </div>
-            )}
-          </div>
-        </Popup>
-      )}
-
-      {shipPopup && (
-        <Popup
-          longitude={shipPopup.lng}
-          latitude={shipPopup.lat}
-          onClose={() => setShipPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#22d3ee",
-              }}
-            >
-              {shipPopup.name}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: shipPopup.type === "military_vessel" ? "#facc15" : "#3b82f6",
-                  color: "#000",
-                  textTransform: "uppercase",
-                }}
-              >
-                {shipPopup.type.replace(/_/g, " ")}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>MMSI</span>
-                <span>{shipPopup.mmsi}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>SOG</span>
-                <span>{shipPopup.sog.toFixed(1)} kn</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{shipPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {flightPopup && (
-        <Popup
-          longitude={flightPopup.lng}
-          latitude={flightPopup.lat}
-          onClose={() => setFlightPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#f97316",
-              }}
-            >
-              {flightPopup.callsign}
-            </div>
-            {flightPopup.force && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <span
-                  style={{
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    background: "#f97316",
-                    color: "#000",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {flightPopup.force}
-                </span>
-                {flightPopup.military_type && (
-                  <span style={{ color: "rgb(107, 114, 128)", fontSize: 11 }}>
-                    {flightPopup.military_type}
-                  </span>
-                )}
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
-                <span>{flightPopup.model || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
-                <span>{flightPopup.alt.toLocaleString()} ft</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
-                <span>{flightPopup.speed_knots.toFixed(0)} kn</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{flightPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {satPopup && (
-        <Popup
-          longitude={satPopup.lng}
-          latitude={satPopup.lat}
-          onClose={() => setSatPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#a855f7",
-              }}
-            >
-              {satPopup.name}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: "#a855f7",
-                  color: "#000",
-                  textTransform: "uppercase",
-                }}
-              >
-                {satPopup.sat_type}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Mission</span>
-                <span>{satPopup.mission || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
-                <span>{satPopup.alt_km.toLocaleString()} km</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{satPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {basePopup && (
-        <Popup
-          longitude={basePopup.lng}
-          latitude={basePopup.lat}
-          onClose={() => setBasePopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#ef4444",
-              }}
-            >
-              {basePopup.name}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: "#ef4444",
-                  color: "#000",
-                  textTransform: "uppercase",
-                }}
-              >
-                {basePopup.branch}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Operator</span>
-                <span>{basePopup.operator || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{basePopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {uavPopup && (
-        <Popup
-          longitude={uavPopup.lng}
-          latitude={uavPopup.lat}
-          onClose={() => setUavPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#eab308",
-              }}
-            >
-              {uavPopup.callsign}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
-                <span>{uavPopup.model || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
-                <span>{uavPopup.alt.toLocaleString()} ft</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
-                <span>{uavPopup.speed_knots.toFixed(0)} kn</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{uavPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {trackedFlightPopup && (
-        <Popup
-          longitude={trackedFlightPopup.lng}
-          latitude={trackedFlightPopup.lat}
-          onClose={() => setTrackedFlightPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#ec4899",
-              }}
-            >
-              {trackedFlightPopup.callsign}
-            </div>
-            {trackedFlightPopup.airline && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <span
-                  style={{
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    background: "#ec4899",
-                    color: "#000",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {trackedFlightPopup.airline}
-                </span>
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Model</span>
-                <span>{trackedFlightPopup.model || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Altitude</span>
-                <span>{trackedFlightPopup.alt.toLocaleString()} ft</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Speed</span>
-                <span>{trackedFlightPopup.speed_knots.toFixed(0)} kn</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{trackedFlightPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {kiwisdrPopup && (
-        <Popup
-          longitude={kiwisdrPopup.lng}
-          latitude={kiwisdrPopup.lat}
-          onClose={() => setKiwisdrPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#14b8a6",
-              }}
-            >
-              {kiwisdrPopup.location_name}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Frequency</span>
-                <span>{kiwisdrPopup.frequency || "—"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Band</span>
-                <span>{kiwisdrPopup.band || "—"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {gpsJammingPopup && (
-        <Popup
-          longitude={gpsJammingPopup.lng}
-          latitude={gpsJammingPopup.lat}
-          onClose={() => setGpsJammingPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#dc2626",
-              }}
-            >
-              GPS Jamming
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: "#dc2626",
-                  color: "#000",
-                  textTransform: "uppercase",
-                }}
-              >
-                Severity: {gpsJammingPopup.severity}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Region</span>
-                <span>{gpsJammingPopup.region || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Source</span>
-                <span>{gpsJammingPopup.source || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Area</span>
-                <span>{gpsJammingPopup.affected_area_km.toLocaleString()} km</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {earthquakePopup && (
-        <Popup
-          longitude={earthquakePopup.lng}
-          latitude={earthquakePopup.lat}
-          onClose={() => setEarthquakePopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#b91c1c",
-              }}
-            >
-              {earthquakePopup.place}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: "#b91c1c",
-                  color: "#fff",
-                  textTransform: "uppercase",
-                }}
-              >
-                M {earthquakePopup.mag.toFixed(1)}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Depth</span>
-                <span>{earthquakePopup.depth_km.toFixed(1)} km</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Time</span>
-                <span>{earthquakePopup.time || "—"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {powerPlantPopup && (
-        <Popup
-          longitude={powerPlantPopup.lng}
-          latitude={powerPlantPopup.lat}
-          onClose={() => setPowerPlantPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#f59e0b",
-              }}
-            >
-              {powerPlantPopup.name}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: "#f59e0b",
-                  color: "#000",
-                  textTransform: "uppercase",
-                }}
-              >
-                {powerPlantPopup.fuel_type}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Capacity</span>
-                <span>{powerPlantPopup.capacity_mw.toLocaleString()} MW</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{powerPlantPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {datacenterPopup && (
-        <Popup
-          longitude={datacenterPopup.lng}
-          latitude={datacenterPopup.lat}
-          onClose={() => setDatacenterPopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#6366f1",
-              }}
-            >
-              {datacenterPopup.name}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Operator</span>
-                <span>{datacenterPopup.operator || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Country</span>
-                <span>{datacenterPopup.country || "Unknown"}</span>
-              </div>
-            </div>
-          </div>
-        </Popup>
-      )}
-
-      {internetOutagePopup && (
-        <Popup
-          longitude={internetOutagePopup.lng}
-          latitude={internetOutagePopup.lat}
-          onClose={() => setInternetOutagePopup(null)}
-          closeButton={true}
-          closeOnClick={false}
-          anchor="bottom"
-          offset={20}
-          style={{ zIndex: 30 }}
-        >
-          <div
-            style={{
-              background: "rgb(12, 14, 18)",
-              color: "#f3f4f6",
-              padding: 12,
-              borderRadius: 6,
-              minWidth: 180,
-              maxWidth: 260,
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 14,
-                marginBottom: 6,
-                color: "#7c3aed",
-              }}
-            >
-              {internetOutagePopup.region_name}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  background: "#7c3aed",
-                  color: "#fff",
-                  textTransform: "uppercase",
-                }}
-              >
-                Severity: {internetOutagePopup.severity}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Provider</span>
-                <span>{internetOutagePopup.provider || "Unknown"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgb(107, 114, 128)" }}>Affected Users</span>
-                <span>{internetOutagePopup.affected_users.toLocaleString()}</span>
-              </div>
-            </div>
+            {renderPopupContent(popup.type, popup.properties)}
           </div>
         </Popup>
       )}
     </Map>
   );
 }
+
+export default memo(MaplibreViewer);

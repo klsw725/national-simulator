@@ -224,6 +224,32 @@ CREATE INDEX IF NOT EXISTS idx_scenarios_status ON scenarios(status);
 CREATE INDEX IF NOT EXISTS idx_decision_points_scenario_status ON decision_points(scenario_id, status);
 CREATE INDEX IF NOT EXISTS idx_decision_points_scenario_type_status ON decision_points(scenario_id, type, status);
 CREATE INDEX IF NOT EXISTS idx_action_log_scenario_type ON action_log(scenario_id, action_type);
+
+CREATE TABLE IF NOT EXISTS osint_metrics_hourly (
+    id TEXT PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    bucket_hour TEXT NOT NULL,
+    region_name TEXT,
+    count INTEGER NOT NULL,
+    country_breakdown TEXT,
+    metadata TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_osint_metrics_source_hour ON osint_metrics_hourly(source_type, bucket_hour);
+CREATE INDEX IF NOT EXISTS idx_osint_metrics_region ON osint_metrics_hourly(region_name, bucket_hour);
+
+CREATE TABLE IF NOT EXISTS osint_snapshots (
+    id TEXT PRIMARY KEY,
+    snapshot_at TEXT NOT NULL,
+    region_bbox TEXT,
+    asset_counts TEXT NOT NULL,
+    tension_indicators TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_osint_snapshots_time ON osint_snapshots(snapshot_at);
+
+CREATE INDEX IF NOT EXISTS idx_obs_source_time ON observations(source_type, source_id, observed_at);
+CREATE INDEX IF NOT EXISTS idx_obs_time_range ON observations(observed_at);
 """
 
 
