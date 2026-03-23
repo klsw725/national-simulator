@@ -36,6 +36,7 @@ interface MaplibreViewerProps {
   powerPlantsGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
   datacentersGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
   internetOutagesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
+  onMapRef?: (ref: MapRef | null) => void;
 }
 
 const INITIAL_VIEW = {
@@ -751,6 +752,7 @@ function MaplibreViewer({
   powerPlantsGeoJSON,
   datacentersGeoJSON,
   internetOutagesGeoJSON,
+  onMapRef,
 }: MaplibreViewerProps) {
   const mapRef = useRef<MapRef>(null);
   const [popup, setPopup] = useState<{
@@ -856,7 +858,10 @@ function MaplibreViewer({
 
   return (
     <Map
-      ref={mapRef}
+      ref={(ref) => {
+        (mapRef as React.MutableRefObject<MapRef | null>).current = ref;
+        onMapRef?.(ref);
+      }}
       mapLib={maplibregl}
       initialViewState={INITIAL_VIEW}
       style={{ width: "100%", height: "100%" }}

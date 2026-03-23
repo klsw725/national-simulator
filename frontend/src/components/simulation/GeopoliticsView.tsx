@@ -33,11 +33,50 @@ interface TimelineRound {
   events: GeopoliticsEvent[];
 }
 
+const ACTOR_LOCATIONS: Record<string, { lat: number; lng: number }> = {
+  "United States": { lat: 38.9072, lng: -77.0369 },
+  "US": { lat: 38.9072, lng: -77.0369 },
+  "China": { lat: 39.9042, lng: 116.4074 },
+  "CN": { lat: 39.9042, lng: 116.4074 },
+  "Japan": { lat: 35.6762, lng: 139.6503 },
+  "JP": { lat: 35.6762, lng: 139.6503 },
+  "South Korea": { lat: 37.5665, lng: 126.978 },
+  "KR": { lat: 37.5665, lng: 126.978 },
+  "North Korea": { lat: 39.0392, lng: 125.7625 },
+  "Philippines": { lat: 14.5995, lng: 120.9842 },
+  "PH": { lat: 14.5995, lng: 120.9842 },
+  "Taiwan": { lat: 25.033, lng: 121.5654 },
+  "TW": { lat: 25.033, lng: 121.5654 },
+  "Russia": { lat: 55.7558, lng: 37.6173 },
+  "RU": { lat: 55.7558, lng: 37.6173 },
+  "Australia": { lat: -35.2809, lng: 149.13 },
+  "AU": { lat: -35.2809, lng: 149.13 },
+  "India": { lat: 28.6139, lng: 77.209 },
+  "IN": { lat: 28.6139, lng: 77.209 },
+  "United Kingdom": { lat: 51.5074, lng: -0.1278 },
+  "UK": { lat: 51.5074, lng: -0.1278 },
+  "France": { lat: 48.8566, lng: 2.3522 },
+  "FR": { lat: 48.8566, lng: 2.3522 },
+  "Germany": { lat: 52.52, lng: 13.405 },
+  "Indonesia": { lat: -6.2088, lng: 106.8456 },
+  "Vietnam": { lat: 21.0278, lng: 105.8342 },
+  "Malaysia": { lat: 3.139, lng: 101.6869 },
+  "Singapore": { lat: 1.3521, lng: 103.8198 },
+  "Thailand": { lat: 13.7563, lng: 100.5018 },
+  "Canada": { lat: 45.4215, lng: -75.6972 },
+  "NATO": { lat: 50.8503, lng: 4.3517 },
+  "ASEAN": { lat: -6.2088, lng: 106.8456 },
+  "United Nations": { lat: 40.7489, lng: -73.968 },
+  "QUAD": { lat: 35.6762, lng: 139.6503 },
+  "European Union": { lat: 50.8503, lng: 4.3517 },
+};
+
 interface Props {
   scenarioId: string;
+  onFlyTo?: (lng: number, lat: number) => void;
 }
 
-export default function GeopoliticsView({ scenarioId }: Props) {
+export default function GeopoliticsView({ scenarioId, onFlyTo }: Props) {
   const [summary, setSummary] = useState<GeopoliticsSummary | null>(null);
   const [timeline, setTimeline] = useState<TimelineRound[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,9 +170,13 @@ export default function GeopoliticsView({ scenarioId }: Props) {
 
       {summary && summary.actors.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {summary.actors.map((actor) => (
+          {summary.actors.map((actor) => {
+            const actorLoc = ACTOR_LOCATIONS[actor];
+            const actorClickable = !!actorLoc && !!onFlyTo;
+            return (
             <span
               key={actor}
+              onClick={actorClickable ? () => onFlyTo!(actorLoc.lng, actorLoc.lat) : undefined}
               style={{
                 padding: "3px 10px",
                 fontSize: 11,
@@ -142,6 +185,7 @@ export default function GeopoliticsView({ scenarioId }: Props) {
                 background: "rgba(34,211,238,0.08)",
                 color: "var(--accent-cyan)",
                 whiteSpace: "nowrap",
+                cursor: actorClickable ? "pointer" : "default",
               }}
             >
               {actor}
@@ -151,7 +195,8 @@ export default function GeopoliticsView({ scenarioId }: Props) {
                 </span>
               )}
             </span>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -186,15 +231,23 @@ export default function GeopoliticsView({ scenarioId }: Props) {
                 const actionLabel = ev.action_type.replace(/_/g, " ");
                 const magnitudePct = Math.min(Math.max(ev.magnitude * 100, 0), 100);
 
+                const loc = ACTOR_LOCATIONS[ev.actor_id];
+                const clickable = !!loc && !!onFlyTo;
+
                 return (
                   <div
                     key={i}
+                    onClick={clickable ? () => onFlyTo!(loc.lng, loc.lat) : undefined}
                     style={{
                       padding: "6px 8px",
                       background: "var(--bg-primary)",
                       borderRadius: 4,
                       borderLeft: `3px solid ${color}`,
+                      cursor: clickable ? "pointer" : "default",
+                      transition: "background 0.15s",
                     }}
+                    onMouseEnter={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; } : undefined}
+                    onMouseLeave={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-primary)"; } : undefined}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
                       <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)" }}>

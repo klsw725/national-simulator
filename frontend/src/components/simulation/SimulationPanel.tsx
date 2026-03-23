@@ -30,9 +30,10 @@ interface Props {
   onClose: () => void;
   sim: UseSimulationReturn;
   onOpenWhatIfCompare?: (branchId: string) => void;
+  onFlyTo?: (lng: number, lat: number) => void;
 }
 
-export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompare }: Props) {
+export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompare, onFlyTo }: Props) {
   const [tab, setTab] = useState<Tab>("create");
 
   if (!open) return null;
@@ -351,7 +352,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
         )}
 
         {tab === "geopolitics" && sim.activeScenario && (
-          <GeopoliticsView scenarioId={sim.activeScenario.id} />
+          <GeopoliticsView scenarioId={sim.activeScenario.id} onFlyTo={onFlyTo} />
         )}
 
         {tab === "report" && (

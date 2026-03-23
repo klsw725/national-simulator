@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { MapRef } from "react-map-gl/maplibre";
 import { useDataPolling } from "@/hooks/useDataPolling";
 import { useSimulation } from "@/hooks/useSimulation";
 import {
@@ -151,6 +152,11 @@ export default function HomePage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [osintPanelOpen, setOsintPanelOpen] = useState(false);
   const [whatIfCompareBranchId, setWhatIfCompareBranchId] = useState<string | null>(null);
+  const mapRefHolder = useRef<MapRef | null>(null);
+
+  const handleFlyTo = useCallback((lng: number, lat: number) => {
+    mapRefHolder.current?.flyTo({ center: [lng, lat], zoom: 6, duration: 1500 });
+  }, []);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(DEFAULT_LAYER_VISIBILITY);
 
   const layerCounts: Partial<Record<keyof LayerVisibility, number>> = useMemo(
@@ -208,6 +214,7 @@ export default function HomePage() {
         internetOutagesGeoJSON={internetOutagesGeoJSON}
         simulationGeoJSON={sim.simulationGeoJSON}
         layerVisibility={layerVisibility}
+        onMapRef={(ref) => { mapRefHolder.current = ref; }}
       />
       <LayerToggle
         visibility={layerVisibility}
@@ -220,6 +227,7 @@ export default function HomePage() {
         onClose={() => setOsintPanelOpen(false)}
         polling={polling}
         summary={summary}
+        onFlyTo={handleFlyTo}
       />
 
       <SimulationPanel
@@ -227,6 +235,7 @@ export default function HomePage() {
         onClose={() => setPanelOpen(false)}
         sim={sim}
         onOpenWhatIfCompare={(branchId) => setWhatIfCompareBranchId(branchId)}
+        onFlyTo={handleFlyTo}
       />
 
       {whatIfCompareBranchId && sim.activeScenario && (
