@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 from app.clients.shadowbroker import BBox, ShadowBrokerClient
 from app.config import settings
 from app.database import get_pool
+from app.services.geopolitics_mapper import map_actions_to_geopolitics
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class BriefingGenerator:
         return []
 
     def _summarize_simulation_actions(self, results_raw: str | None) -> str:
-        actions = self._parse_actions(results_raw)
+        actions = map_actions_to_geopolitics(self._parse_actions(results_raw))
         if not actions:
             return "시뮬레이션 액션 데이터 없음"
 
@@ -167,7 +168,7 @@ class BriefingGenerator:
 
         if interaction_pairs:
             lines.append("")
-            lines.append("### 행위자 간 상호작용 (인용·리포스트·반응)")
+            lines.append("### 행위자 간 상호작용 (공식 반응·지지 표명·외교적 연계)")
             for pair, count in interaction_pairs.most_common(10):
                 lines.append(f"- {pair}: {count}건")
 
