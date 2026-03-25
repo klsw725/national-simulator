@@ -388,14 +388,18 @@ class SimulationConfigGenerator:
         # 엔티티 요약
         entity_summary = self._summarize_entities(entities)
         
-        # 컨텍스트 구축
+        relationship_map = self._build_relationship_map(entities)
+
         context_parts = [
             f"## 시뮬레이션 요구사항\n{simulation_requirement}",
             f"\n## 엔티티 정보 ({len(entities)}개)\n{entity_summary}",
         ]
+
+        if relationship_map:
+            context_parts.append(f"\n## 엔티티 간 핵심 관계\n{relationship_map}")
         
         current_length = sum(len(p) for p in context_parts)
-        remaining_length = self.MAX_CONTEXT_LENGTH - current_length - 500  # 500자 여유분 확보
+        remaining_length = self.MAX_CONTEXT_LENGTH - current_length - 500
         
         if remaining_length > 0 and document_text:
             doc_text = document_text[:remaining_length]
@@ -405,6 +409,41 @@ class SimulationConfigGenerator:
         
         return "\n".join(context_parts)
     
+    def _build_relationship_map(self, entities: List[EntityNode]) -> str:
+        """엔티티 간 관계를 요약하여 LLM 컨텍스트로 제공"""
+        lines = []
+        seen = set()
+        for e in entities:
+            for edge in (e.related_edges or [])[:5]:
+                fact = edge.get("fact", "")
+                edge_name = edge.get("edge_name", "")
+                direction = edge.get("direction", "")
+
+                if fact and fact not in seen:
+                    seen.add(fact)
+                    lines.append(f"- {fact}")
+                elif edge_name and edge_name not in seen:
+                    node_uuid = (
+                        edge.get("target_node_uuid")
+                        or edge.get("connected_node_uuid", "")
+                    )
+                    connected_name = next(
+                        (n["name"] for n in (e.related_nodes or []) if n.get("uuid") == node_uuid),
+                        "?"
+                    )
+                    if direction == "outgoing":
+                        rel = f"{e.name} --[{edge_name}]--> {connected_name}"
+                    else:
+                        rel = f"{connected_name} --[{edge_name}]--> {e.name}"
+                    if rel not in seen:
+                        seen.add(rel)
+                        lines.append(f"- {rel}")
+
+            if len(lines) >= 30:
+                break
+
+        return "\n".join(lines[:30])
+
     def _summarize_entities(self, entities: List[EntityNode]) -> str:
         """엔티티 요약 생성"""
         lines = []
@@ -754,8 +793,15 @@ JSON 형식으로 반환 (마크다운 제외):
             "student": ["student", "person"],
             "professor": ["professor", "expert", "teacher"],
             "alumni": ["alumni", "person"],
-            "organization": ["organization", "ngo", "company", "group"],
+            "organization": ["organization", "ngo", "company", "group", "internationalorganization", "militaryalliance"],
             "person": ["person", "student", "alumni"],
+            "superpower": ["superpower", "regionalpower", "smallstate"],
+            "regionalpower": ["regionalpower", "superpower", "smallstate"],
+            "smallstate": ["smallstate", "regionalpower"],
+            "militarycommander": ["militarycommander", "diplomat"],
+            "diplomat": ["diplomat", "militarycommander"],
+            "internationalorganization": ["internationalorganization", "organization", "militaryalliance"],
+            "militaryalliance": ["militaryalliance", "internationalorganization", "organization"],
         }
         
         # 유형별 사용된 에이전트 인덱스 기록 (동일 에이전트 중복 사용 방지)
@@ -819,16 +865,39 @@ JSON 형식으로 반환 (마크다운 제외):
     ) -> List[AgentActivityConfig]:
         """에이전트 설정 일괄 생성"""
         
-        # 엔티티 정보 구축 (설정된 요약 길이 사용)
         entity_list = []
         summary_len = self.AGENT_SUMMARY_LENGTH
         for i, e in enumerate(entities):
-            entity_list.append({
+            relationships = []
+            for edge in (e.related_edges or [])[:10]:
+                fact = edge.get("fact", "")
+                edge_name = edge.get("edge_name", "")
+                direction = edge.get("direction", "")
+                if fact:
+                    relationships.append(fact)
+                elif edge_name:
+                    node_uuid = (
+                        edge.get("target_node_uuid")
+                        or edge.get("connected_node_uuid", "")
+                    )
+                    connected_name = next(
+                        (n["name"] for n in (e.related_nodes or []) if n.get("uuid") == node_uuid),
+                        "?"
+                    )
+                    if direction == "outgoing":
+                        relationships.append(f"{e.name} --[{edge_name}]--> {connected_name}")
+                    else:
+                        relationships.append(f"{connected_name} --[{edge_name}]--> {e.name}")
+
+            entry = {
                 "agent_id": start_idx + i,
                 "entity_name": e.name,
                 "entity_type": e.get_entity_type() or "Unknown",
-                "summary": e.summary[:summary_len] if e.summary else ""
-            })
+                "summary": e.summary[:summary_len] if e.summary else "",
+            }
+            if relationships:
+                entry["relationships"] = relationships
+            entity_list.append(entry)
         
         prompt = f"""다음 정보를 바탕으로 각 엔티티의 소셜 미디어 활동 설정을 생성해 주세요.
 
@@ -846,6 +915,13 @@ JSON 형식으로 반환 (마크다운 제외):
 - **미디어** (MediaOutlet): 활동성 중간(0.4-0.6), 하루 종일 활동(8-23), 응답 빠름(5-30분), 영향력 높음(2.0-2.5).
 - **개인** (Student/Person/Alumni): 활동성 높음(0.6-0.9), 주로 저녁 활동(18-23), 응답 빠름(1-15분), 영향력 낮음(0.8-1.2).
 - **공인/전문가**: 활동성 중간(0.4-0.6), 영향력 중상(1.5-2.0).
+- **국가 행위자** (Superpower/RegionalPower/SmallState): 활동성 낮음(0.2-0.4), 공식적이고 전략적, 응답 느림(30-180분), 영향력 매우 높음(3.0-4.0).
+- **군사/외교** (MilitaryCommander/Diplomat/MilitaryAlliance): 활동성 낮음(0.1-0.3), 업무 시간 활동, 영향력 높음(2.0-3.0).
+- **관계 기반 행동**: 각 엔티티의 relationships 필드를 반드시 참고하여:
+  - 동맹/지지/협력 관계의 엔티티들은 같은 방향의 stance(supportive 또는 opposing)를 가져야 함
+  - 적대/갈등/경쟁 관계의 엔티티들은 반대 방향의 stance를 가져야 함
+  - 상하 관계(지휘, 소속, 산하)가 있으면 하위 엔티티가 상위의 stance를 따라야 함
+  - 관계가 많고 중심적인 엔티티일수록 influence_weight가 높아야 함
 
 JSON 형식으로 반환 (마크다운 제외):
 {{
@@ -904,85 +980,124 @@ JSON 형식으로 반환 (마크다운 제외):
         
         return configs
     
+    _STATE_ACTORS = {"superpower", "regionalpower", "smallstate"}
+    _INSTITUTIONAL = {"university", "governmentagency", "ngo", "internationalorganization", "militaryalliance"}
+    _MILITARY = {"militarycommander"}
+    _DIPLOMAT = {"diplomat"}
+    _MEDIA = {"mediaoutlet"}
+    _EXPERT = {"professor", "expert", "official"}
+    _YOUTH = {"student"}
+    _ALUMNI = {"alumni"}
+
     def _generate_agent_config_by_rule(self, entity: EntityNode) -> Dict[str, Any]:
         """규칙 기반 개별 에이전트 설정 생성 (생활 패턴 기반)"""
         entity_type = (entity.get_entity_type() or "Unknown").lower()
-        
-        if entity_type in ["university", "governmentagency", "ngo"]:
-            # 공식 기관: 업무 시간 활동, 낮은 빈도, 높은 영향력
+
+        if entity_type in self._STATE_ACTORS:
+            return {
+                "activity_level": 0.3,
+                "posts_per_hour": 0.2,
+                "comments_per_hour": 0.3,
+                "active_hours": list(range(8, 22)),
+                "response_delay_min": 30,
+                "response_delay_max": 180,
+                "sentiment_bias": 0.0,
+                "stance": "neutral",
+                "influence_weight": 3.5,
+            }
+        elif entity_type in self._INSTITUTIONAL:
             return {
                 "activity_level": 0.2,
                 "posts_per_hour": 0.1,
                 "comments_per_hour": 0.05,
-                "active_hours": list(range(9, 18)),  # 9:00-17:59
+                "active_hours": list(range(9, 18)),
                 "response_delay_min": 60,
                 "response_delay_max": 240,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 3.0
+                "influence_weight": 3.0,
             }
-        elif entity_type in ["mediaoutlet"]:
-            # 미디어: 하루 종일 활동, 중간 빈도, 높은 영향력
+        elif entity_type in self._MILITARY:
+            return {
+                "activity_level": 0.2,
+                "posts_per_hour": 0.1,
+                "comments_per_hour": 0.2,
+                "active_hours": list(range(6, 22)),
+                "response_delay_min": 15,
+                "response_delay_max": 120,
+                "sentiment_bias": 0.0,
+                "stance": "neutral",
+                "influence_weight": 2.8,
+            }
+        elif entity_type in self._DIPLOMAT:
+            return {
+                "activity_level": 0.35,
+                "posts_per_hour": 0.15,
+                "comments_per_hour": 0.4,
+                "active_hours": list(range(9, 21)),
+                "response_delay_min": 60,
+                "response_delay_max": 240,
+                "sentiment_bias": 0.0,
+                "stance": "neutral",
+                "influence_weight": 2.2,
+            }
+        elif entity_type in self._MEDIA:
             return {
                 "activity_level": 0.5,
                 "posts_per_hour": 0.8,
                 "comments_per_hour": 0.3,
-                "active_hours": list(range(7, 24)),  # 7:00-23:59
+                "active_hours": list(range(7, 24)),
                 "response_delay_min": 5,
                 "response_delay_max": 30,
                 "sentiment_bias": 0.0,
                 "stance": "observer",
-                "influence_weight": 2.5
+                "influence_weight": 2.5,
             }
-        elif entity_type in ["professor", "expert", "official"]:
-            # 전문가/교수: 업무 + 저녁 활동, 중간 빈도
+        elif entity_type in self._EXPERT:
             return {
                 "activity_level": 0.4,
                 "posts_per_hour": 0.3,
                 "comments_per_hour": 0.5,
-                "active_hours": list(range(8, 22)),  # 8:00-21:59
+                "active_hours": list(range(8, 22)),
                 "response_delay_min": 15,
                 "response_delay_max": 90,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 2.0
+                "influence_weight": 2.0,
             }
-        elif entity_type in ["student"]:
-            # 학생: 저녁 위주, 높은 빈도
+        elif entity_type in self._YOUTH:
             return {
                 "activity_level": 0.8,
                 "posts_per_hour": 0.6,
                 "comments_per_hour": 1.5,
-                "active_hours": [8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23],  # 오전 + 저녁
+                "active_hours": [8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23],
                 "response_delay_min": 1,
                 "response_delay_max": 15,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 0.8
+                "influence_weight": 0.8,
             }
-        elif entity_type in ["alumni"]:
-            # 동문: 저녁 위주
+        elif entity_type in self._ALUMNI:
             return {
                 "activity_level": 0.6,
                 "posts_per_hour": 0.4,
                 "comments_per_hour": 0.8,
-                "active_hours": [12, 13, 19, 20, 21, 22, 23],  # 점심시간 + 저녁
+                "active_hours": [12, 13, 19, 20, 21, 22, 23],
                 "response_delay_min": 5,
                 "response_delay_max": 30,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 1.0
+                "influence_weight": 1.0,
             }
         else:
-            # 일반인: 저녁 피크
             return {
                 "activity_level": 0.7,
                 "posts_per_hour": 0.5,
                 "comments_per_hour": 1.2,
-                "active_hours": [9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23],  # 낮 + 저녁
+                "active_hours": [9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23],
                 "response_delay_min": 2,
                 "response_delay_max": 20,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 1.0
+                "influence_weight": 1.0,
             }
