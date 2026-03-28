@@ -70,6 +70,7 @@ class CopilotService:
                     tools=TOOL_DEFINITIONS,
                     temperature=0.3,
                     max_tokens=2048,
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
             except Exception:
                 logger.warning("LLM tool-calling failed, retrying without tools")
@@ -78,6 +79,7 @@ class CopilotService:
                     messages=history,
                     temperature=0.3,
                     max_tokens=2048,
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
 
             choice = response.choices[0]

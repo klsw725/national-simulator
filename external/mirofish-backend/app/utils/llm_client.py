@@ -53,13 +53,14 @@ class LLMClient:
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
         }
 
         if response_format:
             kwargs["response_format"] = response_format
 
         response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or ""
         # 일부 모델(예: MiniMax M2.5)은 content에 <think> 사고 내용을 포함하므로 제거가 필요함
         content = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
         return content

@@ -114,6 +114,80 @@ else:
         print(f"환경 설정 로드됨: {_backend_env}")
 
 
+def _patch_openai_thinking_mode():
+    """CAMEL OpenAIModel의 LLM 호출을 감싸서 content=None일 때 reasoning으로 대체."""
+    try:
+        from camel.models.openai_model import OpenAIModel
+
+        _orig_sync = OpenAIModel._request_chat_completion
+        _orig_async = OpenAIModel._arequest_chat_completion
+
+        def _fix_content(response):
+            for choice in response.choices:
+                if choice.message.content is None:
+                    extra = getattr(choice.message, "model_extra", None) or {}
+                    rc = extra.get("reasoning_content") or extra.get("reasoning")
+                    if rc:
+                        object.__setattr__(choice.message, "content", rc)
+            return response
+
+        def _patched_sync(self, *a, **kw):
+            return _fix_content(_orig_sync(self, *a, **kw))
+
+        async def _patched_async(self, *a, **kw):
+            return _fix_content(await _orig_async(self, *a, **kw))
+
+        OpenAIModel._request_chat_completion = _patched_sync
+        OpenAIModel._arequest_chat_completion = _patched_async
+    except Exception:
+        pass
+
+def _install_stuck_debugger():
+    import faulthandler, signal, threading
+
+    faulthandler.enable()
+
+    def _dump_on_alarm(signum, frame):
+        import sys, traceback, io
+        buf = io.StringIO()
+        buf.write(f"\n{'='*60}\n[STUCK DEBUGGER] SIGUSR1 received — dumping all threads\n{'='*60}\n")
+        for tid, tframe in sys._current_frames().items():
+            buf.write(f"\n--- Thread {tid} ---\n")
+            traceback.print_stack(tframe, file=buf)
+        print(buf.getvalue(), flush=True)
+
+    signal.signal(signal.SIGUSR1, _dump_on_alarm)
+
+    def _watchdog():
+        import time
+        last_round = [-1]
+        stall_count = [0]
+        while True:
+            time.sleep(60)
+            try:
+                with open("run_state.json") as f:
+                    import json
+                    state = json.load(f)
+                cur = state.get("current_round", -1)
+                if cur == last_round[0]:
+                    stall_count[0] += 1
+                    print(f"[WATCHDOG] round stuck at {cur} for {stall_count[0]} min", flush=True)
+                    if stall_count[0] >= 2:
+                        os.kill(os.getpid(), signal.SIGUSR1)
+                else:
+                    stall_count[0] = 0
+                    last_round[0] = cur
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_watchdog, daemon=True)
+    t.start()
+
+
+_patch_openai_thinking_mode()
+_install_stuck_debugger()
+
+
 class MaxTokensWarningFilter(logging.Filter):
     """camel-ai의 max_tokens 관련 경고 필터링 (모델이 스스로 결정하도록 의도적으로 max_tokens를 설정하지 않음)"""
 
@@ -1200,6 +1274,9 @@ async def run_twitter_simulation(
 
     # Twitter는 일반 LLM 설정을 사용합니다.
     model = create_model(config, use_boost=False)
+    model.model_config_dict.setdefault(
+        "extra_body", {}
+    ).setdefault("chat_template_kwargs", {"enable_thinking": False})
 
     # OASIS Twitter는 CSV 형식을 사용합니다.
     profile_path = os.path.join(simulation_dir, "twitter_profiles.csv")
@@ -1307,7 +1384,8 @@ async def run_twitter_simulation(
                 )
             break
 
-        simulated_minutes = round_num * minutes_per_round
+        start_hour = time_config.get("start_hour", 9)
+        simulated_minutes = start_hour * 60 + round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
 
@@ -1399,6 +1477,9 @@ async def run_reddit_simulation(
 
     # Reddit은 가속 LLM 설정을 사용합니다 (있는 경우, 없으면 일반 설정으로 폴백).
     model = create_model(config, use_boost=True)
+    model.model_config_dict.setdefault(
+        "extra_body", {}
+    ).setdefault("chat_template_kwargs", {"enable_thinking": False})
 
     profile_path = os.path.join(simulation_dir, "reddit_profiles.json")
     if not os.path.exists(profile_path):
@@ -1516,7 +1597,8 @@ async def run_reddit_simulation(
                 )
             break
 
-        simulated_minutes = round_num * minutes_per_round
+        start_hour = time_config.get("start_hour", 9)
+        simulated_minutes = start_hour * 60 + round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
 
@@ -1603,6 +1685,18 @@ async def main():
         action="store_true",
         default=False,
         help="시뮬레이션 완료 후 환경을 즉시 종료하고 명령 대기 모드로 진입하지 않음",
+    )
+    parser.add_argument(
+        "--tools-enabled",
+        action="store_true",
+        default=False,
+        help="에이전트에 DuckDuckGo 검색 도구 주입",
+    )
+    parser.add_argument(
+        "--geopolitics-enabled",
+        action="store_true",
+        default=False,
+        help="GeopoliticsPlatform을 OASIS 환경에 주입",
     )
 
     args = parser.parse_args()

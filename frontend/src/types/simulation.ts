@@ -191,3 +191,36 @@ export interface DecisionPoint {
   created_at: string;
   resolved_at: string | null;
 }
+
+export interface InterviewRequest {
+  agent_id?: number;
+  prompt: string;
+  platform?: string;
+  timeout?: number;
+}
+
+export interface InterviewResult {
+  agent_id: number;
+  agent_name?: string;
+  prompt: string;
+  response?: string;
+  platform?: string;
+  timestamp?: string;
+  platforms?: Record<string, { agent_id: number; response: string; platform: string }>;
+}
+
+export interface InterviewHistoryItem {
+  command_id: string;
+  agent_id: number;
+  prompt: string;
+  result: InterviewResult;
+  timestamp: string;
+}
+
+export interface EnvStatus {
+  simulation_id: string;
+  env_alive: boolean;
+  reddit_available: boolean;
+  twitter_available: boolean;
+  message: string;
+}

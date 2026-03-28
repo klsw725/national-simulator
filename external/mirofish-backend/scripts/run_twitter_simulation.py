@@ -50,6 +50,82 @@ else:
 
 import re
 
+from action_logger import PlatformActionLogger
+
+
+def _patch_openai_thinking_mode():
+    """CAMEL OpenAIModel의 LLM 호출을 감싸서 content=None일 때 reasoning으로 대체."""
+    try:
+        from camel.models.openai_model import OpenAIModel
+
+        _orig_sync = OpenAIModel._request_chat_completion
+        _orig_async = OpenAIModel._arequest_chat_completion
+
+        def _fix_content(response):
+            for choice in response.choices:
+                if choice.message.content is None:
+                    extra = getattr(choice.message, "model_extra", None) or {}
+                    rc = extra.get("reasoning_content") or extra.get("reasoning")
+                    if rc:
+                        object.__setattr__(choice.message, "content", rc)
+            return response
+
+        def _patched_sync(self, *a, **kw):
+            return _fix_content(_orig_sync(self, *a, **kw))
+
+        async def _patched_async(self, *a, **kw):
+            return _fix_content(await _orig_async(self, *a, **kw))
+
+        OpenAIModel._request_chat_completion = _patched_sync
+        OpenAIModel._arequest_chat_completion = _patched_async
+    except Exception:
+        pass
+
+def _install_stuck_debugger():
+    import faulthandler, signal, threading
+
+    faulthandler.enable()
+
+    def _dump_on_alarm(signum, frame):
+        import sys, traceback, io
+        buf = io.StringIO()
+        buf.write(f"\n{'='*60}\n[STUCK DEBUGGER] SIGUSR1 received — dumping all threads\n{'='*60}\n")
+        for tid, tframe in sys._current_frames().items():
+            buf.write(f"\n--- Thread {tid} ---\n")
+            traceback.print_stack(tframe, file=buf)
+        print(buf.getvalue(), flush=True)
+
+    signal.signal(signal.SIGUSR1, _dump_on_alarm)
+
+    def _watchdog():
+        import time
+        last_round = [-1]
+        stall_count = [0]
+        while True:
+            time.sleep(60)
+            try:
+                with open("run_state.json") as f:
+                    import json
+                    state = json.load(f)
+                cur = state.get("current_round", -1)
+                if cur == last_round[0]:
+                    stall_count[0] += 1
+                    print(f"[WATCHDOG] round stuck at {cur} for {stall_count[0]} min", flush=True)
+                    if stall_count[0] >= 2:
+                        os.kill(os.getpid(), signal.SIGUSR1)
+                else:
+                    stall_count[0] = 0
+                    last_round[0] = cur
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_watchdog, daemon=True)
+    t.start()
+
+
+_patch_openai_thinking_mode()
+_install_stuck_debugger()
+
 
 class UnicodeFormatter(logging.Formatter):
     """사용자 정의 포맷터, Unicode 이스케이프 시퀀스를 읽을 수 있는 문자로 변환"""
@@ -388,6 +464,81 @@ class IPCHandler:
             return True
 
 
+# ── 액션 로깅 지원 (run_state.json 업데이트 체인용) ──
+
+FILTERED_ACTIONS = {"refresh", "sign_up"}
+
+ACTION_TYPE_MAP = {
+    "create_post": "CREATE_POST",
+    "like_post": "LIKE_POST",
+    "dislike_post": "DISLIKE_POST",
+    "repost": "REPOST",
+    "quote_post": "QUOTE_POST",
+    "follow": "FOLLOW",
+    "mute": "MUTE",
+    "create_comment": "CREATE_COMMENT",
+    "like_comment": "LIKE_COMMENT",
+    "dislike_comment": "DISLIKE_COMMENT",
+    "search_posts": "SEARCH_POSTS",
+    "search_user": "SEARCH_USER",
+    "trend": "TREND",
+    "do_nothing": "DO_NOTHING",
+    "interview": "INTERVIEW",
+}
+
+
+def _get_agent_names(config: Dict[str, Any]) -> Dict[int, str]:
+    """simulation_config에서 agent_id -> entity_name 매핑"""
+    names: Dict[int, str] = {}
+    for ac in config.get("agent_configs", []):
+        aid = ac.get("agent_id")
+        if aid is not None:
+            names[aid] = ac.get("entity_name", f"Agent_{aid}")
+    return names
+
+
+def _fetch_new_actions(
+    db_path: str, last_rowid: int, agent_names: Dict[int, str]
+) -> tuple:
+    """데이터베이스에서 새로운 액션 가져오기 (last_rowid 이후)"""
+    actions: List[Dict[str, Any]] = []
+    new_last = last_rowid
+    if not os.path.exists(db_path):
+        return actions, new_last
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT rowid, user_id, action, info FROM trace WHERE rowid > ? ORDER BY rowid ASC",
+            (last_rowid,),
+        )
+        for rowid, user_id, action, info_json in cur.fetchall():
+            new_last = rowid
+            if action in FILTERED_ACTIONS:
+                continue
+            try:
+                args = json.loads(info_json) if info_json else {}
+            except json.JSONDecodeError:
+                args = {}
+            simplified = {}
+            for k in (
+                "content", "post_id", "comment_id", "quoted_id",
+                "new_post_id", "follow_id", "query", "like_id", "dislike_id",
+            ):
+                if k in args:
+                    simplified[k] = args[k]
+            actions.append({
+                "agent_id": user_id,
+                "agent_name": agent_names.get(user_id, f"Agent_{user_id}"),
+                "action_type": ACTION_TYPE_MAP.get(action, action.upper()),
+                "action_args": simplified,
+            })
+        conn.close()
+    except Exception:
+        pass
+    return actions, new_last
+
+
 class TwitterSimulationRunner:
     """Twitter 시뮬레이션 실행기"""
 
@@ -580,6 +731,9 @@ class TwitterSimulationRunner:
         # 모델 생성
         print("\nLLM 모델 초기화 중...")
         model = self._create_model()
+        model.model_config_dict.setdefault(
+            "extra_body", {}
+        ).setdefault("chat_template_kwargs", {"enable_thinking": False})
 
         # 에이전트 프로필 로드
         print("에이전트 프로필 로드 중...")
@@ -643,6 +797,15 @@ class TwitterSimulationRunner:
         await self.env.reset()
         print("환경 초기화 완료\n")
 
+        action_logger = PlatformActionLogger("twitter", self.simulation_dir)
+        agent_names = _get_agent_names(self.config)
+        for agent_id, agent in self.agent_graph.get_agents():
+            if agent_id not in agent_names:
+                agent_names[agent_id] = getattr(agent, "name", f"Agent_{agent_id}")
+        last_rowid = 0
+        total_actions = 0
+        action_logger.log_simulation_start(self.config)
+
         # IPC 처리기 초기화
         self.ipc_handler = IPCHandler(self.simulation_dir, self.env, self.agent_graph)
         self.ipc_handler.update_status("running")
@@ -650,6 +813,9 @@ class TwitterSimulationRunner:
         # 초기 이벤트 실행
         event_config = self.config.get("event_config", {})
         initial_posts = event_config.get("initial_posts", [])
+
+        action_logger.log_round_start(0, 0)
+        initial_action_count = 0
 
         if initial_posts:
             print(f"초기 이벤트 실행 ({len(initial_posts)}개의 초기 게시물)...")
@@ -672,31 +838,61 @@ class TwitterSimulationRunner:
                 await self.env.step(initial_actions)
                 print(f"  {len(initial_actions)}개의 초기 게시물이 게시되었습니다.")
 
+                new_actions, last_rowid = _fetch_new_actions(db_path, last_rowid, agent_names)
+                for a in new_actions:
+                    action_logger.log_action(
+                        round_num=0,
+                        agent_id=a["agent_id"],
+                        agent_name=a["agent_name"],
+                        action_type=a["action_type"],
+                        action_args=a["action_args"],
+                    )
+                    total_actions += 1
+                    initial_action_count += 1
+
+        action_logger.log_round_end(0, initial_action_count)
+
         # 메인 시뮬레이션 루프
         print("\n시뮬레이션 루프 시작...")
         start_time = datetime.now()
 
+        start_hour = time_config.get("start_hour", 9)
+        start_offset_minutes = start_hour * 60
+
         for round_num in range(total_rounds):
-            # 현재 시뮬레이션 시간 계산
-            simulated_minutes = round_num * minutes_per_round
+            simulated_minutes = start_offset_minutes + round_num * minutes_per_round
             simulated_hour = (simulated_minutes // 60) % 24
             simulated_day = simulated_minutes // (60 * 24) + 1
 
-            # 이번 라운드에 활성화된 에이전트 가져오기
             active_agents = self._get_active_agents_for_round(
                 self.env, simulated_hour, round_num
             )
 
+            action_logger.log_round_start(round_num + 1, simulated_hour)
+
             if not active_agents:
+                action_logger.log_round_end(round_num + 1, 0)
                 continue
 
-            # 액션 구성
             actions = {agent: LLMAction() for _, agent in active_agents}
 
-            # 액션 실행
             await self.env.step(actions)
 
-            # 진행 상황 출력
+            new_actions, last_rowid = _fetch_new_actions(db_path, last_rowid, agent_names)
+            round_action_count = 0
+            for a in new_actions:
+                action_logger.log_action(
+                    round_num=round_num + 1,
+                    agent_id=a["agent_id"],
+                    agent_name=a["agent_name"],
+                    action_type=a["action_type"],
+                    action_args=a["action_args"],
+                )
+                total_actions += 1
+                round_action_count += 1
+
+            action_logger.log_round_end(round_num + 1, round_action_count)
+
             if (round_num + 1) % 10 == 0 or round_num == 0:
                 elapsed = (datetime.now() - start_time).total_seconds()
                 progress = (round_num + 1) / total_rounds * 100
@@ -707,9 +903,12 @@ class TwitterSimulationRunner:
                     f"- elapsed: {elapsed:.1f}s"
                 )
 
+        action_logger.log_simulation_end(total_rounds, total_actions)
+
         total_elapsed = (datetime.now() - start_time).total_seconds()
         print(f"\n시뮬레이션 루프 완료!")
         print(f"  - 총 소요 시간: {total_elapsed:.1f}초")
+        print(f"  - 총 액션 수: {total_actions}")
         print(f"  - 데이터베이스: {db_path}")
 
         # 명령 대기 모드 진입 여부

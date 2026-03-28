@@ -236,6 +236,8 @@ class OasisProfileGenerator:
         self.zep_client = None
         self.graph_id = graph_id
 
+        self.scenario_context: str = ""
+
         if self.zep_api_key:
             try:
                 self.zep_client = Zep(api_key=self.zep_api_key)
@@ -465,11 +467,17 @@ class OasisProfileGenerator:
         엔티티의 전체 컨텍스트 정보 구축
 
         포함 내용:
+        0. 시나리오 배경 (시드 문서 요약 — 실시간 OSINT + 웹 검색 결과)
         1. 엔티티 자체의 엣지 정보 (사실)
         2. 관련 노드의 상세 정보
         3. Zep 하이브리드 검색으로 획득한 풍부한 정보
         """
         context_parts = []
+
+        if self.scenario_context:
+            context_parts.append(
+                "### 현재 시나리오 배경 (실시간 OSINT 및 뉴스)\n" + self.scenario_context[:2000]
+            )
 
         # 1. 엔티티 속성 정보 추가
         if entity.attributes:
@@ -599,7 +607,7 @@ class OasisProfileGenerator:
                     ],
                     response_format={"type": "json_object"},
                     temperature=0.7 - (attempt * 0.1),  # 재시도할 때마다 온도 낮춤
-                    # max_tokens를 설정하지 않아 LLM이 자유롭게 생성하도록 함
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
 
                 content = response.choices[0].message.content
@@ -977,6 +985,7 @@ class OasisProfileGenerator:
         parallel_count: int = 5,
         realtime_output_path: Optional[str] = None,
         output_platform: str = "reddit",
+        scenario_context: str = "",
     ) -> List[OasisAgentProfile]:
         """
         엔티티로부터 에이전트 페르소나 일괄 생성 (병렬 생성 지원)
@@ -989,6 +998,7 @@ class OasisProfileGenerator:
             parallel_count: 병렬 생성 수, 기본값 5
             realtime_output_path: 실시간으로 기록할 파일 경로 (제공된 경우 생성될 때마다 기록)
             output_platform: 출력 플랫폼 형식 ("reddit" 또는 "twitter")
+            scenario_context: 시나리오 배경 (시드 문서, 실시간 OSINT/웹 검색 포함)
 
         Returns:
             에이전트 페르소나 리스트
@@ -996,9 +1006,10 @@ class OasisProfileGenerator:
         import concurrent.futures
         from threading import Lock
 
-        # Zep 검색을 위한 graph_id 설정
         if graph_id:
             self.graph_id = graph_id
+        if scenario_context:
+            self.scenario_context = scenario_context
 
         total = len(entities)
         profiles = [None] * total  # 순서 유지를 위해 리스트 미리 할당

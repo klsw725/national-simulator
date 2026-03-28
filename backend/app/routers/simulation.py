@@ -1992,3 +1992,147 @@ async def compare_whatif_branch(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return comparison.model_dump()
+
+
+# ── Interview (명령 대기 모드 프록시) ──
+
+
+@router.get("/{scenario_id}/env_status")
+async def get_env_status(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await _get_sim_row(conn, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        return {"env_alive": False, "message": "MiroFish simulation not yet created"}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_env_status(mf_sim_id)
+    except Exception:
+        return {"env_alive": False, "message": "MiroFish unavailable"}
+
+
+@router.post("/{scenario_id}/interview")
+async def interview_agent(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await _get_sim_row(conn, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        raise HTTPException(status_code=400, detail="Simulation not started")
+
+    body = await request.json()
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.interview_agent(
+            simulation_id=mf_sim_id,
+            agent_id=body["agent_id"],
+            prompt=body["prompt"],
+            platform=body.get("platform"),
+            timeout=body.get("timeout", 60),
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Missing field: {e}") from e
+    except Exception as e:
+        logger.exception("Interview failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.post("/{scenario_id}/interview/all")
+async def interview_all_agents(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await _get_sim_row(conn, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        raise HTTPException(status_code=400, detail="Simulation not started")
+
+    body = await request.json()
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.interview_all_agents(
+            simulation_id=mf_sim_id,
+            prompt=body["prompt"],
+            platform=body.get("platform"),
+            timeout=body.get("timeout", 180),
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Missing field: {e}") from e
+    except Exception as e:
+        logger.exception("Interview all failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.post("/{scenario_id}/interview/batch")
+async def interview_agents_batch(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await _get_sim_row(conn, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        raise HTTPException(status_code=400, detail="Simulation not started")
+
+    body = await request.json()
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.interview_agents_batch(
+            simulation_id=mf_sim_id,
+            interviews=body["interviews"],
+            platform=body.get("platform"),
+            timeout=body.get("timeout", 120),
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Missing field: {e}") from e
+    except Exception as e:
+        logger.exception("Batch interview failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.get("/{scenario_id}/interview/history")
+async def get_interview_history(
+    scenario_id: str,
+    request: Request,
+    agent_id: int | None = None,
+    limit: int = 50,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await _get_sim_row(conn, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        return {"interviews": [], "total": 0}
+
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.get_interview_history(mf_sim_id, agent_id=agent_id, limit=limit)
+    except Exception as e:
+        logger.exception("Interview history failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.post("/{scenario_id}/close_env")
+async def close_simulation_env(
+    scenario_id: str,
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    row = await _get_sim_row(conn, scenario_id)
+    mf_sim_id = row["mirofish_simulation_id"]
+    if not mf_sim_id:
+        raise HTTPException(status_code=400, detail="Simulation not started")
+
+    body = await request.json()
+    mf_client = request.app.state.mf_client
+    try:
+        return await mf_client.close_env(mf_sim_id, timeout=body.get("timeout", 30))
+    except Exception as e:
+        logger.exception("Close env failed for scenario %s", scenario_id)
+        raise HTTPException(status_code=502, detail=str(e)) from e

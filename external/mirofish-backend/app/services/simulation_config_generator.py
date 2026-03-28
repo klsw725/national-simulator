@@ -485,8 +485,8 @@ class SimulationConfigGenerator:
                         {"role": "user", "content": prompt}
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1)  # 재시도할 때마다 온도 낮춤
-                    # max_tokens를 설정하지 않아 LLM이 자유롭게 출력하도록 함
+                    temperature=0.7 - (attempt * 0.1),  # 재시도할 때마다 온도 낮춤
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
                 
                 content = response.choices[0].message.content
@@ -899,6 +899,31 @@ JSON 형식으로 반환 (마크다운 제외):
                 entry["relationships"] = relationships
             entity_list.append(entry)
         
+        is_geopolitical = self._is_geopolitical_scenario(entities)
+
+        if is_geopolitical:
+            behavior_guidelines = """\
+- **강대국** (Superpower): 활동성 높음(0.7-0.9), 24시간 활동(공식 채널 상시 운영), 응답 빠름(5-30분), 영향력 최고(4.0-5.0). 반드시 공식 입장을 표명해야 함.
+- **지역 강국** (RegionalPower): 활동성 높음(0.6-0.8), 24시간 활동, 응답 보통(15-60분), 영향력 높음(3.0-4.0). 관련국 성명에 적극 반응해야 함.
+- **소국** (SmallState): 활동성 중간(0.4-0.6), 업무 시간 중심(8-20), 응답 보통(30-120분), 영향력 중간(1.5-2.5). 동맹국 입장을 지지/전파하는 경향.
+- **군사 동맹/국제기구** (MilitaryAlliance/InternationalOrganization): 활동성 중상(0.5-0.7), 업무 시간(8-22), 응답 보통(15-60분), 영향력 높음(3.0-4.0). 최소한 "상황을 주시하고 있다"는 성명 발표 필수.
+- **군사 지휘관** (MilitaryCommander): 활동성 중간(0.5-0.7), 전 시간대 활동(위기 시), 응답 빠름(5-30분), 영향력 높음(2.5-3.5). 군사적 준비태세 발표.
+- **외교관** (Diplomat): 활동성 높음(0.6-0.8), 업무 시간 중심(8-22), 응답 보통(15-90분), 영향력 높음(2.5-3.5). 외교적 해결 촉구, 협상 제안 등 적극적 역할.
+- **미디어** (MediaOutlet): 활동성 매우 높음(0.8-1.0), 24시간 활동, 응답 매우 빠름(1-10분), 영향력 중상(2.0-3.0). 속보 보도, 분석 기사 게재.
+- **개인/전문가** (Person/Expert): 활동성 중간(0.4-0.6), 영향력 중간(1.0-2.0).
+- **【핵심 규칙】**: 해상 안보 위기 상황에서 관련 국가의 완전한 침묵은 비현실적임. 모든 국가 행위자와 국제기구는 최소 한 번 이상 공식 입장을 발표해야 함. stance를 "observer"로만 설정하지 말 것."""
+            system_prompt = "당신은 국제 안보·지정학 시뮬레이션 전문가입니다. 순수 JSON으로 반환하세요. 해상 안보 위기 상황에서 국가 행위자는 적극적으로 공식 입장을 표명합니다."
+        else:
+            behavior_guidelines = """\
+- **시간은 중국인 생활 패턴에 부합해야 함**: 새벽 0-5시는 거의 활동하지 않으며, 저녁 19-22시가 가장 활발함.
+- **공식 기관** (University/GovernmentAgency): 활동성 낮음(0.1-0.3), 업무 시간(9-17) 활동, 응답 느림(60-240분), 영향력 높음(2.5-3.0).
+- **미디어** (MediaOutlet): 활동성 중간(0.4-0.6), 하루 종일 활동(8-23), 응답 빠름(5-30분), 영향력 높음(2.0-2.5).
+- **개인** (Student/Person/Alumni): 활동성 높음(0.6-0.9), 주로 저녁 활동(18-23), 응답 빠름(1-15분), 영향력 낮음(0.8-1.2).
+- **공인/전문가**: 활동성 중간(0.4-0.6), 영향력 중상(1.5-2.0).
+- **국가 행위자** (Superpower/RegionalPower/SmallState): 활동성 낮음(0.2-0.4), 공식적이고 전략적, 응답 느림(30-180분), 영향력 매우 높음(3.0-4.0).
+- **군사/외교** (MilitaryCommander/Diplomat/MilitaryAlliance): 활동성 낮음(0.1-0.3), 업무 시간 활동, 영향력 높음(2.0-3.0)."""
+            system_prompt = "당신은 소셜 미디어 행동 분석 전문가입니다. 순수 JSON으로 반환하며, 설정은 중국인 생활 패턴에 부합해야 합니다."
+
         prompt = f"""다음 정보를 바탕으로 각 엔티티의 소셜 미디어 활동 설정을 생성해 주세요.
 
 시뮬레이션 요구사항: {simulation_requirement}
@@ -910,13 +935,7 @@ JSON 형식으로 반환 (마크다운 제외):
 
 ## 작업
 각 엔티티의 활동 설정을 생성할 때 다음 사항에 주의하세요:
-- **시간은 중국인 생활 패턴에 부합해야 함**: 새벽 0-5시는 거의 활동하지 않으며, 저녁 19-22시가 가장 활발함.
-- **공식 기관** (University/GovernmentAgency): 활동성 낮음(0.1-0.3), 업무 시간(9-17) 활동, 응답 느림(60-240분), 영향력 높음(2.5-3.0).
-- **미디어** (MediaOutlet): 활동성 중간(0.4-0.6), 하루 종일 활동(8-23), 응답 빠름(5-30분), 영향력 높음(2.0-2.5).
-- **개인** (Student/Person/Alumni): 활동성 높음(0.6-0.9), 주로 저녁 활동(18-23), 응답 빠름(1-15분), 영향력 낮음(0.8-1.2).
-- **공인/전문가**: 활동성 중간(0.4-0.6), 영향력 중상(1.5-2.0).
-- **국가 행위자** (Superpower/RegionalPower/SmallState): 활동성 낮음(0.2-0.4), 공식적이고 전략적, 응답 느림(30-180분), 영향력 매우 높음(3.0-4.0).
-- **군사/외교** (MilitaryCommander/Diplomat/MilitaryAlliance): 활동성 낮음(0.1-0.3), 업무 시간 활동, 영향력 높음(2.0-3.0).
+{behavior_guidelines}
 - **관계 기반 행동**: 각 엔티티의 relationships 필드를 반드시 참고하여:
   - 동맹/지지/협력 관계의 엔티티들은 같은 방향의 stance(supportive 또는 opposing)를 가져야 함
   - 적대/갈등/경쟁 관계의 엔티티들은 반대 방향의 stance를 가져야 함
@@ -941,8 +960,6 @@ JSON 형식으로 반환 (마크다운 제외):
         ...
     ]
 }}"""
-
-        system_prompt = "당신은 소셜 미디어 행동 분석 전문가입니다. 순수 JSON으로 반환하며, 설정은 중국인 생활 패턴에 부합해야 합니다."
         
         try:
             result = self._call_llm_with_retry(prompt, system_prompt)
@@ -988,12 +1005,30 @@ JSON 형식으로 반환 (마크다운 제외):
     _EXPERT = {"professor", "expert", "official"}
     _YOUTH = {"student"}
     _ALUMNI = {"alumni"}
+    _GEOPOLITICAL_TYPES = _STATE_ACTORS | {"militaryalliance", "internationalorganization", "militarycommander", "diplomat"}
+
+    @classmethod
+    def _is_geopolitical_scenario(cls, entities: List["EntityNode"]) -> bool:
+        entity_types = {(e.get_entity_type() or "").lower() for e in entities}
+        return bool(entity_types & cls._GEOPOLITICAL_TYPES)
 
     def _generate_agent_config_by_rule(self, entity: EntityNode) -> Dict[str, Any]:
-        """규칙 기반 개별 에이전트 설정 생성 (생활 패턴 기반)"""
         entity_type = (entity.get_entity_type() or "Unknown").lower()
+        is_geo = entity_type in self._GEOPOLITICAL_TYPES or entity_type in self._STATE_ACTORS
 
         if entity_type in self._STATE_ACTORS:
+            if is_geo:
+                return {
+                    "activity_level": 0.75,
+                    "posts_per_hour": 1.0,
+                    "comments_per_hour": 0.8,
+                    "active_hours": list(range(0, 24)),
+                    "response_delay_min": 5,
+                    "response_delay_max": 30,
+                    "sentiment_bias": 0.0,
+                    "stance": "neutral",
+                    "influence_weight": 4.5,
+                }
             return {
                 "activity_level": 0.3,
                 "posts_per_hour": 0.2,
@@ -1006,6 +1041,18 @@ JSON 형식으로 반환 (마크다운 제외):
                 "influence_weight": 3.5,
             }
         elif entity_type in self._INSTITUTIONAL:
+            if is_geo:
+                return {
+                    "activity_level": 0.6,
+                    "posts_per_hour": 0.5,
+                    "comments_per_hour": 0.4,
+                    "active_hours": list(range(8, 22)),
+                    "response_delay_min": 15,
+                    "response_delay_max": 60,
+                    "sentiment_bias": 0.0,
+                    "stance": "neutral",
+                    "influence_weight": 3.5,
+                }
             return {
                 "activity_level": 0.2,
                 "posts_per_hour": 0.1,
@@ -1019,27 +1066,27 @@ JSON 형식으로 반환 (마크다운 제외):
             }
         elif entity_type in self._MILITARY:
             return {
-                "activity_level": 0.2,
-                "posts_per_hour": 0.1,
-                "comments_per_hour": 0.2,
-                "active_hours": list(range(6, 22)),
-                "response_delay_min": 15,
-                "response_delay_max": 120,
+                "activity_level": 0.6,
+                "posts_per_hour": 0.5,
+                "comments_per_hour": 0.5,
+                "active_hours": list(range(0, 24)),
+                "response_delay_min": 5,
+                "response_delay_max": 30,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 2.8,
+                "influence_weight": 3.0,
             }
         elif entity_type in self._DIPLOMAT:
             return {
-                "activity_level": 0.35,
-                "posts_per_hour": 0.15,
-                "comments_per_hour": 0.4,
-                "active_hours": list(range(9, 21)),
-                "response_delay_min": 60,
-                "response_delay_max": 240,
+                "activity_level": 0.7,
+                "posts_per_hour": 0.6,
+                "comments_per_hour": 0.6,
+                "active_hours": list(range(8, 22)),
+                "response_delay_min": 15,
+                "response_delay_max": 90,
                 "sentiment_bias": 0.0,
                 "stance": "neutral",
-                "influence_weight": 2.2,
+                "influence_weight": 3.0,
             }
         elif entity_type in self._MEDIA:
             return {

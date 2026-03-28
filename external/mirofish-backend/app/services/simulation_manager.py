@@ -347,10 +347,11 @@ class SimulationManager:
                 entities=filtered.entities,
                 use_llm=use_llm_for_profiles,
                 progress_callback=profile_progress,
-                graph_id=state.graph_id,  # Zep 검색을 위해 graph_id 전달
-                parallel_count=parallel_profile_count,  # 병렬 생성 수
-                realtime_output_path=realtime_output_path,  # 실시간 저장 경로
-                output_platform=realtime_platform,  # 출력 형식
+                graph_id=state.graph_id,
+                parallel_count=parallel_profile_count,
+                realtime_output_path=realtime_output_path,
+                output_platform=realtime_platform,
+                scenario_context=document_text,
             )
 
             state.profiles_count = len(profiles)

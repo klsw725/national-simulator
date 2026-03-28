@@ -839,7 +839,10 @@ function MaplibreViewer({
 
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
-    if (!feature || !feature.properties) return;
+    if (!feature || !feature.properties) {
+      setPopup(null);
+      return;
+    }
 
     const layerId = feature.layer?.id;
     if (!layerId) return;

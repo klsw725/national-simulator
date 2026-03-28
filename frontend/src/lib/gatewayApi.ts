@@ -10,6 +10,9 @@ import type {
   LiveProfiles,
   LiveConfig,
   DecisionPoint,
+  InterviewResult,
+  InterviewHistoryItem,
+  EnvStatus,
 } from "@/types/simulation";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -415,6 +418,59 @@ export function getAnalyticsSnapshots(hours?: number): Promise<{
 }> {
   const qs = hours ? `?hours=${hours}` : "";
   return fetchJSON(`/api/analytics/snapshots${qs}`);
+}
+
+// ── Interview ──
+
+export function getEnvStatus(scenarioId: string): Promise<EnvStatus> {
+  return fetchJSON(`/api/scenario/${scenarioId}/env_status`);
+}
+
+export function interviewAgent(
+  scenarioId: string,
+  agentId: number,
+  prompt: string,
+  platform?: string,
+): Promise<InterviewResult> {
+  return fetchJSON(`/api/scenario/${scenarioId}/interview`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ agent_id: agentId, prompt, platform }),
+  });
+}
+
+export function interviewAllAgents(
+  scenarioId: string,
+  prompt: string,
+  platform?: string,
+): Promise<{ success: boolean; total_agents: number; results: InterviewResult[] }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/interview/all`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ prompt, platform }),
+  });
+}
+
+export function getInterviewHistory(
+  scenarioId: string,
+  agentId?: number,
+  limit?: number,
+): Promise<{ interviews: InterviewHistoryItem[]; total: number }> {
+  const params = new URLSearchParams();
+  if (agentId != null) params.set("agent_id", String(agentId));
+  if (limit != null) params.set("limit", String(limit));
+  const qs = params.toString();
+  return fetchJSON(`/api/scenario/${scenarioId}/interview/history${qs ? `?${qs}` : ""}`);
+}
+
+export function closeSimulationEnv(
+  scenarioId: string,
+): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/close_env`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({}),
+  });
 }
 
 // ── Interactive Simulation ──

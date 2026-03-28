@@ -55,6 +55,13 @@ SIMULATION_REQUIREMENT = """\
 - 좋아요 (LIKE_POST): 타국 성명에 대한 암묵적 동의
 - 팔로우 (FOLLOW): 외교적 관계 형성 의사 표시
 - 아무것도 안 함 (DO_NOTHING): 전략적 관망/무반응
+
+【필수 행동 규칙】
+- 각 행위자는 시뮬레이션 전체에서 최소 1회 이상 공식 성명(CREATE_POST) 또는 공식 반응(QUOTE_POST)을 반드시 수행해야 합니다.
+- DO_NOTHING은 해당 라운드에서 이미 다른 적극적 행동을 수행한 뒤에만 선택할 수 있습니다. 첫 행동으로 DO_NOTHING을 선택하는 것은 금지됩니다.
+- 현실 세계에서 해상 긴장 상황이 발생하면 관련 국가들은 반드시 공식 입장을 표명합니다. 완전한 침묵은 비현실적입니다.
+- 국제기구(UN, ASEAN 등)는 최소한 "상황을 주시하고 있다"는 성명을 발표해야 합니다.
+- 강대국(Superpower)과 지역 강국(RegionalPower)은 적극적 행동(CREATE_POST, QUOTE_POST)의 비율이 전체 행동의 50% 이상이어야 합니다.
 """
 
 from app.config import settings
@@ -166,6 +173,13 @@ class SimulationOrchestrator:
                 timeout=PREPARE_TIMEOUT,
                 interval=POLL_INTERVAL,
             )
+
+        sim_state = await self.mf.get_simulation_state(mf_simulation_id)
+        mf_status = sim_state.get("status", "")
+        if mf_status != "ready":
+            error_msg = sim_state.get("error", f"unexpected status: {mf_status}")
+            raise RuntimeError(f"Prepare failed: {error_msg}")
+
         logger.info("[%s] Prepare done", scenario_id)
         await ActionLogger.log(
             "pipeline.prepare",
@@ -624,6 +638,22 @@ class SimulationOrchestrator:
             except Exception:
                 logger.warning("[%s] Failed to log pipeline error", scenario_id, exc_info=True)
 
+    @staticmethod
+    def _compute_do_nothing_ratio(actions: Any) -> float:
+        action_list: list[dict] = []
+        if isinstance(actions, dict) and isinstance(actions.get("actions"), list):
+            action_list = actions["actions"]
+        elif isinstance(actions, list):
+            action_list = actions
+        if not action_list:
+            return 1.0
+        do_nothing_count = sum(
+            1 for a in action_list
+            if isinstance(a, dict)
+            and (a.get("action_type") or "").lower() in ("do_nothing", "strategic_observation")
+        )
+        return do_nothing_count / len(action_list)
+
     async def _collect_and_store_results(
         self,
         result_id: str,
@@ -637,6 +667,15 @@ class SimulationOrchestrator:
             actions["actions"] = map_actions_to_geopolitics(actions["actions"])
         elif isinstance(actions, list):
             actions = map_actions_to_geopolitics(actions)
+
+        do_nothing_ratio = self._compute_do_nothing_ratio(actions)
+        if do_nothing_ratio > 0.7:
+            logger.warning(
+                "[%s] Sparse simulation detected: DO_NOTHING ratio=%.0f%%. "
+                "Report quality may be degraded.",
+                result_id, do_nothing_ratio * 100,
+            )
+
         report_data = {}
         try:
             report_data = await self.mf.get_report_by_simulation(mf_simulation_id)

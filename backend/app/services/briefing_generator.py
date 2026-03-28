@@ -13,6 +13,7 @@ from app.clients.shadowbroker import BBox, ShadowBrokerClient
 from app.config import settings
 from app.database import get_pool
 from app.services.geopolitics_mapper import map_actions_to_geopolitics
+from app.services.web_search import WebSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,102 @@ BRIEFING_PROMPT = """\
 """
 
 
+SPARSE_BRIEFING_PROMPT = """\
+당신은 국가 안보 정보기관의 수석 분석관입니다.
+시뮬레이션에서 대부분의 행위자가 "전략적 관망"을 선택하여 적극적 행동 데이터가 부족합니다.
+그러나 OSINT 데이터, 외부 뉴스, 시드 문서는 충분합니다.
+이 자료들을 종합하여 정보 브리핑을 작성하세요.
+
+## 용어 변환 규칙 (절대 준수)
+이 시뮬레이션은 에이전트 간 상호작용을 소셜미디어 메타포로 모델링합니다.
+보고서 작성 시 소셜미디어 용어를 반드시 아래 인텔리전스 용어로 변환하세요:
+- CREATE_POST / create_post → "공식 성명 발표" 또는 "정책 입장 천명"
+- QUOTE_POST / quote_post → "타국 입장에 대한 공식 반응"
+- REPOST / repost → "동맹·우방 입장 지지 표명"
+- LIKE_POST / like_post → "암묵적 동의 신호"
+- FOLLOW / follow → "외교적 연계 강화 (관계 격상 신호)"
+- DO_NOTHING / do_nothing → "전략적 관망 (의도적 무대응)"
+절대 사용 금지 용어: 트윗, 리트윗, 좋아요, 팔로우, 해시태그, 피드, 타임라인,
+  트위터, 위챗, 틱톡, 유튜브, SNS, 소셜미디어, 인스타그램, 페이스북, 포스트, 게시물.
+
+## 시나리오 기본 정보
+- 시나리오명: {scenario_name}
+- 지역: {region_name}
+- 핵심 질문: {question}
+
+## 실시간 OSINT 정보 (시나리오 생성 시점)
+{seed_text}
+
+## 시뮬레이션 행동 분석
+{simulation_summary}
+
+## 지정학 이벤트 분석
+{geopolitics_summary}
+
+## 긴장도 궤적
+{tension_trajectory}
+
+## 다중 에이전트 시뮬레이션 보고서
+{report_text}
+
+## 외부 정보 보강 (웹 검색)
+{web_search_section}
+
+{current_osint_section}
+다음 구조를 정확히 따라 작성하세요:
+
+# 정보 브리핑: [시나리오명]
+
+## 1. 상황 판단 (300자 이내)
+OSINT 데이터와 웹 검색 결과를 종합한 현재 상황 평가.
+시뮬레이션에서 행위자 대다수가 전략적 관망을 선택한 사실을 반드시 포함하세요.
+구체적 수치(군함 N척, 항공기 N대 등)를 포함하세요.
+
+## 2. 침묵의 전략적 의미 분석
+행위자들의 무활동이 의미하는 바를 분석하세요:
+- 억지 균형(deterrence equilibrium)이 작동하고 있는가?
+- 정보 비대칭으로 인한 관망인가?
+- 신호 회피(signal avoidance) 전략인가?
+OSINT 데이터(군함 배치, 항공기 활동 등)와 대조하여 판단하세요.
+
+## 3. OSINT 기반 독자적 위협 평가
+시뮬레이션과 무관하게, 수집된 OSINT 데이터와 웹 검색 뉴스만으로:
+- 군사력 배치 현황 및 변화
+- 외교적 동향 (웹 검색 뉴스 기반)
+- 경제·제재 동향
+을 독자적으로 평가하세요.
+웹 검색 결과를 인용할 때 출처(매체명)를 반드시 명시하세요.
+
+## 4. 반사실적 시나리오 (What-If)
+"만약 특정 행위자가 관망 대신 적극적으로 행동했다면?" 시나리오를 2~3개 제시하세요.
+각 시나리오에서 예상되는 연쇄 반응을 분석하세요.
+
+## 5. 핵심 정보 판단 (Intelligence Key Judgments, 3~5개)
+모든 출처(OSINT, 웹 검색, 시뮬레이션 침묵 패턴)를 종합한 핵심 판단.
+각 판단은 "**[판단 제목]**: [근거 기반 설명]" 형식으로 작성하세요.
+
+## 6. 정책 권고 (Recommended Actions)
+정책 결정자에게 권고할 구체적 조치.
+"추가 모니터링 필요"와 같은 모호한 권고는 금지합니다.
+
+{extra_sections}
+## 부록: 출처·방법론·신뢰도
+- OSINT 소스 (위성 추적, AIS, GDELT, 뉴스 등)
+- 웹 검색 쿼리 및 결과 수
+- 시뮬레이션 행동 N건 (DO_NOTHING 비율 명시)
+- 분석 한계: "시뮬레이션 행위자의 대다수가 전략적 관망을 선택하여 행동 데이터가 부족하며, OSINT 및 외부 정보원으로 보강함"
+
+필수 규칙:
+- 모든 주장에 입력 데이터의 구체적 수치·행위자명을 인용하세요.
+- 웹 검색 결과 인용 시 출처(매체명)를 명시하세요.
+- OSINT 기반 분석과 웹 검색 기반 분석의 출처를 명확히 구분하세요.
+- 추측과 데이터 기반 판단을 명확히 구분하세요.
+- 소셜미디어 메타포를 인텔리전스 용어로 반드시 변환하세요.
+"""
+
+DO_NOTHING_SPARSE_THRESHOLD = 0.7
+
+
 class BriefingGenerator:
     def __init__(self, sb_client: ShadowBrokerClient | None = None):
         self._sb = sb_client
@@ -108,6 +205,41 @@ class BriefingGenerator:
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         )
+
+    def _is_sparse_scenario(self, results_raw: str | None) -> bool:
+        actions = self._parse_actions(results_raw)
+        if not actions:
+            return True
+        do_nothing_count = sum(
+            1 for a in actions
+            if (a.get("action_type") or "").lower() in ("do_nothing", "strategic_observation")
+        )
+        return do_nothing_count / len(actions) > DO_NOTHING_SPARSE_THRESHOLD
+
+    async def _enrich_with_web_search(
+        self, region_name: str, question: str, actors: list[str],
+    ) -> str:
+        try:
+            ws = WebSearchService(max_results=5)
+            keywords = WebSearchService.extract_keywords(question, region_name, actors)
+            results = ws.search_news(keywords)
+            if not results:
+                return "외부 웹 검색 결과 없음"
+            formatted = ws.format_for_seed(results)
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            return f"(검색 시점: {now})\n{formatted}"
+        except Exception:
+            logger.warning("Web search enrichment failed for briefing")
+            return "외부 웹 검색 실패"
+
+    def _extract_actor_names(self, results_raw: str | None) -> list[str]:
+        actions = self._parse_actions(results_raw)
+        actors: set[str] = set()
+        for a in actions:
+            name = a.get("agent_name") or a.get("actor_id") or ""
+            if name:
+                actors.add(str(name))
+        return sorted(actors)[:5]
 
     def _parse_actions(self, results_raw: str | None) -> list[dict[str, Any]]:
         if not results_raw:
@@ -412,6 +544,7 @@ class BriefingGenerator:
             ],
             temperature=0.3,
             max_tokens=4096,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
         return response.choices[0].message.content or ""
 
@@ -490,18 +623,41 @@ class BriefingGenerator:
                     "현재 OSINT 데이터가 없는 경우 '데이터 없음'으로 표기하세요.\n"
                 )
 
-        prompt = BRIEFING_PROMPT.format(
-            scenario_name=scenario["name"],
-            region_name=scenario["region_name"],
-            question=scenario["question"],
-            seed_text=seed_text,
-            simulation_summary=simulation_summary,
-            geopolitics_summary=geopolitics_summary,
-            tension_trajectory=tension_trajectory,
-            report_text=report_text,
-            current_osint_section=current_osint_section,
-            extra_sections=extra_sections,
-        )
+        is_sparse = self._is_sparse_scenario(sim_row["results"] if sim_row else None)
+
+        if is_sparse:
+            actors = self._extract_actor_names(sim_row["results"] if sim_row else None)
+            web_search_section = await self._enrich_with_web_search(
+                scenario["region_name"], scenario["question"], actors,
+            )
+            prompt = SPARSE_BRIEFING_PROMPT.format(
+                scenario_name=scenario["name"],
+                region_name=scenario["region_name"],
+                question=scenario["question"],
+                seed_text=seed_text,
+                simulation_summary=simulation_summary,
+                geopolitics_summary=geopolitics_summary,
+                tension_trajectory=tension_trajectory,
+                report_text=report_text,
+                web_search_section=web_search_section,
+                current_osint_section=current_osint_section,
+                extra_sections=extra_sections,
+            )
+            logger.info("[%s] Sparse scenario detected, using enriched briefing prompt", scenario_id)
+        else:
+            prompt = BRIEFING_PROMPT.format(
+                scenario_name=scenario["name"],
+                region_name=scenario["region_name"],
+                question=scenario["question"],
+                seed_text=seed_text,
+                simulation_summary=simulation_summary,
+                geopolitics_summary=geopolitics_summary,
+                tension_trajectory=tension_trajectory,
+                report_text=report_text,
+                current_osint_section=current_osint_section,
+                extra_sections=extra_sections,
+            )
+
         content = await self._call_llm(prompt)
 
         briefing_id = str(uuid.uuid4())

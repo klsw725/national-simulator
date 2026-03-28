@@ -79,7 +79,7 @@ class MiroFishClient:
         resp = await self._request("post", "/api/graph/ontology/generate",
         files=files,
         data=data,
-        timeout=180.0,)
+        timeout=600.0,)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -139,7 +139,7 @@ class MiroFishClient:
             "simulation_id": simulation_id,
             "use_llm_for_profiles": True,
         },
-        timeout=180.0,)
+        timeout=600.0,)
         resp.raise_for_status()
         body = resp.json()
         data = body.get("data", body)
@@ -152,6 +152,13 @@ class MiroFishClient:
         """POST /api/simulation/prepare/status → {status, progress}"""
         resp = await self._request("post", "/api/simulation/prepare/status",
         json={"task_id": task_id},)
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def get_simulation_state(self, simulation_id: str) -> dict[str, Any]:
+        """GET /api/simulation/{id} → {status, error, ...}"""
+        resp = await self._request("get", f"/api/simulation/{simulation_id}")
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -210,7 +217,7 @@ class MiroFishClient:
         """POST /api/report/generate → task_id"""
         resp = await self._request("post", "/api/report/generate",
         json={"simulation_id": simulation_id},
-        timeout=180.0,)
+        timeout=600.0,)
         resp.raise_for_status()
         body = resp.json()
         data = body.get("data", body)
@@ -287,6 +294,121 @@ class MiroFishClient:
     async def get_config_realtime(self, simulation_id: str) -> dict[str, Any]:
         """GET /api/simulation/{id}/config/realtime — 설정 생성 실시간 진행."""
         resp = await self._request("get", f"/api/simulation/{simulation_id}/config/realtime")
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    # ------------------------------------------------------------------
+    # Interview (명령 대기 모드)
+    # ------------------------------------------------------------------
+
+    async def get_env_status(self, simulation_id: str) -> dict[str, Any]:
+        """POST /api/simulation/env-status — 환경 활성 여부 확인."""
+        resp = await self._request(
+            "post",
+            "/api/simulation/env-status",
+            json={"simulation_id": simulation_id},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def interview_agent(
+        self,
+        simulation_id: str,
+        agent_id: int,
+        prompt: str,
+        platform: str | None = None,
+        timeout: int = 60,
+    ) -> dict[str, Any]:
+        """POST /api/simulation/interview — 단일 에이전트 인터뷰."""
+        payload: dict[str, Any] = {
+            "simulation_id": simulation_id,
+            "agent_id": agent_id,
+            "prompt": prompt,
+            "timeout": timeout,
+        }
+        if platform:
+            payload["platform"] = platform
+        resp = await self._request(
+            "post", "/api/simulation/interview", json=payload, timeout=float(timeout + 10),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def interview_all_agents(
+        self,
+        simulation_id: str,
+        prompt: str,
+        platform: str | None = None,
+        timeout: int = 180,
+    ) -> dict[str, Any]:
+        """POST /api/simulation/interview/all — 전체 에이전트 인터뷰."""
+        payload: dict[str, Any] = {
+            "simulation_id": simulation_id,
+            "prompt": prompt,
+            "timeout": timeout,
+        }
+        if platform:
+            payload["platform"] = platform
+        resp = await self._request(
+            "post", "/api/simulation/interview/all", json=payload, timeout=float(timeout + 10),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def interview_agents_batch(
+        self,
+        simulation_id: str,
+        interviews: list[dict[str, Any]],
+        platform: str | None = None,
+        timeout: int = 120,
+    ) -> dict[str, Any]:
+        """POST /api/simulation/interview/batch — 일괄 인터뷰."""
+        payload: dict[str, Any] = {
+            "simulation_id": simulation_id,
+            "interviews": interviews,
+            "timeout": timeout,
+        }
+        if platform:
+            payload["platform"] = platform
+        resp = await self._request(
+            "post", "/api/simulation/interview/batch", json=payload, timeout=float(timeout + 10),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def get_interview_history(
+        self,
+        simulation_id: str,
+        agent_id: int | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """POST /api/simulation/interview/history — 인터뷰 기록 조회."""
+        payload: dict[str, Any] = {
+            "simulation_id": simulation_id,
+            "limit": limit,
+        }
+        if agent_id is not None:
+            payload["agent_id"] = agent_id
+        resp = await self._request(
+            "post", "/api/simulation/interview/history", json=payload,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def close_env(self, simulation_id: str, timeout: int = 30) -> dict[str, Any]:
+        """POST /api/simulation/close-env — 환경 종료."""
+        resp = await self._request(
+            "post",
+            "/api/simulation/close-env",
+            json={"simulation_id": simulation_id, "timeout": timeout},
+            timeout=float(timeout + 10),
+        )
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)

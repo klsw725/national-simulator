@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X, AlertTriangle, RotateCcw } from "lucide-react";
-import { retrySimulation } from "@/lib/gatewayApi";
+import { X, AlertTriangle, RotateCcw, StopCircle } from "lucide-react";
+import { retrySimulation, pauseSimulation } from "@/lib/gatewayApi";
 import type { UseSimulationReturn } from "@/hooks/useSimulation";
 import ScenarioForm from "./ScenarioForm";
 import PipelineProgress from "./PipelineProgress";
@@ -22,15 +22,16 @@ import ScenarioSearch from "./ScenarioSearch";
 import CopilotPanel from "./CopilotPanel";
 import InteractiveSimulationView from "./InteractiveSimulationView";
 import WhatIfBranchView from "./WhatIfBranchView";
+import InterviewPanel from "./InterviewPanel";
 
-type Tab = "create" | "progress" | "interactive" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
+type Tab = "create" | "progress" | "interactive" | "interview" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
 
 type TabGroup = "scenario" | "simulation" | "analysis" | "system";
 
 const TAB_GROUPS: { key: TabGroup; label: string; tabs: Tab[] }[] = [
   { key: "scenario", label: "시나리오", tabs: ["create", "list", "compare"] },
-  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "interactive", "what_if", "decisions"] },
-  { key: "analysis", label: "분석", tabs: ["graph", "geopolitics", "timeline", "report", "export", "copilot"] },
+  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "interactive", "interview", "what_if", "decisions", "report"] },
+  { key: "analysis", label: "분석", tabs: ["graph", "geopolitics", "timeline", "export", "copilot"] },
   { key: "system", label: "시스템", tabs: ["dashboard", "health"] },
 ];
 
@@ -69,6 +70,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
     { key: "interactive", label: "인터랙티브", show: hasActiveScenario },
+    { key: "interview", label: "인터뷰", show: hasActiveScenario },
     { key: "what_if", label: "What-If", show: hasActiveScenario },
     { key: "decisions", label: "결정", show: hasActiveScenario },
     { key: "list", label: "목록", show: true },
@@ -353,7 +355,42 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
             />
           ) : sim.pipelineStatus?.status?.startsWith("simulating:") ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-              <PipelineProgress pipelineStatus={sim.pipelineStatus} onReview={() => {}} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ flex: 1 }}>
+                  <PipelineProgress pipelineStatus={sim.pipelineStatus} onReview={() => {}} />
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!sim.activeScenario?.id) return;
+                    if (!confirm("시뮬레이션을 중단하시겠습니까?")) return;
+                    try {
+                      await pauseSimulation(sim.activeScenario.id);
+                      sim.loadScenarios();
+                    } catch {
+                      alert("중단 실패");
+                    }
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    border: "1px solid var(--accent-red, #ef4444)",
+                    borderRadius: 4,
+                    color: "var(--accent-red, #ef4444)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexShrink: 0,
+                    marginLeft: 12,
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  <StopCircle size={14} />
+                  중단
+                </button>
+              </div>
               <div style={{ flex: 1, minHeight: 0, marginTop: 12 }}>
                 <IntermediateResults
                   pipelineStatus={sim.pipelineStatus.status}
@@ -373,6 +410,10 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
 
         {tab === "interactive" && (
           <InteractiveSimulationView scenarioId={sim.activeScenario?.id} />
+        )}
+
+        {tab === "interview" && sim.activeScenario && (
+          <InterviewPanel scenarioId={sim.activeScenario.id} />
         )}
 
         {tab === "what_if" && (
