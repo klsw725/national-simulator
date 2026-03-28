@@ -558,11 +558,31 @@ PLAN_SYSTEM_PROMPT = """\
 - ❌ 현실 세계의 현상에 대한 분석이 아닙니다.
 - ❌ 일반적인 여론 정리 문서가 아닙니다.
 
+【무행위/저활동 시나리오 감지 시 섹션 설계】
+시나리오 분석 데이터를 검토한 결과 행위자들의 적극적 행동(공식 성명, 공식 반응 등)이 극히 적거나 전무하다면,
+"아무 일도 없었다"를 반복하는 보고서는 가치가 없습니다. 대신 다음 3개 섹션으로 설계하십시오:
+
+- ① **현황 및 원인 진단** (사실 기술 + 원인 분석을 하나로 통합)
+  ▸ 포함: 어떤 행위자가 무엇을 했는가/안 했는가 (사실), 왜 관망을 선택했는가 (원인: 억지 균형, 신호 회피, 정보 비대칭)
+  ▸ 배제: What-If 가정, 정책 권고, 리스크 목록 (이것들은 다른 섹션에서 다룸)
+
+- ② **반사실적 시나리오(What-If)**
+  ▸ 포함: "만약 특정 행위자가 적극적으로 행동했다면?" 2~3가지 가정과 연쇄 반응 분석
+  ▸ 배제: 현재 상황 재기술 (①에서 이미 다룸), 정책 권고 (③에서 다룸)
+
+- ③ **리스크 및 정책 권고**
+  ▸ 포함: 무행위가 초래하는 구체적 위험 목록, 각 위험에 대한 실행 가능한 정책 권고
+  ▸ 배제: 원인 분석 반복 (①에서 이미 다룸), What-If 시나리오 반복 (②에서 이미 다룸)
+
+⚠️ 핵심 규칙: 각 섹션의 "배제" 항목에 해당하는 내용은 절대 해당 섹션에 작성하지 마십시오.
+이전 섹션의 내용을 참조해야 할 경우 "앞서 진단한 바와 같이" 한 문장으로만 언급하십시오.
+
 【섹션 수 제한】
 - 최소 2개, 최대 5개 섹션
 - 하위 섹션은 필요 없으며, 각 섹션에 전체 내용을 직접 작성하십시오.
 - 내용은 간결해야 하며 핵심 분석 결과에 집중하십시오.
 - 섹션 구조는 분석 결과에 따라 자율적으로 설계하십시오.
+- ⚠️ 각 섹션은 반드시 다른 섹션과 중복되지 않는 고유한 분석 관점을 제공해야 합니다.
 
 다음 형식에 따라 JSON 형식의 보고서 개요를 출력하십시오:
 {
@@ -598,7 +618,30 @@ PLAN_USER_PROMPT_TEMPLATE = """\
 
 분석 결과에 따라 가장 적합한 보고서 섹션 구조를 설계하십시오.
 
-【다시 알림】 보고서 섹션 수: 최소 2개, 최대 5개. 내용은 핵심 분석 결과에 간결하게 집중하십시오."""
+【다시 알림】 보고서 섹션 수: 최소 2개, 최대 5개. 내용은 핵심 분석 결과에 간결하게 집중하십시오.
+각 섹션은 다른 섹션과 중복되지 않는 고유한 분석 관점을 제공해야 합니다."""
+
+PLAN_USER_PROMPT_SPARSE_ADDENDUM = """
+
+【⚠️ 경고: 저활동/무행위 시나리오 감지됨】
+시뮬레이션 데이터 분석 결과, 행위자들의 적극적 행동이 극히 적거나 전무합니다.
+"아무 일도 없었다"를 반복하는 보고서는 가치가 없습니다.
+
+반드시 정확히 3개 섹션으로 설계하십시오 (4개 이상 금지):
+
+1. **현황 및 원인 진단** — 사실 기술과 원인 분석을 하나로 통합
+   ▸ 포함: 누가 무엇을 했는가/안 했는가 + 왜 관망을 선택했는가 (억지 균형, 신호 회피, 정보 비대칭)
+   ▸ 배제: What-If 가정, 정책 권고 (다른 섹션에서 다룸)
+
+2. **반사실적 시나리오(What-If)** — 가상 행동의 연쇄 반응
+   ▸ 포함: "만약 X가 행동했다면?" 2~3가지 시나리오와 연쇄 효과
+   ▸ 배제: 현재 상황 재기술, 정책 권고 (다른 섹션에서 다룸)
+
+3. **리스크 및 정책 권고** — 위험과 대응
+   ▸ 포함: 구체적 위험 목록 + 실행 가능한 정책 권고
+   ▸ 배제: 원인 분석 반복, What-If 반복 (다른 섹션에서 다룸)
+
+⚠️ 각 섹션의 "배제" 항목을 절대 해당 섹션에 넣지 마십시오."""
 
 # ── 섹션 생성 프롬프트 ──
 
@@ -645,11 +688,15 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
    - 보고서 내용을 작성할 때 자신의 지식을 사용하는 것을 금지합니다.
    - 각 섹션마다 최소 3회(최대 5회) 도구를 호출하여 대표성 있는 분석 시나리오를 관찰하십시오.
 
-2. 【반드시 행위자의 행동과 성명을 인용하십시오】
+2. 【반드시 행위자의 행동과 성명을 인용하십시오 — 단, 실제 데이터만】
    - 행위자의 발언과 행동은 집단 행동 전개를 보여주는 핵심 근거입니다.
    - 보고서에서 다음과 같이 인용 형식을 사용하여 이러한 예측을 보여주십시오:
      > "특정 집단은 다음과 같이 밝혔다: 원문 내용..."
    - 이러한 인용은 시나리오 분석의 핵심 증거입니다.
+   - ⚠️ 【가짜 인용 절대 금지】 도구가 반환한 실제 데이터에서 나온 내용만 인용(>) 형식으로 사용하십시오.
+     도구 결과에 행위자 발언이 없는데 자체적으로 인용문을 만들어내는 것은 정보 보고서의 신뢰성을 근본적으로 훼손합니다.
+   - 도구 결과에 인용할 내용이 없다면: 인용 형식(>)을 사용하지 말고, 데이터 부재 사실 자체를 간결하게 서술하십시오.
+     예시: "시뮬레이션에서 해당 행위자의 공식 성명은 기록되지 않았다."
 
 3. 【언어 일관성 - 인용 내용은 보고서 언어로 번역되어야 합니다】
    - 도구가 반환하는 내용에는 영어 또는 중국어와 영어가 혼합된 표현이 포함될 수 있습니다.
@@ -662,6 +709,15 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
    - 보고서 내용은 대표성 있는 분석 시나리오 결과를 반영해야 합니다.
    - 시뮬레이션에 존재하지 않는 정보를 추가하지 마십시오.
    - 특정 측면의 정보가 부족한 경우 사실대로 설명하십시오.
+
+5. 【무행위/저활동 시나리오에서의 분석 방법】
+   도구 호출 결과 행위자의 적극적 행동(공식 성명, 공식 반응 등)이 극히 적거나 전무한 경우:
+   - ❌ "아무 일도 없었다"를 여러 표현으로 반복하지 마십시오. 이는 가치 없는 보고서입니다.
+   - ✅ 대신 다음 분석 프레임워크를 활용하십시오:
+     a) **침묵의 전략적 의미**: 억지 균형(deterrence equilibrium)이 작동하는가? 정보 비대칭으로 인한 관망인가? 신호 회피(signal avoidance) 전략인가?
+     b) **반사실적 시나리오(What-If)**: "만약 특정 행위자가 관망 대신 적극적으로 행동했다면?" 예상 연쇄 반응 분석
+     c) **데이터 부재의 진단적 가치**: 무행위 자체가 드러내는 시스템적 위험(커뮤니케이션 공백, 동맹 신뢰도 등)
+   - 각 섹션은 반드시 위 프레임워크 중 하나 이상의 고유한 관점을 가져야 합니다.
 
 ═══════════════════════════════════════════════════════════════
 【⚠️ 형식 규정 - 매우 중요!】
@@ -762,22 +818,30 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
    학교 측의 대응은 실질적인 내용이 부족한 것으로 간주되었습니다. > "학교 측의 대응 방식은..." 이러한 평가는 ...
    ```
 5. 다른 섹션과의 논리적 일관성을 유지하십시오.
-6. 【중복 방지】 아래의 이미 완료된 섹션 내용을 주의 깊게 읽고 동일한 정보를 중복해서 설명하지 마십시오.
-7. 【다시 강조】 어떤 제목도 추가하지 마십시오! 소제목 대신 **굵게**를 사용하십시오."""
+6. 【중복 방지 — 최우선 규칙】
+   - 아래의 이미 완료된 섹션 내용을 주의 깊게 읽고 동일한 정보를 중복해서 설명하지 마십시오.
+   - ⚠️ 특히 "행위자가 아무런 행동을 하지 않았다"는 사실을 여러 섹션에서 반복 서술하는 것을 절대 금지합니다.
+   - 이전 섹션에서 이미 언급한 사실(무행위, 규정 위반, 상호작용 부재 등)은 한 문장으로 참조만 하고 새로운 관점의 분석으로 넘어가십시오.
+   - 각 섹션은 이전 섹션과 다른 고유한 분석 관점(원인, 영향, 대안 등)을 반드시 제공해야 합니다.
+7. 【간결성】 핵심 분석에 집중하고 불필요한 수식과 반복을 제거하십시오. 같은 의미를 다른 표현으로 반복하는 것은 분량 채우기이며 금지됩니다.
+8. 【다시 강조】 어떤 제목도 추가하지 마십시오! 소제목 대신 **굵게**를 사용하십시오."""
 
 SECTION_USER_PROMPT_TEMPLATE = """\
 이미 완료된 섹션 내용 (중복 방지를 위해 주의 깊게 읽어주십시오):
 {previous_content}
-
+{used_quotes_block}
 ═══════════════════════════════════════════════════════════════
 【현재 작업】 섹션 작성: {section_title}
 ═══════════════════════════════════════════════════════════════
 
 【중요 알림】
 1. 위의 완료된 섹션을 주의 깊게 읽고 동일한 내용을 반복하지 마십시오!
+   - 이전 섹션에서 이미 서술한 사실은 "앞서 확인된 바와 같이"로 한 문장 참조만 하고 새로운 분석으로 넘어가십시오.
 2. 시작하기 전에 반드시 도구를 호출하여 분석 데이터를 확보하십시오.
 3. 다양한 도구를 혼합하여 사용하고 한 가지만 사용하지 마십시오.
 4. 보고서 내용은 검색 결과에서 비롯되어야 하며 자신의 지식을 사용하지 마십시오.
+5. 도구가 반환한 실제 행위자 발언만 인용(>) 형식으로 사용하십시오. 도구 결과에 없는 내용을 인용문으로 만들지 마십시오.
+6. 위의 【이미 사용된 인용문】에 나열된 인용은 다시 인용(>) 형식으로 사용하지 마십시오. 해당 내용을 참조해야 할 경우 "앞서 확인된 바와 같이"로 짧게 언급만 하십시오.
 
 【⚠️ 형식 경고 - 반드시 준수】
 - ❌ 어떤 제목도 작성하지 마십시오 (#, ##, ###, #### 모두 불가)
@@ -1172,6 +1236,19 @@ class ReportAgent:
             progress_callback("planning", 30, "보고서 개요 생성 중...")
 
         system_prompt = PLAN_SYSTEM_PROMPT
+
+        related_facts = context.get("related_facts", [])[:10]
+        related_facts_json = json.dumps(related_facts, ensure_ascii=False, indent=2)
+
+        # Sparse 시나리오 감지: 관련 사실이 극히 적거나, DO_NOTHING 관련 키워드가 대부분인 경우
+        is_sparse = len(related_facts) <= 2
+        if not is_sparse and related_facts:
+            do_nothing_mentions = sum(
+                1 for f in related_facts
+                if isinstance(f, (str, dict)) and "do_nothing" in json.dumps(f, ensure_ascii=False).lower()
+            )
+            is_sparse = do_nothing_mentions > len(related_facts) * 0.5
+
         user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
             simulation_requirement=self.simulation_requirement,
             total_nodes=context.get("graph_statistics", {}).get("total_nodes", 0),
@@ -1180,10 +1257,12 @@ class ReportAgent:
                 context.get("graph_statistics", {}).get("entity_types", {}).keys()
             ),
             total_entities=context.get("total_entities", 0),
-            related_facts_json=json.dumps(
-                context.get("related_facts", [])[:10], ensure_ascii=False, indent=2
-            ),
+            related_facts_json=related_facts_json,
         )
+
+        if is_sparse:
+            user_prompt += PLAN_USER_PROMPT_SPARSE_ADDENDUM
+            logger.warning("Sparse scenario detected during report planning — injecting sparse framework")
 
         try:
             response = self.llm.chat_json(
@@ -1229,6 +1308,18 @@ class ReportAgent:
                 ],
             )
 
+    @staticmethod
+    def _extract_quotes(text: str) -> List[str]:
+        """Markdown 인용 블록(> ...)에서 인용문 목록을 추출한다."""
+        quotes: List[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("> "):
+                quote_text = stripped[2:].strip().strip('"').strip()
+                if len(quote_text) >= 10:
+                    quotes.append(quote_text)
+        return quotes
+
     def _generate_section_react(
         self,
         section: ReportSection,
@@ -1246,20 +1337,9 @@ class ReportAgent:
         3. Observation (관찰) - 도구 반환 결과 분석
         4. 정보가 충분하거나 최대 횟수에 도달할 때까지 반복
         5. Final Answer (최종 답변) - 섹션 내용 생성
-
-        Args:
-            section: 생성할 섹션
-            outline: 전체 개요
-            previous_sections: 이전 섹션 내용 (일관성 유지용)
-            progress_callback: 진행률 콜백
-            section_index: 섹션 인덱스 (로그 기록용)
-
-        Returns:
-            섹션 내용 (Markdown 형식)
         """
         logger.info(f"ReACT 섹션 생성: {section.title}")
 
-        # 섹션 시작 로그 기록
         if self.report_logger:
             self.report_logger.log_section_start(section.title, section_index)
 
@@ -1271,20 +1351,31 @@ class ReportAgent:
             tools_description=self._get_tools_description(),
         )
 
-        # 사용자 프롬프트 구축 - 완료된 각 섹션마다 최대 4000자 전달
+        used_quotes: List[str] = []
         if previous_sections:
             previous_parts = []
             for sec in previous_sections:
-                # 섹션당 최대 4000자
+                used_quotes.extend(self._extract_quotes(sec))
                 truncated = sec[:4000] + "..." if len(sec) > 4000 else sec
                 previous_parts.append(truncated)
             previous_content = "\n\n---\n\n".join(previous_parts)
         else:
             previous_content = "（첫 번째 섹션입니다）"
 
+        if used_quotes:
+            deduped = list(dict.fromkeys(used_quotes))
+            quote_lines = "\n".join(f"- {q[:120]}" for q in deduped[:20])
+            used_quotes_block = (
+                "\n\n【이미 사용된 인용문 — 아래 인용을 다시 > 형식으로 사용하지 마십시오】\n"
+                + quote_lines
+            )
+        else:
+            used_quotes_block = ""
+
         user_prompt = SECTION_USER_PROMPT_TEMPLATE.format(
             previous_content=previous_content,
             section_title=section.title,
+            used_quotes_block=used_quotes_block,
         )
 
         messages = [
