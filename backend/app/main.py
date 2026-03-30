@@ -9,7 +9,7 @@ from app.database import close_db, init_db
 from app.geopolitics.router import router as geopolitics_router
 from app.ontology.router import router as ontology_router
 from app.resolution.router import router as resolution_router
-from app.routers import actions, analytics, copilot, dashboard, osint, scenario, simulation
+from app.routers import actions, analytics, causal, copilot, dashboard, osint, scenario, simulation
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app = FastAPI(
 
 app.include_router(actions.router)
 app.include_router(analytics.router)
+app.include_router(causal.router)
 app.include_router(copilot.router)
 app.include_router(dashboard.router)
 app.include_router(geopolitics_router)

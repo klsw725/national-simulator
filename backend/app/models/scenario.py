@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
 
 
@@ -6,12 +8,22 @@ class ScenarioRegion(BaseModel):
     name: str
 
 
+class GeopoliticsMode(str, Enum):
+    AUTO = "auto"
+    ACTOR_ROLE = "actor_role"
+    GAME_MASTER = "game_master"
+
+
 class SimulationParams(BaseModel):
     platform: str = Field(default="twitter", pattern=r"^(twitter|reddit)$")
     simulation_hours: int = Field(default=24, ge=12, le=96)
     simulation_requirement: str | None = None
     geopolitics_enabled: bool = Field(default=False)
     web_search_enabled: bool = Field(default=False)
+    geopolitics_mode: GeopoliticsMode = Field(default=GeopoliticsMode.AUTO)
+    geopolitics_player_actor_id: str | None = None
+    geopolitics_rounds: int = Field(default=3, ge=1, le=10)
+    geopolitics_pause_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class ScenarioCreate(BaseModel):

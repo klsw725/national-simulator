@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 
@@ -59,3 +61,4 @@ class WhatIfComparison(BaseModel):
     actor_diff: dict = Field(default_factory=lambda: {"only_original": [], "only_branch": [], "common": []})
     action_count_delta: int = 0
     geopolitics_delta: int = 0
+    causal_attribution: dict | None = None

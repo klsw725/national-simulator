@@ -51,6 +51,7 @@ class DecisionEngine:
         self._actors: dict[str, GeopoliticalActorState] = {}
         self._event_log: list[GeopoliticsEvent] = []
         self._round: int = 0
+        self._action_overrides: dict[str, str] = {}
 
     def add_actor(self, actor: GeopoliticalActorState) -> None:
         self._actors[actor.actor_id] = actor
@@ -63,6 +64,45 @@ class DecisionEngine:
 
     def get_event_log(self) -> list[GeopoliticsEvent]:
         return list(self._event_log)
+
+    def override_next_action(self, actor_id: str, action: str) -> None:
+        self._action_overrides[actor_id] = action
+
+    def apply_direction_deltas(
+        self,
+        deltas: dict[str, float],
+        applies_to: str = "all",
+    ) -> dict[str, dict[str, float]]:
+        affected: dict[str, dict[str, float]] = {}
+
+        adversary_actor_ids = {
+            adversary_id
+            for actor in self._actors.values()
+            for adversary_id in actor.adversaries
+        }
+        ally_actor_ids = {
+            ally_id
+            for actor in self._actors.values()
+            for ally_id in actor.allies
+        }
+
+        for actor in self._actors.values():
+            if applies_to == "adversaries" and actor.actor_id not in adversary_actor_ids:
+                continue
+            if applies_to == "allies" and actor.actor_id not in ally_actor_ids:
+                continue
+
+            actor_deltas: dict[str, float] = {}
+            for field_name, delta in deltas.items():
+                old_val = getattr(actor, field_name)
+                setattr(actor, field_name, old_val + delta)
+                actor.clamp_state()
+                new_val = getattr(actor, field_name)
+                actor_deltas[field_name] = round(new_val - old_val, 4)
+
+            affected[actor.actor_id] = actor_deltas
+
+        return affected
 
     def apply_event(self, event: GeopoliticsEvent) -> dict[str, dict[str, float]]:
         """Apply an event's effects to target actors. Returns {actor_id: {field: delta}}."""
@@ -102,7 +142,10 @@ class DecisionEngine:
         events: list[GeopoliticsEvent] = []
 
         for actor in self._actors.values():
-            action = self._decide_single(actor)
+            if actor.actor_id in self._action_overrides:
+                action = self._action_overrides[actor.actor_id]
+            else:
+                action = self._decide_single(actor)
             if action == "do_nothing":
                 continue
 
@@ -197,11 +240,37 @@ class DecisionEngine:
             "actor_states": {a.actor_id: a.to_dict() for a in self._actors.values()},
         }
 
+    def run_single_round(self) -> dict:
+        round_result = self.run_round()
+        self._action_overrides.clear()
+        return round_result
+
+    def serialize_state(self) -> dict:
+        return {
+            "actors": {aid: actor.to_dict() for aid, actor in self._actors.items()},
+            "event_log": [e.to_dict() for e in self._event_log],
+            "round": self._round,
+        }
+
+    @classmethod
+    def from_state(cls, state: dict) -> DecisionEngine:
+        engine = cls()
+        engine._actors = {
+            actor_id: GeopoliticalActorState.from_dict(actor_state)
+            for actor_id, actor_state in state.get("actors", {}).items()
+        }
+        engine._event_log = [
+            GeopoliticsEvent.from_dict(event_data)
+            for event_data in state.get("event_log", [])
+        ]
+        engine._round = int(state.get("round", 0))
+        return engine
+
     def run_simulation(self, rounds: int) -> dict[str, Any]:
         """Execute N rounds and return full timeline."""
         timeline: list[dict[str, Any]] = []
         for _ in range(rounds):
-            round_result = self.run_round()
+            round_result = self.run_single_round()
             timeline.append(round_result)
         return {
             "total_rounds": rounds,

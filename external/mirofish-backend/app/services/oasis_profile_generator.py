@@ -1234,6 +1234,18 @@ class OasisProfileGenerator:
         - description: 외부 노출용, 다른 사용자가 볼 수 있는 소개
         """
         import csv
+        from app.platforms.geopolitics import GEOPOLITICS_PERSONA_PROMPT
+
+        _GEOPOLITICAL_ENTITY_TYPES = {
+            "superpower", "regionalpower", "smallstate",
+            "militaryalliance", "internationalorganization",
+            "militarycommander", "diplomat", "mediaoutlet",
+        }
+
+        is_geopolitical = any(
+            (p.source_entity_type or "").lower() in _GEOPOLITICAL_ENTITY_TYPES
+            for p in profiles
+        )
 
         # 파일 확장자가 .csv인지 확인
         if not file_path.endswith(".csv"):
@@ -1252,6 +1264,11 @@ class OasisProfileGenerator:
                 user_char = profile.bio
                 if profile.persona and profile.persona != profile.bio:
                     user_char = f"{profile.bio} {profile.persona}"
+
+                if is_geopolitical:
+                    prompt_oneline = GEOPOLITICS_PERSONA_PROMPT.replace("\n", " ").replace("\r", " ")
+                    user_char = f"{user_char} {prompt_oneline}"
+
                 # 줄바꿈 처리 (CSV에서는 공백으로 대체)
                 user_char = user_char.replace("\n", " ").replace("\r", " ")
 

@@ -54,7 +54,8 @@ from action_logger import PlatformActionLogger
 
 
 def _patch_openai_thinking_mode():
-    """CAMEL OpenAIModel의 LLM 호출을 감싸서 content=None일 때 reasoning으로 대체."""
+    """CAMEL OpenAIModel의 LLM 호출을 감싸서 content=None일 때 reasoning으로 대체.
+    또한 content가 불완전(5자 이하)일 때 reasoning_content를 확인하여 보완."""
     try:
         from camel.models.openai_model import OpenAIModel
 
@@ -63,11 +64,16 @@ def _patch_openai_thinking_mode():
 
         def _fix_content(response):
             for choice in response.choices:
-                if choice.message.content is None:
-                    extra = getattr(choice.message, "model_extra", None) or {}
-                    rc = extra.get("reasoning_content") or extra.get("reasoning")
-                    if rc:
-                        object.__setattr__(choice.message, "content", rc)
+                if getattr(choice.message, "tool_calls", None):
+                    continue
+                content = choice.message.content
+                extra = getattr(choice.message, "model_extra", None) or {}
+                rc = extra.get("reasoning_content") or extra.get("reasoning")
+
+                if content is None and rc:
+                    object.__setattr__(choice.message, "content", rc)
+                elif content and len(content.strip()) <= 5 and rc and len(rc) > len(content):
+                    object.__setattr__(choice.message, "content", rc)
             return response
 
         def _patched_sync(self, *a, **kw):
@@ -125,6 +131,141 @@ def _install_stuck_debugger():
 
 _patch_openai_thinking_mode()
 _install_stuck_debugger()
+
+
+def _patch_tool_call_text_fallback():
+    """tool_calls가 비어있을 때 텍스트 응답에서 tool call을 파싱하는 fallback.
+
+    Qwen3.5 계열: <tool_call><function=name><parameter=key>value</parameter></function></tool_call>
+    JSON 계열: {"action": "create_post", "content": "..."}
+    """
+    import re as _re
+    from oasis.social_agent.agent import SocialAgent, agent_log, BaseMessage, ALL_SOCIAL_ACTIONS
+
+    _TAG_PATTERN = _re.compile(
+        r"<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>",
+        _re.DOTALL,
+    )
+    _PARAM_PATTERN = _re.compile(
+        r"<parameter=(\w+)>(.*?)</parameter>",
+        _re.DOTALL,
+    )
+    _JSON_ACTION_PATTERN = _re.compile(
+        r'"(?:action|action_type|function)":\s*"(\w+)"',
+    )
+
+    _orig_perform = SocialAgent.perform_action_by_llm
+
+    async def _patched_perform(self):
+        env_prompt = await self.env.to_text_prompt()
+        user_msg = BaseMessage.make_user_message(
+            role_name="User",
+            content=(
+                f"Please perform social media actions after observing the "
+                f"platform environments. Notice that don't limit your "
+                f"actions for example to just like the posts. "
+                f"Here is your social media environment: {env_prompt}"))
+        try:
+            agent_log.info(
+                f"Agent {self.social_agent_id} observing environment: "
+                f"{env_prompt}")
+            response = await self.astep(user_msg)
+
+            tool_calls = response.info.get("tool_calls") or []
+            if tool_calls:
+                for tool_call in tool_calls:
+                    action_name = tool_call.tool_name
+                    args = tool_call.args
+                    agent_log.info(
+                        f"Agent {self.social_agent_id} performed "
+                        f"action: {action_name} with args: {args}")
+                return response
+
+            content = ""
+            for src in [
+                response.msg and response.msg.content,
+                response.msgs[0].content if response.msgs else None,
+                response.info.get("content"),
+            ]:
+                if src and len(src) > len(content):
+                    content = src
+
+            parsed_actions = _parse_tool_calls_from_text(self.social_agent_id, content)
+            if not parsed_actions:
+                agent_log.warning(
+                    f"Agent {self.social_agent_id} no parseable action. "
+                    f"LLM content ({len(content)} chars): {content[:500]}")
+            for action_name, args in parsed_actions:
+                agent_log.info(
+                    f"Agent {self.social_agent_id} performed "
+                    f"action (text-parsed): {action_name} with args: {args}")
+                try:
+                    action_fn = getattr(self.env.action, action_name, None)
+                    if action_fn:
+                        await action_fn(**args)
+                except Exception as e:
+                    agent_log.error(
+                        f"Agent {self.social_agent_id} action exec error: {e}")
+
+            return response
+        except Exception as e:
+            agent_log.error(f"Agent {self.social_agent_id} error: {e}")
+            return e
+
+    def _parse_tool_calls_from_text(agent_id, content):
+        results = []
+
+        tag_matches = _TAG_PATTERN.findall(content)
+        if tag_matches:
+            for func_name, params_block in tag_matches:
+                args = {}
+                for param_name, param_value in _PARAM_PATTERN.findall(params_block):
+                    args[param_name.strip()] = param_value.strip()
+                results.append((func_name, args))
+            return results
+
+        try:
+            import json as _json
+            cleaned = content.strip()
+            if cleaned.startswith("```"):
+                cleaned = _re.sub(r"^```\w*\n?", "", cleaned)
+                cleaned = _re.sub(r"\n?```$", "", cleaned)
+            data = _json.loads(cleaned)
+            if isinstance(data, dict):
+                action = data.pop("action", data.pop("action_type", data.pop("function", None)))
+                if action:
+                    results.append((action.lower(), data))
+                    return results
+                if "quote_content" in data:
+                    results.append(("quote_post", data))
+                    return results
+                if "comment" in data or "comment_content" in data:
+                    text = data.get("comment") or data.get("comment_content", "")
+                    results.append(("create_comment", {"post_id": data.get("post_id", 1), "content": text}))
+                    return results
+                if "post_id" in data and not any(k in data for k in ("content", "quote_content", "comment")):
+                    results.append(("like_post", {"post_id": data["post_id"]}))
+                    return results
+                if "content" in data:
+                    results.append(("create_post", data))
+                    return results
+        except (ValueError, _json.JSONDecodeError):
+            pass
+
+        m = _JSON_ACTION_PATTERN.search(content)
+        if m:
+            action = m.group(1).lower()
+            content_m = _re.search(r'"content":\s*"([^"]+)"', content)
+            args = {"content": content_m.group(1)} if content_m else {}
+            results.append((action, args))
+            return results
+
+        return results
+
+    SocialAgent.perform_action_by_llm = _patched_perform
+
+
+_patch_tool_call_text_fallback()
 
 
 class UnicodeFormatter(logging.Formatter):
@@ -545,6 +686,7 @@ class TwitterSimulationRunner:
     # Twitter 사용 가능 액션 (INTERVIEW 제외, INTERVIEW는 ManualAction을 통해서만 수동으로 트리거 가능)
     AVAILABLE_ACTIONS = [
         ActionType.CREATE_POST,
+        ActionType.CREATE_COMMENT,
         ActionType.LIKE_POST,
         ActionType.REPOST,
         ActionType.FOLLOW,

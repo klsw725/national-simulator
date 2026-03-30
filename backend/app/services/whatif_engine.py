@@ -182,6 +182,20 @@ class WhatIfEngine:
 
         metrics = compute_maxs_metrics(parent_actions, branch_actions, max_rounds)
         actor_diff = _compute_actor_diff(parent_actions, branch_actions)
+        causal_attribution = None
+        try:
+            from app.services.causal_reasoner import CausalReasoner
+
+            reasoner = CausalReasoner()
+            if reasoner.is_fitted("domain"):
+                attr_result = reasoner.attribute("domain", "tension_ratio")
+                causal_attribution = {
+                    "tension_advantage_explained": attr_result.get("attributions", {}),
+                    "confidence": "medium" if attr_result.get("total_explained", 0) > 0.5 else "low",
+                    "method": attr_result.get("method", "intervention_range"),
+                }
+        except Exception as exc:
+            logger.debug("Causal attribution skipped: %s", exc)
 
         comparison = WhatIfComparison(
             branch_id=branch_id,
@@ -192,6 +206,7 @@ class WhatIfEngine:
             actor_diff=actor_diff,
             action_count_delta=len(branch_actions) - len(parent_actions),
             geopolitics_delta=(geo_branch or 0) - (geo_parent or 0),
+            causal_attribution=causal_attribution,
         )
 
         async with pool.acquire() as conn:

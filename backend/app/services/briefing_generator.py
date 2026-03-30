@@ -623,6 +623,37 @@ class BriefingGenerator:
                     "현재 OSINT 데이터가 없는 경우 '데이터 없음'으로 표기하세요.\n"
                 )
 
+        causal_section = ""
+        try:
+            from app.causal.domain_dag import build_domain_dag
+
+            dag = build_domain_dag()
+            propagation_edges = [
+                (u, v, d.get("strength", 0))
+                for u, v, d in dag.edges(data=True)
+                if d.get("edge_type") == "propagates_to"
+            ]
+            if propagation_edges:
+                edge_lines = "\n".join(
+                    f"- {src} → {tgt} ({'↑' if s > 0 else '↓'}{abs(s):.2f})"
+                    for src, tgt, s in propagation_edges
+                )
+                causal_section = (
+                    f"## 인과 분석 (Causal Analysis)\n"
+                    f"아래 인과 모형(도메인 DAG)의 인과 경로를 사용하여 분석하세요:\n"
+                    f"{edge_lines}\n\n"
+                    f"반드시 다음을 포함하세요:\n"
+                    f"- 주요 인과 경로 2~3개를 \"A → B → C\" 형식으로 서술\n"
+                    f"- 각 경로에서 어떤 이벤트가 어떤 상태 변화를 야기하는지 강도와 함께 설명\n"
+                    f"- 현재 시나리오에서 작동하지 않은 인과 경로가 있다면 그 이유 분석\n"
+                    f"- \"시뮬레이션 인과 모형 기반 추정\"임을 명시\n"
+                )
+        except Exception as exc:
+            logger.debug("Causal section generation skipped: %s", exc)
+
+        if causal_section:
+            extra_sections = causal_section + "\n\n" + extra_sections
+
         is_sparse = self._is_sparse_scenario(sim_row["results"] if sim_row else None)
 
         if is_sparse:

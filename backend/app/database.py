@@ -267,6 +267,45 @@ CREATE TABLE IF NOT EXISTS whatif_branches (
 );
 CREATE INDEX IF NOT EXISTS idx_whatif_branches_scenario ON whatif_branches(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_whatif_branches_status ON whatif_branches(status);
+
+CREATE TABLE IF NOT EXISTS causal_models (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT,
+    model_type TEXT NOT NULL,
+    dag_json TEXT NOT NULL,
+    variables TEXT NOT NULL,
+    fit_metadata TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_causal_models_scenario ON causal_models(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_causal_models_type ON causal_models(model_type);
+
+CREATE TABLE IF NOT EXISTS causal_observations (
+    id SERIAL PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    result_id TEXT NOT NULL,
+    round_num INTEGER NOT NULL,
+    variables JSONB NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_causal_obs_scenario ON causal_observations(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_causal_obs_result ON causal_observations(result_id);
+
+CREATE TABLE IF NOT EXISTS geopolitics_snapshots (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
+    result_id TEXT NOT NULL,
+    round_number INTEGER NOT NULL,
+    engine_state TEXT NOT NULL,
+    pending_decision_point_id TEXT,
+    geopolitics_mode TEXT NOT NULL,
+    player_actor_id TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_geo_snap_scenario ON geopolitics_snapshots(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_geo_snap_result ON geopolitics_snapshots(result_id);
 """
 
 

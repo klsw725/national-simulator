@@ -16,4 +16,9 @@ dependencies = [
     "stix2>=3.0.0",
     "duckduckgo-search>=7.0.0",
     "tenacity>=8.0.0",
+    "networkx>=3.0",
+    "dowhy>=0.11",
+    "pgmpy>=0.1.25",
+    "scikit-learn>=1.4",
+    "pandas>=2.0",
 ]

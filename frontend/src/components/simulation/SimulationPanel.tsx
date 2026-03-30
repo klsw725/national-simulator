@@ -13,25 +13,27 @@ import ReportViewer from "./ReportViewer";
 import IntermediateResults from "./IntermediateResults";
 import GraphTab from "./GraphTab";
 import DecisionPointView from "./DecisionPointView";
+import GeopoliticsDecisionView from "./GeopoliticsDecisionView";
 import GeopoliticsView from "./GeopoliticsView";
 import HealthDashboard from "./HealthDashboard";
 import ExportPanel from "./ExportPanel";
 import ComparisonView from "./ComparisonView";
 import AnalystDashboard from "./AnalystDashboard";
 import ScenarioSearch from "./ScenarioSearch";
-import CopilotPanel from "./CopilotPanel";
+import ConversationPanel from "./ConversationPanel";
 import InteractiveSimulationView from "./InteractiveSimulationView";
 import WhatIfBranchView from "./WhatIfBranchView";
-import InterviewPanel from "./InterviewPanel";
+import CausalDAGView from "./CausalDAGView";
+import CausalQueryPanel from "./CausalQueryPanel";
 
-type Tab = "create" | "progress" | "interactive" | "interview" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "copilot" | "compare" | "dashboard" | "health";
+type Tab = "create" | "progress" | "interactive" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "conversation" | "compare" | "dashboard" | "health" | "causal";
 
 type TabGroup = "scenario" | "simulation" | "analysis" | "system";
 
 const TAB_GROUPS: { key: TabGroup; label: string; tabs: Tab[] }[] = [
   { key: "scenario", label: "시나리오", tabs: ["create", "list", "compare"] },
-  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "interactive", "interview", "what_if", "decisions", "report"] },
-  { key: "analysis", label: "분석", tabs: ["graph", "geopolitics", "timeline", "export", "copilot"] },
+  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "interactive", "what_if", "decisions", "report"] },
+  { key: "analysis", label: "분석", tabs: ["graph", "geopolitics", "timeline", "causal", "export", "conversation"] },
   { key: "system", label: "시스템", tabs: ["dashboard", "health"] },
 ];
 
@@ -70,7 +72,6 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
     { key: "interactive", label: "인터랙티브", show: hasActiveScenario },
-    { key: "interview", label: "인터뷰", show: hasActiveScenario },
     { key: "what_if", label: "What-If", show: hasActiveScenario },
     { key: "decisions", label: "결정", show: hasActiveScenario },
     { key: "list", label: "목록", show: true },
@@ -79,7 +80,8 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
     { key: "timeline", label: "타임라인", show: isCompleted },
     { key: "report", label: "리포트", show: isCompleted },
     { key: "export", label: "내보내기", show: isCompleted },
-    { key: "copilot", label: "코파일럿", show: hasActiveScenario },
+    { key: "causal", label: "인과", show: hasActiveScenario },
+    { key: "conversation", label: "대화", show: hasActiveScenario },
     { key: "compare", label: "비교", show: true },
     { key: "dashboard", label: "대시보드", show: true },
     { key: "health", label: "헬스", show: true },
@@ -104,7 +106,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
         top: 0,
         right: 0,
         width: 400,
-        height: "100vh",
+        height: "100dvh",
         background: "var(--bg-secondary)",
         borderLeft: "1px solid var(--border-secondary)",
         display: "flex",
@@ -297,8 +299,10 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
       <div
         style={{
           flex: 1,
+          minHeight: 0,
           overflow: "auto",
           padding: 16,
+          WebkitOverflowScrolling: "touch",
         }}
       >
         {tab === "create" && (
@@ -353,6 +357,14 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
               onContinue={sim.continueCheckpoint}
               onCancel={() => setTab("list")}
             />
+          ) : sim.pipelineStatus?.status === "simulating:geopolitics_paused" && sim.activeScenario ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <PipelineProgress pipelineStatus={sim.pipelineStatus} onReview={() => {}} />
+              <GeopoliticsDecisionView
+                scenarioId={sim.activeScenario.id}
+                onResolved={() => sim.loadScenarios()}
+              />
+            </div>
           ) : sim.pipelineStatus?.status?.startsWith("simulating:") ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -410,10 +422,6 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
 
         {tab === "interactive" && (
           <InteractiveSimulationView scenarioId={sim.activeScenario?.id} />
-        )}
-
-        {tab === "interview" && sim.activeScenario && (
-          <InterviewPanel scenarioId={sim.activeScenario.id} />
         )}
 
         {tab === "what_if" && (
@@ -477,8 +485,17 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
           <ExportPanel scenarioId={sim.activeScenario?.id} />
         )}
 
-        {tab === "copilot" && (
-          <CopilotPanel scenarioId={sim.activeScenario?.id} />
+        {tab === "conversation" && (
+          <ConversationPanel scenarioId={sim.activeScenario?.id} />
+        )}
+
+        {tab === "causal" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <CausalDAGView />
+            {sim.activeScenario && (
+              <CausalQueryPanel scenarioId={sim.activeScenario.id} />
+            )}
+          </div>
         )}
 
         {tab === "compare" && (

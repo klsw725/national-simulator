@@ -303,6 +303,7 @@ CHECKPOINT_STEPS = {
     "checkpoint:config": {"step": "config", "editable": True},
     "checkpoint:geopolitics": {"step": "geopolitics", "editable": False},
     "checkpoint:decision": {"step": "decision", "editable": True},
+    "simulating:geopolitics_paused": {"step": "geopolitics_interactive", "editable": True},
 }
 
 
@@ -775,6 +776,93 @@ async def continue_pipeline(
             "decision.applied", scenario_id,
             payload={"result_id": row["id"]},
         )
+
+    if status == "simulating:geopolitics_paused":
+        pending = await conn.fetch(
+            "SELECT id FROM decision_points WHERE scenario_id = $1 AND status = 'pending' AND type IN ('geopolitics_actor_response', 'geopolitics_direction')",
+            scenario_id,
+        )
+        if pending:
+            raise HTTPException(status_code=400, detail="Unresolved geopolitics decision points")
+
+        snapshot = await conn.fetchrow(
+            "SELECT * FROM geopolitics_snapshots WHERE scenario_id = $1 AND result_id = $2 ORDER BY round_number DESC LIMIT 1",
+            scenario_id, row["id"],
+        )
+        if not snapshot:
+            raise HTTPException(status_code=400, detail="No geopolitics snapshot found")
+
+        dp_row = await conn.fetchrow(
+            "SELECT type, options, selected_option_id, custom_data FROM decision_points WHERE id = $1 AND status = 'resolved'",
+            snapshot["pending_decision_point_id"],
+        )
+        if not dp_row:
+            raise HTTPException(status_code=400, detail="Decision point not resolved")
+
+        from app.geopolitics.engine import DecisionEngine
+        from app.models.scenario import GeopoliticsMode
+
+        engine_state = json.loads(snapshot["engine_state"])
+        engine = DecisionEngine.from_state(engine_state)
+        mode = GeopoliticsMode(snapshot["geopolitics_mode"])
+
+        if mode == GeopoliticsMode.ACTOR_ROLE:
+            selected_action = dp_row["selected_option_id"]
+            if selected_action and snapshot["player_actor_id"]:
+                engine.override_next_action(snapshot["player_actor_id"], selected_action)
+        elif mode == GeopoliticsMode.GAME_MASTER:
+            options = json.loads(dp_row["options"])
+            selected = next((o for o in options if o["id"] == dp_row["selected_option_id"]), None)
+            if selected and selected.get("data"):
+                deltas = selected["data"].get("state_deltas", {})
+                applies_to = selected["data"].get("applies_to", "all")
+                engine.apply_direction_deltas(deltas, applies_to)
+
+        scn_row_geo = await conn.fetchrow("SELECT simulation_params FROM scenarios WHERE id = $1", scenario_id)
+        raw_params_geo = scn_row_geo["simulation_params"] if scn_row_geo else "{}"
+        sim_params_geo = SimulationParams.model_validate_json(raw_params_geo or "{}")
+        remaining_rounds = sim_params_geo.geopolitics_rounds - snapshot["round_number"]
+
+        now = datetime.now(timezone.utc).isoformat()
+        for _ in range(remaining_rounds):
+            round_result = engine.run_single_round()
+            for event_dict in round_result.get("events", []) + round_result.get("cascade_events", []):
+                event_id = f"ge_{uuid.uuid4().hex[:12]}"
+                await conn.execute(
+                    """INSERT INTO geopolitics_events
+                       (id, scenario_id, simulation_result_id, action_type, actor_id,
+                        target_actor_ids, content, magnitude, round_number, event_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                    event_id, scenario_id, row["id"],
+                    event_dict.get("event_type", ""),
+                    event_dict.get("source_actor_id", ""),
+                    json.dumps(event_dict.get("target_actor_ids", [])),
+                    event_dict.get("description", ""),
+                    event_dict.get("magnitude", 0.5),
+                    event_dict.get("round_number", 0),
+                    now,
+                )
+
+            from app.services.geopolitics_interactive import should_pause, build_actor_response_options, build_direction_options, find_trigger_event, save_geopolitics_snapshot, create_geopolitics_decision_point, link_snapshot_to_dp
+
+            if should_pause(round_result, mode, sim_params_geo.geopolitics_player_actor_id, sim_params_geo.geopolitics_pause_threshold):
+                snap_id = await save_geopolitics_snapshot(
+                    scenario_id, row["id"], snapshot["round_number"] + 1, engine, mode, snapshot.get("player_actor_id"),
+                )
+                if mode == GeopoliticsMode.ACTOR_ROLE and snapshot["player_actor_id"]:
+                    trigger = find_trigger_event(round_result, snapshot["player_actor_id"])
+                    opts = build_actor_response_options(engine, snapshot["player_actor_id"], trigger or {})
+                    new_dp_id = await create_geopolitics_decision_point(scenario_id, "geopolitics_actor_response", opts, next((o["id"] for o in opts if o.get("data", {}).get("engine_recommended")), opts[0]["id"]))
+                else:
+                    opts = build_direction_options(round_result)
+                    new_dp_id = await create_geopolitics_decision_point(scenario_id, "geopolitics_direction", opts, "maintain")
+                await link_snapshot_to_dp(snap_id, new_dp_id)
+                await conn.execute("UPDATE simulation_results SET status = 'simulating:geopolitics_paused' WHERE id = $1", row["id"])
+                return {"scenario_id": scenario_id, "result_id": row["id"], "status": "paused_again", "decision_point_id": new_dp_id}
+
+        await conn.execute("UPDATE simulation_results SET status = 'completed' WHERE id = $1", row["id"])
+        await conn.execute("UPDATE scenarios SET simulation_status = 'completed', status = 'completed' WHERE id = $1", scenario_id)
+        return {"scenario_id": scenario_id, "result_id": row["id"], "status": "completed"}
 
     mf_client = request.app.state.mf_client
     if status != "checkpoint:profiles" and not await mf_client.health_check():

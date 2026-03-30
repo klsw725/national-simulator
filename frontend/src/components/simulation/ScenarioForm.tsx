@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Loader2, ChevronDown } from "lucide-react";
-import type { ScenarioFormData, PipelineMode } from "@/types/simulation";
+import type { ScenarioFormData, PipelineMode, GeopoliticsMode } from "@/types/simulation";
 
 const REGION_PRESETS: { label: string; name: string; bbox: [number, number, number, number] }[] = [
   { label: "South China Sea", name: "South China Sea", bbox: [108, 5, 121, 23] },
@@ -29,6 +29,8 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
   const [simulationHours, setSimulationHours] = useState(24);
   const [simRequirement, setSimRequirement] = useState("");
   const [geopoliticsEnabled, setGeopoliticsEnabled] = useState(false);
+  const [geopoliticsMode, setGeopoliticsMode] = useState<GeopoliticsMode>("auto");
+  const [playerActorId, setPlayerActorId] = useState("");
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   const region = REGION_PRESETS[regionIdx];
@@ -51,6 +53,8 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
           simulation_hours: simulationHours,
           simulation_requirement: simRequirement || undefined,
           geopolitics_enabled: geopoliticsEnabled,
+          ...(geopoliticsEnabled && { geopolitics_mode: geopoliticsMode }),
+          ...(geopoliticsEnabled && geopoliticsMode === "actor_role" && playerActorId.trim() && { player_actor_id: playerActorId.trim() }),
           web_search_enabled: webSearchEnabled,
         },
       });
@@ -350,6 +354,34 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
               </div>
             </div>
 
+            {geopoliticsEnabled && (
+              <div>
+                <label style={labelStyle}>지정학 개입 모드</label>
+                <select
+                  value={geopoliticsMode}
+                  onChange={(e) => setGeopoliticsMode(e.target.value as GeopoliticsMode)}
+                  style={{ ...inputStyle, cursor: "pointer" }}
+                >
+                  <option value="auto">자동 (개입 없음)</option>
+                  <option value="actor_role">국가 역할 수행</option>
+                  <option value="game_master">시나리오 방향 결정</option>
+                </select>
+              </div>
+            )}
+
+            {geopoliticsEnabled && geopoliticsMode === "actor_role" && (
+              <div>
+                <label style={labelStyle}>역할 국가</label>
+                <input
+                  type="text"
+                  value={playerActorId}
+                  onChange={(e) => setPlayerActorId(e.target.value)}
+                  placeholder="역할 국가명 (예: United States)"
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
             {/* Web Search Enabled */}
             <div>
               <label style={labelStyle}>웹 검색 보강</label>
@@ -391,28 +423,44 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
         )}
       </div>
 
-      <button
-        type="submit"
-        disabled={submitting || isRunning}
+      <div
         style={{
-          padding: "10px 16px",
-          background: submitting || isRunning ? "rgba(34, 211, 238, 0.15)" : "var(--accent-cyan)",
-          color: submitting || isRunning ? "var(--text-muted)" : "var(--bg-primary)",
-          border: "none",
-          borderRadius: 4,
-          fontSize: 13,
-          fontWeight: 700,
-          cursor: submitting || isRunning ? "not-allowed" : "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          transition: "background 0.15s, color 0.15s",
+          position: "sticky",
+          bottom: -16,
+          marginTop: "auto",
+          paddingTop: 12,
+          paddingBottom: 16,
+          background: "linear-gradient(to bottom, transparent 0%, var(--bg-secondary) 25%)",
+          marginLeft: -16,
+          marginRight: -16,
+          paddingLeft: 16,
+          paddingRight: 16,
         }}
       >
-        {submitting && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
-        {submitting ? "처리 중..." : isRunning ? "실행 중..." : "시뮬레이션 시작"}
-      </button>
+        <button
+          type="submit"
+          disabled={submitting || isRunning}
+          style={{
+            width: "100%",
+            padding: "10px 16px",
+            background: submitting || isRunning ? "rgba(34, 211, 238, 0.15)" : "var(--accent-cyan)",
+            color: submitting || isRunning ? "var(--text-muted)" : "var(--bg-primary)",
+            border: "none",
+            borderRadius: 4,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: submitting || isRunning ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            transition: "background 0.15s, color 0.15s",
+          }}
+        >
+          {submitting && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
+          {submitting ? "처리 중..." : isRunning ? "실행 중..." : "시뮬레이션 시작"}
+        </button>
+      </div>
     </form>
   );
 }

@@ -3,6 +3,8 @@ export interface SimulationParams {
   simulation_hours: number;
   simulation_requirement: string | null;
   geopolitics_enabled: boolean;
+  geopolitics_mode?: GeopoliticsMode;
+  player_actor_id?: string;
   web_search_enabled: boolean;
 }
 
@@ -36,6 +38,8 @@ export interface ScenarioFormData {
     simulation_hours: number;
     simulation_requirement?: string;
     geopolitics_enabled: boolean;
+    geopolitics_mode?: GeopoliticsMode;
+    player_actor_id?: string;
     web_search_enabled: boolean;
   };
 }
@@ -176,7 +180,11 @@ export interface DecisionOption {
 export type DecisionPointType =
   | "seed_selection"
   | "actor_configuration"
-  | "parameter_recommendation";
+  | "parameter_recommendation"
+  | "geopolitics_actor_response"
+  | "geopolitics_direction";
+
+export type GeopoliticsMode = "auto" | "actor_role" | "game_master";
 
 export interface DecisionPoint {
   id: string;

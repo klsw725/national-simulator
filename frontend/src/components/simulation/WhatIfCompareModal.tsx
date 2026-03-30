@@ -361,6 +361,96 @@ export default function WhatIfCompareModal({ scenarioId, branchId, onClose }: Pr
                   </span>
                 </div>
               </div>
+
+              {comparison?.causal_attribution && (
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase" as const,
+                      letterSpacing: "0.05em",
+                      marginBottom: 12,
+                    }}
+                  >
+                    Causal Attribution
+                  </div>
+                  <div
+                    style={{
+                      background: "var(--bg-tertiary)",
+                      border: "1px solid var(--border-secondary)",
+                      borderRadius: 8,
+                      padding: 16,
+                    }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {Object.entries(comparison.causal_attribution.tension_advantage_explained)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([factor, contribution]) => (
+                          <div key={factor} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                                width: 140,
+                                flexShrink: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {factor}
+                            </span>
+                            <div
+                              style={{
+                                flex: 1,
+                                height: 10,
+                                background: "rgba(255,255,255,0.06)",
+                                borderRadius: 999,
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height: "100%",
+                                  width: `${Math.min(Math.abs(contribution) * 100, 100)}%`,
+                                  background: "#3b82f6",
+                                  borderRadius: 999,
+                                }}
+                              />
+                            </div>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--text-primary)",
+                                width: 40,
+                                textAlign: "right",
+                                fontVariantNumeric: "tabular-nums",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {(contribution * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "flex",
+                        gap: 12,
+                        fontSize: 10,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      <span>신뢰도: {comparison.causal_attribution.confidence}</span>
+                      <span>·</span>
+                      <span>방법: {comparison.causal_attribution.method}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div

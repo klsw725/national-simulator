@@ -266,6 +266,7 @@ except ImportError as e:
 # Twitter 사용 가능 액션 (INTERVIEW 제외, INTERVIEW는 ManualAction을 통해서만 수동으로 트리거 가능)
 TWITTER_ACTIONS = [
     ActionType.CREATE_POST,
+    ActionType.CREATE_COMMENT,
     ActionType.LIKE_POST,
     ActionType.REPOST,
     ActionType.FOLLOW,

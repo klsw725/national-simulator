@@ -25,9 +25,18 @@ from app.database import get_pool
 from app.geopolitics.actors import GeopoliticalActorState
 from app.geopolitics.engine import DecisionEngine
 from app.geopolitics.events import GeopoliticsEvent
-from app.models.scenario import SimulationParams
+from app.models.scenario import GeopoliticsMode, SimulationParams
 from app.ontology.versioning import OntologyVersioning
 from app.services.action_logger import ActionLogger
+from app.services.geopolitics_interactive import (
+    build_actor_response_options,
+    build_direction_options,
+    create_geopolitics_decision_point,
+    find_trigger_event,
+    link_snapshot_to_dp,
+    save_geopolitics_snapshot,
+    should_pause,
+)
 from app.services.geopolitics_mapper import GEOPOLITICS_ACTION_MAP, map_actions_to_geopolitics
 from app.services.snapshot_service import SnapshotService
 
@@ -248,15 +257,7 @@ class SimulationOrchestrator:
         logger.info("[%s] Report done", scenario_id)
         await ActionLogger.log("pipeline.report", scenario_id)
 
-    async def _step_geopolitics_analysis(
-        self,
-        scenario_id: str,
-        result_id: str,
-        actions: list[dict],
-    ) -> dict[str, Any] | None:
-        await self._update_status(scenario_id, result_id, "simulating:geopolitics")
-        logger.info("[%s] Step 7: Geopolitics analysis", scenario_id)
-
+    def _init_geopolitics_engine(self, actions: list[dict]) -> DecisionEngine | None:
         agent_names: dict[str, int] = {}
         for action in actions:
             name = action.get("agent_name", "")
@@ -264,7 +265,6 @@ class SimulationOrchestrator:
                 agent_names[name] = agent_names.get(name, 0) + 1
 
         if not agent_names:
-            logger.warning("[%s] No agents found in actions, skipping geopolitics", scenario_id)
             return None
 
         engine = DecisionEngine()
@@ -299,6 +299,22 @@ class SimulationOrchestrator:
                 )
                 engine.apply_event(event)
 
+        return engine
+
+    async def _step_geopolitics_analysis(
+        self,
+        scenario_id: str,
+        result_id: str,
+        actions: list[dict],
+    ) -> dict[str, Any] | None:
+        await self._update_status(scenario_id, result_id, "simulating:geopolitics")
+        logger.info("[%s] Step 7: Geopolitics analysis", scenario_id)
+
+        engine = self._init_geopolitics_engine(actions)
+        if engine is None:
+            logger.warning("[%s] No agents found in actions, skipping geopolitics", scenario_id)
+            return None
+
         geo_result = engine.run_simulation(rounds=3)
 
         now = datetime.now(timezone.utc).isoformat()
@@ -332,6 +348,91 @@ class SimulationOrchestrator:
             payload={"total_events": geo_result.get("total_events", 0)},
         )
         return geo_result
+
+    async def _step_geopolitics_interactive(
+        self,
+        scenario_id: str,
+        result_id: str,
+        actions: list[dict],
+        simulation_params: SimulationParams,
+    ) -> dict[str, Any] | None:
+        mode = simulation_params.geopolitics_mode
+        player_actor_id = simulation_params.geopolitics_player_actor_id
+        threshold = simulation_params.geopolitics_pause_threshold
+        total_rounds = simulation_params.geopolitics_rounds
+
+        await self._update_status(scenario_id, result_id, "simulating:geopolitics")
+        logger.info("[%s] Step 7: Interactive geopolitics (%s mode, %d rounds)", scenario_id, mode.value, total_rounds)
+
+        engine = self._init_geopolitics_engine(actions)
+        if engine is None:
+            return None
+
+        all_round_results = []
+        now = datetime.now(timezone.utc).isoformat()
+        pool = get_pool()
+
+        for round_num in range(1, total_rounds + 1):
+            round_result = engine.run_single_round()
+            all_round_results.append(round_result)
+
+            async with pool.acquire() as conn:
+                for event_dict in round_result.get("events", []) + round_result.get("cascade_events", []):
+                    event_id = f"ge_{uuid.uuid4().hex[:12]}"
+                    await conn.execute(
+                        """INSERT INTO geopolitics_events
+                           (id, scenario_id, simulation_result_id, action_type, actor_id,
+                            target_actor_ids, content, magnitude, round_number, event_at)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                        event_id, scenario_id, result_id,
+                        event_dict.get("event_type", ""),
+                        event_dict.get("source_actor_id", ""),
+                        json.dumps(event_dict.get("target_actor_ids", [])),
+                        event_dict.get("description", ""),
+                        event_dict.get("magnitude", 0.5),
+                        event_dict.get("round_number", 0),
+                        now,
+                    )
+
+            if should_pause(round_result, mode, player_actor_id, threshold):
+                snapshot_id = await save_geopolitics_snapshot(
+                    scenario_id, result_id, round_num, engine, mode, player_actor_id,
+                )
+
+                if mode == GeopoliticsMode.ACTOR_ROLE and player_actor_id:
+                    trigger_event = find_trigger_event(round_result, player_actor_id)
+                    options = build_actor_response_options(engine, player_actor_id, trigger_event or {})
+                    dp_type = "geopolitics_actor_response"
+                    recommended = next((o["id"] for o in options if o.get("data", {}).get("engine_recommended")), options[0]["id"])
+                else:
+                    options = build_direction_options(round_result)
+                    dp_type = "geopolitics_direction"
+                    recommended = "maintain"
+
+                dp_id = await create_geopolitics_decision_point(
+                    scenario_id, dp_type, options, recommended,
+                )
+                await link_snapshot_to_dp(snapshot_id, dp_id)
+                await self._update_status(scenario_id, result_id, "simulating:geopolitics_paused")
+
+                logger.info("[%s] Geopolitics paused at round %d (dp=%s)", scenario_id, round_num, dp_id)
+                await ActionLogger.log(
+                    "pipeline.geopolitics.paused", scenario_id,
+                    payload={"round": round_num, "decision_point_id": dp_id, "mode": mode.value},
+                )
+                return {"status": "paused", "round": round_num, "decision_point_id": dp_id}
+
+        logger.info("[%s] Interactive geopolitics done: %d rounds", scenario_id, total_rounds)
+        await ActionLogger.log(
+            "pipeline.geopolitics", scenario_id,
+            payload={"total_events": sum(len(r.get("events", [])) for r in all_round_results)},
+        )
+        return {
+            "total_rounds": total_rounds,
+            "timeline": all_round_results,
+            "final_states": {a.actor_id: a.to_dict() for a in engine.get_all_actors()},
+            "total_events": len(engine.get_event_log()),
+        }
 
     async def _save_checkpoint_data(self, result_id: str, data: dict) -> None:
         """Save intermediate result JSON to checkpoint_data column."""
@@ -716,10 +817,34 @@ class SimulationOrchestrator:
             action_list = actions.get("actions", actions) if isinstance(actions, dict) else actions
             if isinstance(action_list, list):
                 try:
-                    await self._step_geopolitics_analysis(scenario_id, result_id, action_list)
+                    if simulation_params.geopolitics_mode != GeopoliticsMode.AUTO:
+                        geo_result = await self._step_geopolitics_interactive(
+                            scenario_id, result_id, action_list, simulation_params,
+                        )
+                        if geo_result and geo_result.get("status") == "paused":
+                            return
+                    else:
+                        await self._step_geopolitics_analysis(scenario_id, result_id, action_list)
                 except Exception:
                     logger.warning("[%s] Geopolitics analysis failed, continuing", scenario_id)
                 await self._update_status(scenario_id, result_id, "completed")
+
+        try:
+            from app.services.causal_log_collector import CausalLogCollector
+            collector = CausalLogCollector()
+            await collector.collect_from_result(scenario_id, result_id)
+
+            # SCM 자동 적합 시도 (데이터 충분 시)
+            df = await collector.build_dataframe(scenario_id, min_results=3)
+            if df is not None and len(df) >= 30:
+                from app.services.causal_reasoner import CausalReasoner
+                from app.causal.domain_dag import build_domain_dag
+                reasoner = CausalReasoner()
+                dag = build_domain_dag()
+                reasoner.fit("domain", dag, df)
+                logger.info("[%s] Causal SCM auto-fitted with %d observations", scenario_id, len(df))
+        except Exception as exc:
+            logger.warning("[%s] Causal log collection/fit failed (non-fatal): %s", scenario_id, exc)
 
         await ActionLogger.log(
             "pipeline.completed",

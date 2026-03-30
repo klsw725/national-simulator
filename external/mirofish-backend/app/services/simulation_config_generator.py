@@ -978,6 +978,23 @@ JSON 형식으로 반환 (마크다운 제외):
             if not cfg:
                 cfg = self._generate_agent_config_by_rule(entity)
             
+            # 지정학 시나리오: LLM 반환값에 규칙 기반 최소값 강제
+            if is_geopolitical:
+                rule_floor = self._generate_agent_config_by_rule(entity)
+                cfg["activity_level"] = max(
+                    cfg.get("activity_level", 0.5),
+                    rule_floor["activity_level"],
+                )
+                cfg["posts_per_hour"] = max(
+                    cfg.get("posts_per_hour", 0.5),
+                    rule_floor["posts_per_hour"],
+                )
+                # active_hours: 규칙 기반이 더 넓으면 규칙 기반 사용
+                llm_hours = set(cfg.get("active_hours", []))
+                rule_hours = set(rule_floor["active_hours"])
+                if len(rule_hours) > len(llm_hours):
+                    cfg["active_hours"] = rule_floor["active_hours"]
+            
             config = AgentActivityConfig(
                 agent_id=agent_id,
                 entity_uuid=entity.uuid,

@@ -7,6 +7,8 @@ class DecisionPointType(str, Enum):
     SEED_SELECTION = "seed_selection"
     ACTOR_CONFIGURATION = "actor_configuration"
     PARAMETER_RECOMMENDATION = "parameter_recommendation"
+    GEOPOLITICS_ACTOR_RESPONSE = "geopolitics_actor_response"
+    GEOPOLITICS_DIRECTION = "geopolitics_direction"
 
 
 class DecisionOption(BaseModel):
