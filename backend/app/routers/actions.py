@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.constants import DEFAULT_OFFSET, DEFAULT_PAGE_LIMIT
 from app.services.action_logger import ActionLogger
 
 router = APIRouter(prefix="/api/actions", tags=["actions"])
@@ -51,8 +52,8 @@ async def list_actions(
     status: str | None = None,
     action_type: str | None = None,
     scenario_id: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = DEFAULT_OFFSET,
 ):
     events = await ActionLogger.query(
         scenario_id=scenario_id,

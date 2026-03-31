@@ -145,4 +145,4 @@ class VesselMapper:
                 detail += f" — 위치: {lat}, {lng}"
                 lines.append(detail)
 
-        return "\n".join(lines) if lines else "(해당 해역에서 감지된 군함 없음)"
+        return "\n".join(lines) if lines else "(관심 지역에서 감지된 군함 없음)"

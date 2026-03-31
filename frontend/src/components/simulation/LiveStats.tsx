@@ -1,24 +1,16 @@
 "use client";
 
+import { memo } from "react";
 import type { LiveStats as LiveStatsType } from "@/types/simulation";
 
 interface Props {
   stats: LiveStatsType | null;
 }
 
-export default function LiveStats({ stats }: Props) {
+function LiveStats({ stats }: Props) {
   if (!stats) {
     return (
-      <div
-        style={{
-          border: "1px solid var(--border-secondary)",
-          borderRadius: 6,
-          padding: 10,
-          color: "var(--text-muted)",
-          fontSize: 12,
-          background: "var(--bg-secondary)",
-        }}
-      >
+      <div className="border border-[var(--border-secondary)] rounded-md p-2.5 text-[var(--text-muted)] text-xs bg-[var(--bg-secondary)]">
         실시간 통계 대기 중...
       </div>
     );
@@ -30,42 +22,26 @@ export default function LiveStats({ stats }: Props) {
 
   return (
     <div
-      style={{
-        border: "1px solid var(--border-secondary)",
-        borderRadius: 6,
-        padding: 10,
-        background: "var(--bg-secondary)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
+      aria-live="polite"
+      className="border border-[var(--border-secondary)] rounded-md p-2.5 bg-[var(--bg-secondary)] flex flex-col gap-2"
     >
-      <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 600 }}>
+      <div className="text-xs text-[var(--text-primary)] font-semibold">
         라운드 {currentRound}/{totalRounds} ({percent}%)
       </div>
 
-      <div
-        style={{
-          height: 7,
-          borderRadius: 999,
-          background: "var(--border-secondary)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="h-[7px] rounded-full bg-[var(--border-secondary)] overflow-hidden">
         <div
-          style={{
-            width: `${percent}%`,
-            height: "100%",
-            background: "var(--accent-cyan)",
-            transition: "width 0.3s ease",
-          }}
+          className="h-full bg-[var(--accent-cyan)] transition-[width] duration-300"
+          style={{ width: `${percent}%` }}
         />
       </div>
 
-      <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
+      <div className="text-xs text-[var(--text-muted)] flex justify-between">
         <span>총 액션</span>
-        <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{stats.total_actions_count}</span>
+        <span className="text-[var(--text-primary)] font-semibold">{stats.total_actions_count}</span>
       </div>
     </div>
   );
 }
+
+export default memo(LiveStats);

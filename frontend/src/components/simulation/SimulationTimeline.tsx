@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   MessageSquare,
   Quote,
@@ -33,7 +33,7 @@ interface Props {
   actions: SimulationAction[];
 }
 
-export default function SimulationTimeline({ actions }: Props) {
+function SimulationTimeline({ actions }: Props) {
   const rounds = useMemo(() => {
     const map = new Map<number, SimulationAction[]>();
     for (const a of actions) {
@@ -196,3 +196,5 @@ export default function SimulationTimeline({ actions }: Props) {
     </div>
   );
 }
+
+export default memo(SimulationTimeline);

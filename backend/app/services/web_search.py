@@ -11,6 +11,8 @@ import time
 from typing import Any
 
 from duckduckgo_search import DDGS
+from duckduckgo_search.exceptions import DuckDuckGoSearchException
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ class WebSearchService:
                 self._set_cache(f"news:{keyword}", results)
                 all_results.extend(results)
                 logger.info("Web search: %d news results for '%s'", len(results), keyword)
-            except Exception:
+            except (DuckDuckGoSearchException, httpx.HTTPError, ValueError) as e:
                 logger.warning("DuckDuckGo news search failed for '%s'", keyword, exc_info=True)
 
         return all_results
@@ -105,6 +107,6 @@ class WebSearchService:
 
         if actors:
             actor_str = " ".join(actors[:3])
-            keywords.append(f"{actor_str} naval conflict")
+            keywords.append(f"{actor_str} geopolitical conflict")
 
         return keywords[:MAX_SEARCHES_PER_SEED]

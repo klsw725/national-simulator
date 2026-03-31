@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "OSINT Simulator",
-  description: "Real-time OSINT maritime intelligence dashboard",
+  description: "Real-time OSINT geopolitical simulation platform",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import * as d3 from "d3";
 import type { GraphData, GraphTaskStatus } from "@/types/simulation";
 
@@ -27,7 +27,7 @@ type SimLink = d3.SimulationLinkDatum<SimNode> & {
 
 import { ENTITY_COLOR_MAP as COLOR_MAP } from "@/lib/chartColors";
 
-export default function GraphViewer({ graphData, taskStatus, standalone, selectedNodeId, onNodeClick }: Props) {
+function GraphViewer({ graphData, taskStatus, standalone, selectedNodeId, onNodeClick }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
 
@@ -252,3 +252,5 @@ export default function GraphViewer({ graphData, taskStatus, standalone, selecte
     </div>
   );
 }
+
+export default memo(GraphViewer);

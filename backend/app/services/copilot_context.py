@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
+import httpx
 from app.database import get_pool
 
 logger = logging.getLogger(__name__)
@@ -176,7 +177,7 @@ class CopilotContextBuilder:
                     parts.append(f"  · {u} → {v} (강도: {strength})")
                     count += 1
             parts.append("- 인과 쿼리 가능: do(변수=값) 개입, 반사실 분석, 인과 귀속")
-        except Exception:
+        except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
             pass
 
         return "\n".join(parts)

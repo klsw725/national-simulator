@@ -6,6 +6,8 @@ from app.config import settings
 
 _pool: asyncpg.Pool | None = None
 
+# Deprecated fallback inline DDL. Preferred path is Alembic migrations via:
+# `uv run alembic upgrade head`.
 SCHEMA = """\
 CREATE EXTENSION IF NOT EXISTS postgis;
 
@@ -321,11 +323,25 @@ async def get_db():
         yield conn
 
 
+async def get_db_tx():
+    """FastAPI dependency — yields a connection with an active transaction.
+
+    Use for endpoints performing multiple writes across tables.
+    All queries succeed together or roll back together.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            yield conn
+
+
 async def init_db() -> None:
     global _pool
     pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
     _pool = pool
     async with pool.acquire() as conn:
+        # Keep inline schema execution as a safety net during Alembic adoption.
+        # Production deployments should run Alembic migrations before app startup.
         for statement in SCHEMA.strip().split(";"):
             stmt = statement.strip()
             if stmt:

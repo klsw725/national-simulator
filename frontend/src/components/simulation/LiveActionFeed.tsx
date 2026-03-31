@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAction } from "@/types/simulation";
 
 interface Props {
@@ -21,7 +21,7 @@ function truncate(text: string, max = 100): string {
   return `${text.slice(0, max)}...`;
 }
 
-export default function LiveActionFeed({ actions }: Props) {
+function LiveActionFeed({ actions }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -48,52 +48,18 @@ export default function LiveActionFeed({ actions }: Props) {
 
   if (!visibleActions.length) {
     return (
-      <div
-        style={{
-          height: "100%",
-          border: "1px solid var(--border-secondary)",
-          borderRadius: 6,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--text-muted)",
-          fontSize: 12,
-          background: "var(--bg-secondary)",
-        }}
-      >
+      <div className="h-full border border-[var(--border-secondary)] rounded-md flex items-center justify-center text-[var(--text-muted)] text-xs bg-[var(--bg-secondary)]">
         액션 대기 중...
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        position: "relative",
-        height: "100%",
-        border: "1px solid var(--border-secondary)",
-        borderRadius: 6,
-        background: "var(--bg-secondary)",
-        overflow: "hidden",
-      }}
-    >
+    <div className="relative h-full border border-[var(--border-secondary)] rounded-md bg-[var(--bg-secondary)] overflow-hidden">
       {!autoScroll && (
         <button
           onClick={scrollToBottom}
-          style={{
-            position: "absolute",
-            right: 10,
-            bottom: 10,
-            zIndex: 2,
-            border: "1px solid var(--accent-cyan)",
-            background: "rgba(34, 211, 238, 0.12)",
-            color: "var(--accent-cyan)",
-            fontSize: 11,
-            fontWeight: 600,
-            borderRadius: 4,
-            padding: "4px 8px",
-            cursor: "pointer",
-          }}
+          className="absolute right-2.5 bottom-2.5 z-[2] border border-[var(--accent-cyan)] bg-[rgba(34,211,238,0.12)] text-[var(--accent-cyan)] text-[11px] font-semibold rounded px-2 py-1 cursor-pointer"
         >
           최신으로
         </button>
@@ -102,14 +68,7 @@ export default function LiveActionFeed({ actions }: Props) {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        style={{
-          height: "100%",
-          overflowY: "auto",
-          padding: 8,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
+        className="h-full overflow-y-auto p-2 flex flex-col gap-2"
       >
         {visibleActions.map((action, idx) => {
           const meta = ACTION_META[action.action_type] ?? {
@@ -128,53 +87,33 @@ export default function LiveActionFeed({ actions }: Props) {
             <div key={`${action.timestamp}-${action.agent_id}-${idx}`}>
               {isNewRound && (
                 <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    margin: idx === 0 ? "0 0 6px" : "10px 0 6px",
-                  }}
+                  className="flex items-center gap-2"
+                  style={{ margin: idx === 0 ? "0 0 6px" : "10px 0 6px" }}
                 >
-                  <div style={{ flex: 1, height: 1, background: "var(--border-secondary)" }} />
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: "var(--accent-cyan)",
-                      letterSpacing: "0.05em",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <div className="flex-1 h-px bg-[var(--border-secondary)]" />
+                  <span className="text-[10px] font-bold text-[var(--accent-cyan)] tracking-wider whitespace-nowrap">
                     ROUND {action.round_num}
                   </span>
-                  <div style={{ flex: 1, height: 1, background: "var(--border-secondary)" }} />
+                  <div className="flex-1 h-px bg-[var(--border-secondary)]" />
                 </div>
               )}
               <div
+                className="max-w-[95%] min-w-[65%] rounded-md px-2.5 py-2 bg-[var(--bg-tertiary)]"
                 style={{
                   alignSelf: action.agent_id % 2 === 0 ? "flex-start" : "flex-end",
-                  maxWidth: "95%",
-                  minWidth: "65%",
                   border: `1px solid ${meta.color}`,
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  background: "var(--bg-tertiary)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, lineHeight: 1 }}>{meta.icon}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs leading-none">{meta.icon}</span>
+                  <span className="text-xs font-semibold text-[var(--text-primary)]">
                     {action.agent_name}
                   </span>
                   <span
+                    className="ml-auto text-[10px] rounded-full px-1.5 py-px uppercase"
                     style={{
-                      marginLeft: "auto",
-                      fontSize: 10,
                       color: meta.color,
                       border: `1px solid ${meta.color}`,
-                      borderRadius: 999,
-                      padding: "1px 6px",
-                      textTransform: "uppercase",
                     }}
                   >
                     {actionLabel}
@@ -182,7 +121,7 @@ export default function LiveActionFeed({ actions }: Props) {
                 </div>
 
                 {content && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                  <div className="text-[11px] text-[var(--text-muted)] leading-[1.45]">
                     {truncate(content, 100)}
                   </div>
                 )}
@@ -194,3 +133,5 @@ export default function LiveActionFeed({ actions }: Props) {
     </div>
   );
 }
+
+export default memo(LiveActionFeed);

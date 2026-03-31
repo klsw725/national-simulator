@@ -76,12 +76,13 @@ export default function ScenarioSearch({ onResults }: ScenarioSearchProps) {
           padding: "6px 10px",
         }}
       >
-        <Search size={14} color="rgb(107, 114, 128)" />
+        <Search size={14} color="rgb(107, 114, 128)" aria-hidden="true" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="시나리오 검색..."
+          aria-label="시나리오 검색"
           style={{
             flex: 1,
             background: "transparent",
@@ -109,18 +110,19 @@ export default function ScenarioSearch({ onResults }: ScenarioSearchProps) {
         )}
       </div>
       <div style={{ display: "flex", gap: 6 }}>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="상태 필터" style={selectStyle}>
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value)} style={selectStyle}>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="정렬 기준" style={selectStyle}>
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
         <button
           onClick={() => setOrder(order === "desc" ? "asc" : "desc")}
+          aria-label={order === "desc" ? "오름차순 정렬" : "내림차순 정렬"}
           style={{
             ...selectStyle,
             cursor: "pointer",

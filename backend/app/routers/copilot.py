@@ -1,5 +1,6 @@
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -35,7 +36,7 @@ async def copilot_chat(
             message=body.message,
             conversation_id=body.conversation_id,
         )
-    except Exception:
+    except (httpx.HTTPError, ValueError) as e:
         logger.exception("Copilot chat failed for scenario %s", body.scenario_id)
-        raise HTTPException(status_code=502, detail="Copilot LLM 호출 실패")
+        raise HTTPException(status_code=502, detail="Copilot LLM 호출 실패") from e
     return result

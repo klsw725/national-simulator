@@ -221,7 +221,9 @@ export function useSimulation(): UseSimulationReturn {
         if (scenario.status === "failed") {
           api.getStatus(scenario.id).then((st) => {
             if (st.error_message) setError(st.error_message);
-          }).catch(() => {});
+          }).catch((e) => {
+            if (process.env.NODE_ENV === "development") console.warn("Failed to fetch error detail:", e);
+          });
         }
       }
     },

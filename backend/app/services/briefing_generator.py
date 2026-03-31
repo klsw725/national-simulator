@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from openai import AsyncOpenAI
 
 from app.clients.shadowbroker import BBox, ShadowBrokerClient
@@ -228,7 +229,7 @@ class BriefingGenerator:
             formatted = ws.format_for_seed(results)
             now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
             return f"(검색 시점: {now})\n{formatted}"
-        except Exception:
+        except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
             logger.warning("Web search enrichment failed for briefing")
             return "외부 웹 검색 실패"
 
@@ -521,7 +522,7 @@ class BriefingGenerator:
 
             now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
             return f"(데이터 기준: {now})\n" + "\n".join(lines)
-        except Exception:
+        except httpx.HTTPError as e:
             logger.warning("Failed to collect current OSINT for briefing")
             return "(현재 OSINT 데이터 수집 실패 — ShadowBroker 연결 불가)"
 
@@ -648,7 +649,7 @@ class BriefingGenerator:
                     f"- 현재 시나리오에서 작동하지 않은 인과 경로가 있다면 그 이유 분석\n"
                     f"- \"시뮬레이션 인과 모형 기반 추정\"임을 명시\n"
                 )
-        except Exception as exc:
+        except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
             logger.debug("Causal section generation skipped: %s", exc)
 
         if causal_section:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 interface Props {
   markdown: string;
@@ -82,7 +82,7 @@ function inline(s: string): string {
   return out;
 }
 
-export default function ReportViewer({ markdown }: Props) {
+function ReportViewer({ markdown }: Props) {
   const html = useMemo(() => renderMarkdown(markdown), [markdown]);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -225,3 +225,5 @@ export default function ReportViewer({ markdown }: Props) {
     </div>
   );
 }
+
+export default memo(ReportViewer);

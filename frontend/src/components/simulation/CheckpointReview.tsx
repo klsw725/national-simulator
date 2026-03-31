@@ -44,7 +44,9 @@ export default function CheckpointReview({ checkpointData, onContinue, onCancel 
     if (step === "seed" && checkpointData.scenario_id) {
       getSeed(checkpointData.scenario_id)
         .then((res) => setSeedMeta(res.metadata))
-        .catch(() => {});
+        .catch((e) => {
+          if (process.env.NODE_ENV === "development") console.warn("Failed to load seed metadata:", e);
+        });
     }
   }, [step, checkpointData.scenario_id]);
 

@@ -9,10 +9,12 @@ ShadowBroker OSINT 데이터를 기반으로 MiroFish에 전달할
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from openai import AsyncOpenAI
 
 from app.clients.shadowbroker import BBox, ShadowBrokerClient
@@ -57,11 +59,11 @@ SEED_GENERATION_PROMPT = """\
 ## 시뮬레이션 질문
 {user_question}
 
-## 해역 정보
+## 관심 지역 정보
 {region_name}
 
 다음 형식으로 작성하세요:
-1. **현재 상황 요약** (200자 이내) — 해역의 군사적 긴장 상황 개요
+1. **현재 상황 요약** (200자 이내) — 해당 지역의 지정학적 긴장 상황 개요
 2. **주요 행위자와 그 입장** — 각 국가의 군사력 배치와 외교적 입장
 3. **긴장 요인 및 잠재적 충돌 시나리오** — 구체적 대립 요인
 4. **각 행위자의 예상 반응 경로** — 외교적/군사적 반응 시나리오
@@ -516,7 +518,7 @@ class SeedGenerator:
                 resolver_context_section = (
                     f"## 엔티티 해소 결과 (Entity Resolution)\n{entity_section}\n{proximity_text}"
                 )
-        except Exception:
+        except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
             logger.warning("Resolver context enrichment failed, continuing without it")
 
         recent_news_section = ""
@@ -532,7 +534,7 @@ class SeedGenerator:
                 if formatted:
                     recent_news_section = f"## 최근 뉴스 (웹 검색)\n{formatted}\n"
                     web_search_count = len(news_results)
-            except Exception:
+            except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.warning("Web search enrichment failed, continuing without it")
 
         filtered_flights = self._filter_by_bbox(mil_flights, bbox)
@@ -550,12 +552,12 @@ class SeedGenerator:
 
         return {
             "prompt_vars": {
-                "vessel_deployment": vessel_text or "(해역 내 군함 미감지)",
-                "military_bases": military_bases_text or "(해역 내 군사 기지 미감지)",
-                "military_flights": flights_text or "(해역 내 군용 항공기 미감지)",
-                "tracked_flights": tracked_text or "(해역 내 특별 추적 항공기 미감지)",
-                "uav_activity": uav_text or "(해역 내 UAV 활동 미감지)",
-                "satellite_activity": satellite_text or "(해역 상공 군사 위성 미감지)",
+"vessel_deployment": vessel_text or "(관심 지역 내 군함 미감지)",
+            "military_bases": military_bases_text or "(관심 지역 내 군사 기지 미감지)",
+            "military_flights": flights_text or "(관심 지역 내 군용 항공기 미감지)",
+            "tracked_flights": tracked_text or "(관심 지역 내 특별 추적 항공기 미감지)",
+            "uav_activity": uav_text or "(관심 지역 내 UAV 활동 미감지)",
+            "satellite_activity": satellite_text or "(관심 지역 상공 군사 위성 미감지)",
                 "gdelt_context": gdelt_text,
                 "osint_signals": osint_signals,
                 "recent_news_section": recent_news_section,

@@ -1,14 +1,51 @@
+export interface ScenarioRegion {
+  bbox: [number, number, number, number];
+  name: string;
+}
+
+export type GeopoliticsMode = "auto" | "actor_role" | "game_master";
+
 export interface SimulationParams {
   platform: string;
   simulation_hours: number;
   simulation_requirement: string | null;
   geopolitics_enabled: boolean;
-  geopolitics_mode?: GeopoliticsMode;
-  player_actor_id?: string;
   web_search_enabled: boolean;
+  geopolitics_mode: GeopoliticsMode;
+  geopolitics_player_actor_id: string | null;
+  geopolitics_rounds: number;
+  geopolitics_pause_threshold: number;
 }
 
-export interface Scenario {
+export interface SimulationParamsInput {
+  platform?: string;
+  simulation_hours?: number;
+  simulation_requirement?: string | null;
+  geopolitics_enabled?: boolean;
+  web_search_enabled?: boolean;
+  geopolitics_mode?: GeopoliticsMode;
+  geopolitics_player_actor_id?: string | null;
+  geopolitics_rounds?: number;
+  geopolitics_pause_threshold?: number;
+}
+
+export interface ScenarioCreate {
+  name: string;
+  region: ScenarioRegion;
+  question: string;
+  max_rounds: number;
+  data_sources: string[];
+  simulation_params?: SimulationParamsInput;
+}
+
+export interface ScenarioCreatedResponse {
+  id: string;
+  status: string;
+  seed_status: string;
+  simulation_status: string;
+}
+
+export interface ScenarioResponse {
   id: string;
   name: string;
   region_bbox: number[];
@@ -24,24 +61,18 @@ export interface Scenario {
   updated_at: string;
 }
 
+export interface Scenario extends ScenarioResponse {}
+
 export type PipelineMode = 'auto' | 'checkpoint' | 'interactive';
 
 export interface ScenarioFormData {
   name: string;
-  region: { bbox: [number, number, number, number]; name: string };
+  region: ScenarioRegion;
   question: string;
   max_rounds: number;
   data_sources: string[];
   mode: PipelineMode;
-  simulation_params?: {
-    platform: string;
-    simulation_hours: number;
-    simulation_requirement?: string;
-    geopolitics_enabled: boolean;
-    geopolitics_mode?: GeopoliticsMode;
-    player_actor_id?: string;
-    web_search_enabled: boolean;
-  };
+  simulation_params?: SimulationParamsInput;
 }
 
 export interface PipelineStep {
@@ -65,7 +96,21 @@ export interface SimulationAction {
   round_num: number;
 }
 
-export interface CheckpointData {
+export interface SimulationResultResponse {
+  id: string;
+  scenario_id: string;
+  mirofish_simulation_id: string | null;
+  mirofish_project_id: string | null;
+  status: string;
+  platform: string;
+  results: Record<string, unknown> | null;
+  geojson: Record<string, unknown> | null;
+  report: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface CheckpointResponse {
   scenario_id: string;
   result_id: string;
   status: string;
@@ -73,6 +118,38 @@ export interface CheckpointData {
   editable: boolean;
   data: Record<string, unknown> | null;
   pipeline_mode: string;
+}
+
+export type CheckpointData = CheckpointResponse;
+
+export interface SimulateRequest {
+  mode?: string;
+}
+
+export interface ContinueRequest {
+  edits?: Record<string, unknown> | null;
+}
+
+export interface SeedMetadata {
+  vessels_count: number;
+  actors_identified: string[];
+  military_flights_count: number;
+  satellites_count: number;
+  gdelt_events_count: number;
+  tension_score: number;
+  osint_sources_used: number;
+  web_search_count: number;
+  resolved_entity_count: number;
+  used_observation_ids: string[];
+  data_timestamp: string;
+}
+
+export interface SeedResponse {
+  id: string;
+  scenario_id: string;
+  text: string;
+  metadata: SeedMetadata;
+  created_at: string;
 }
 
 export interface LiveStats {
@@ -184,9 +261,14 @@ export type DecisionPointType =
   | "geopolitics_actor_response"
   | "geopolitics_direction";
 
-export type GeopoliticsMode = "auto" | "actor_role" | "game_master";
+export interface DecisionPointCreate {
+  type: DecisionPointType;
+  options: DecisionOption[];
+  recommended: string;
+  allow_custom?: boolean;
+}
 
-export interface DecisionPoint {
+export interface DecisionPointResponse {
   id: string;
   scenario_id: string;
   type: DecisionPointType;
@@ -198,6 +280,68 @@ export interface DecisionPoint {
   custom_data: Record<string, unknown> | null;
   created_at: string;
   resolved_at: string | null;
+}
+
+export type DecisionPoint = DecisionPointResponse;
+
+export interface DecisionPointResolveRequest {
+  selected_option_id?: string | null;
+  custom_data?: Record<string, unknown> | null;
+}
+
+export interface InjectEventRequest {
+  event_type?: string;
+  content: string;
+  target_agents?: string[];
+}
+
+export interface InteractiveStatus {
+  scenario_id: string;
+  simulation_status: string;
+  current_round: number;
+  max_rounds: number;
+  is_paused: boolean;
+  pause_reason: string | null;
+  injected_events_count: number;
+  tension_alerts: number;
+}
+
+export interface WhatIfCreateRequest {
+  modification: string;
+  branch_point_round?: number | null;
+  execution_mode?: string;
+  max_rounds_override?: number | null;
+}
+
+export interface WhatIfComparison {
+  branch_id: string;
+  tension_advantage: number;
+  tension_curves: Record<string, unknown> & { original: number[]; branch: number[] };
+  step_variance: Record<string, unknown> & { original: number; branch: number };
+  slope_variance: Record<string, unknown> & { original: number; branch: number };
+  actor_diff: Record<string, unknown> & { only_original: string[]; only_branch: string[]; common: string[] };
+  action_count_delta: number;
+  geopolitics_delta: number;
+  causal_attribution: {
+    tension_advantage_explained: Record<string, number>;
+    confidence: string;
+    method: string;
+  } | null;
+}
+
+export interface WhatIfBranch {
+  id: string;
+  scenario_id: string;
+  parent_result_id: string;
+  branch_result_id: string | null;
+  branch_point_round: number | null;
+  modification: string;
+  execution_mode: string;
+  world_model_strategy: string;
+  status: string;
+  comparison_data: Record<string, unknown> | null;
+  created_at: string;
+  completed_at: string | null;
 }
 
 export interface InterviewRequest {

@@ -18,6 +18,7 @@ export default function DecisionPointView({ scenarioId, type, onResolved }: Prop
   const [isCustom, setIsCustom] = useState(false);
   const [customData, setCustomData] = useState<Record<string, unknown>>({});
   const [isResolving, setIsResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -36,6 +37,7 @@ export default function DecisionPointView({ scenarioId, type, onResolved }: Prop
   const handleSubmit = () => {
     if (!decisionPoint || (!selectedOptionId && !isCustom)) return;
     setIsResolving(true);
+    setResolveError(null);
 
     const payload: { selected_option_id?: string; custom_data?: Record<string, unknown> } = isCustom
       ? { custom_data: customData }
@@ -48,7 +50,9 @@ export default function DecisionPointView({ scenarioId, type, onResolved }: Prop
           : decisionPoint.options.find((o) => o.id === selectedOptionId)!;
         onResolved(chosen, resolved.id);
       })
-      .catch(() => {})
+      .catch((e) => {
+        setResolveError(e instanceof Error ? e.message : "Failed to resolve decision point");
+      })
       .finally(() => setIsResolving(false));
   };
 
@@ -172,6 +176,19 @@ export default function DecisionPointView({ scenarioId, type, onResolved }: Prop
           </>
         )}
       </button>
+
+      {resolveError && (
+        <div style={{
+          padding: "8px 12px",
+          background: "rgba(239, 68, 68, 0.1)",
+          border: "1px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: 4,
+          color: "#ef4444",
+          fontSize: 12,
+        }}>
+          {resolveError}
+        </div>
+      )}
     </div>
   );
 }

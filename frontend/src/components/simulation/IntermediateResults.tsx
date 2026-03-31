@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import GraphViewer from "./GraphViewer";
 import LiveActionFeed from "./LiveActionFeed";
 import LiveStats from "./LiveStats";
@@ -32,7 +33,7 @@ function StatusView({ text }: { text: string }) {
   );
 }
 
-export default function IntermediateResults({ pipelineStatus, scenarioId }: Props) {
+function IntermediateResults({ pipelineStatus, scenarioId }: Props) {
   const { stats, actions, graphTaskStatus, graphData, profiles, config, isLive } = useLiveSimulation(
     scenarioId,
     pipelineStatus
@@ -115,3 +116,5 @@ export default function IntermediateResults({ pipelineStatus, scenarioId }: Prop
 
   return null;
 }
+
+export default memo(IntermediateResults);

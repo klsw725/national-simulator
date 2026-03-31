@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Trash2, ChevronRight, Inbox } from "lucide-react";
 import type { Scenario } from "@/types/simulation";
 
@@ -25,30 +25,20 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
 }
 
-export default function ScenarioList({ scenarios, activeId, onSelect, onDelete }: Props) {
+function ScenarioList({ scenarios, activeId, onSelect, onDelete }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   if (scenarios.length === 0) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "48px 16px",
-          color: "var(--text-muted)",
-          gap: 12,
-        }}
-      >
-        <Inbox size={32} strokeWidth={1.5} />
-        <span style={{ fontSize: 13 }}>생성된 시나리오가 없습니다.</span>
+      <div className="flex flex-col items-center justify-center px-4 py-12 text-[var(--text-muted)] gap-3">
+        <Inbox size={32} strokeWidth={1.5} aria-hidden="true" />
+        <span className="text-[13px]">생성된 시나리오가 없습니다.</span>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div role="list" className="flex flex-col gap-1.5">
       {scenarios.map((s) => {
         const badge = getBadge(s.status);
         const isActive = s.id === activeId;
@@ -57,53 +47,40 @@ export default function ScenarioList({ scenarios, activeId, onSelect, onDelete }
         return (
           <div
             key={s.id}
+            role="listitem"
+            tabIndex={0}
+            aria-current={isActive ? "true" : undefined}
+            className="px-3 py-2.5 rounded-md cursor-pointer transition-[background,border-color] duration-150"
             style={{
-              padding: "10px 12px",
               background: isActive ? "rgba(34, 211, 238, 0.06)" : "var(--bg-primary)",
               border: `1px solid ${isActive ? "rgba(34, 211, 238, 0.2)" : "var(--border-secondary)"}`,
-              borderRadius: 6,
-              cursor: "pointer",
-              transition: "background 0.15s, border-color 0.15s",
             }}
             onClick={() => onSelect(s)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(s); } }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
                 <ChevronRight
                   size={14}
                   color={isActive ? "var(--accent-cyan)" : "var(--text-muted)"}
+                  aria-hidden="true"
                 />
                 <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: isActive ? 600 : 400,
-                    color: "var(--text-primary)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+                  className="text-[13px] text-[var(--text-primary)] truncate"
+                  style={{ fontWeight: isActive ? 600 : 400 }}
                 >
                   {s.name}
                 </span>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                {/* Status badge */}
+              <div className="flex items-center gap-2 shrink-0">
                 <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    padding: "2px 8px",
-                    borderRadius: 3,
-                    color: badge.color,
-                    background: badge.bg,
-                    whiteSpace: "nowrap",
-                  }}
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-[3px] whitespace-nowrap"
+                  style={{ color: badge.color, background: badge.bg }}
                 >
                   {badge.label}
                 </span>
 
-                {/* Delete */}
                 {isConfirming ? (
                   <button
                     onClick={(e) => {
@@ -111,16 +88,7 @@ export default function ScenarioList({ scenarios, activeId, onSelect, onDelete }
                       setConfirmId(null);
                       onDelete(s.id);
                     }}
-                    style={{
-                      background: "rgba(239, 68, 68, 0.15)",
-                      border: "1px solid var(--accent-red)",
-                      borderRadius: 3,
-                      padding: "2px 8px",
-                      fontSize: 10,
-                      color: "var(--accent-red)",
-                      cursor: "pointer",
-                      fontWeight: 600,
-                    }}
+                    className="bg-[rgba(239,68,68,0.15)] border border-[var(--accent-red)] rounded-[3px] px-2 py-0.5 text-[10px] text-[var(--accent-red)] cursor-pointer font-semibold"
                   >
                     확인
                   </button>
@@ -131,32 +99,17 @@ export default function ScenarioList({ scenarios, activeId, onSelect, onDelete }
                       setConfirmId(s.id);
                       setTimeout(() => setConfirmId(null), 3000);
                     }}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      padding: 4,
-                      cursor: "pointer",
-                      color: "var(--text-muted)",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
+                    className="bg-transparent border-none p-1 cursor-pointer text-[var(--text-muted)] flex items-center"
                     title="삭제"
+                    aria-label="삭제"
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={13} aria-hidden="true" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Meta */}
-            <div
-              style={{
-                marginTop: 4,
-                paddingLeft: 22,
-                fontSize: 11,
-                color: "var(--text-muted)",
-              }}
-            >
+            <div className="mt-1 pl-[22px] text-[11px] text-[var(--text-muted)]">
               {s.region_name} · {new Date(s.created_at).toLocaleDateString("ko-KR")}
             </div>
           </div>
@@ -165,3 +118,5 @@ export default function ScenarioList({ scenarios, activeId, onSelect, onDelete }
     </div>
   );
 }
+
+export default memo(ScenarioList);

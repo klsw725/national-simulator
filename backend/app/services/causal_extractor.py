@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any
 
+import httpx
 import pandas as pd
 from openai import AsyncOpenAI
 
@@ -169,7 +170,7 @@ class CausalExtractor:
                     )
                 else:
                     validated.append(edge.model_copy(update={"provenance": f"{edge.provenance}|stat_supported"}))
-            except Exception:
+            except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.warning("Failed chi-square validation for edge %s -> %s", source, target)
                 validated.append(edge.model_copy(update={"provenance": f"{edge.provenance}|unverified"}))
 

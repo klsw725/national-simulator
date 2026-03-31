@@ -138,6 +138,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
         </span>
         <button
           onClick={onClose}
+          aria-label="패널 닫기"
           style={{
             background: "transparent",
             border: "none",
@@ -148,7 +149,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
             alignItems: "center",
           }}
         >
-          <X size={18} />
+          <X size={18} aria-hidden="true" />
         </button>
       </div>
 
@@ -244,13 +245,14 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <AlertTriangle size={14} color="var(--accent-red)" style={{ marginTop: 1, flexShrink: 0 }} />
+          <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <AlertTriangle size={14} color="var(--accent-red)" style={{ marginTop: 1, flexShrink: 0 }} aria-hidden="true" />
             <div style={{ fontSize: 12, color: "var(--accent-red)", lineHeight: 1.4, flex: 1 }}>
               {sim.error}
             </div>
             <button
               onClick={sim.clearError}
+              aria-label="오류 닫기"
               style={{
                 background: "transparent",
                 border: "none",
@@ -260,7 +262,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
                 flexShrink: 0,
               }}
             >
-              <X size={12} />
+              <X size={12} aria-hidden="true" />
             </button>
           </div>
           {sim.pipelineStatus?.status === "failed" && sim.activeScenario && (
@@ -288,7 +290,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
                 gap: 4,
               }}
             >
-              <RotateCcw size={11} />
+              <RotateCcw size={11} aria-hidden="true" />
               마지막 체크포인트에서 재시도
             </button>
           )}
@@ -399,7 +401,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
                     alignSelf: "flex-start",
                   }}
                 >
-                  <StopCircle size={14} />
+                  <StopCircle size={14} aria-hidden="true" />
                   중단
                 </button>
               </div>

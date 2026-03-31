@@ -29,20 +29,35 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.constants import (
+    CLIENT_LONG_TIMEOUT,
+    CLIENT_RETRY_ATTEMPTS,
+    CLIENT_RETRY_WAIT_MAX,
+    CLIENT_RETRY_WAIT_MIN,
+    MIROFISH_CLOSE_ENV_TIMEOUT,
+    MIROFISH_HEALTHCHECK_TIMEOUT,
+    MIROFISH_INTERVIEW_ALL_TIMEOUT,
+    MIROFISH_INTERVIEW_BATCH_TIMEOUT,
+    MIROFISH_INTERVIEW_TIMEOUT,
+    MIROFISH_PIPELINE_TIMEOUT,
+    MIROFISH_POLL_INTERVAL,
+    MIROFISH_POLL_TIMEOUT,
+    MIROFISH_TIMEOUT_BUFFER,
+)
 from app.services.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
 
 class MiroFishClient:
-    def __init__(self, base_url: str, timeout: float = 120.0):
+    def __init__(self, base_url: str, timeout: float = CLIENT_LONG_TIMEOUT):
         self.base_url = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
         self._circuit_breaker = CircuitBreaker(name="mirofish")
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(CLIENT_RETRY_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=CLIENT_RETRY_WAIT_MIN, max=CLIENT_RETRY_WAIT_MAX),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
@@ -79,7 +94,7 @@ class MiroFishClient:
         resp = await self._request("post", "/api/graph/ontology/generate",
         files=files,
         data=data,
-        timeout=600.0,)
+        timeout=MIROFISH_PIPELINE_TIMEOUT,)
         resp.raise_for_status()
         body = resp.json()
         return body.get("data", body)
@@ -139,7 +154,7 @@ class MiroFishClient:
             "simulation_id": simulation_id,
             "use_llm_for_profiles": True,
         },
-        timeout=600.0,)
+        timeout=MIROFISH_PIPELINE_TIMEOUT,)
         resp.raise_for_status()
         body = resp.json()
         data = body.get("data", body)
@@ -217,7 +232,7 @@ class MiroFishClient:
         """POST /api/report/generate → task_id"""
         resp = await self._request("post", "/api/report/generate",
         json={"simulation_id": simulation_id},
-        timeout=600.0,)
+        timeout=MIROFISH_PIPELINE_TIMEOUT,)
         resp.raise_for_status()
         body = resp.json()
         data = body.get("data", body)
@@ -319,7 +334,7 @@ class MiroFishClient:
         agent_id: int,
         prompt: str,
         platform: str | None = None,
-        timeout: int = 60,
+        timeout: int = MIROFISH_INTERVIEW_TIMEOUT,
     ) -> dict[str, Any]:
         """POST /api/simulation/interview — 단일 에이전트 인터뷰."""
         payload: dict[str, Any] = {
@@ -331,7 +346,7 @@ class MiroFishClient:
         if platform:
             payload["platform"] = platform
         resp = await self._request(
-            "post", "/api/simulation/interview", json=payload, timeout=float(timeout + 10),
+            "post", "/api/simulation/interview", json=payload, timeout=float(timeout + MIROFISH_TIMEOUT_BUFFER),
         )
         resp.raise_for_status()
         body = resp.json()
@@ -342,7 +357,7 @@ class MiroFishClient:
         simulation_id: str,
         prompt: str,
         platform: str | None = None,
-        timeout: int = 180,
+        timeout: int = MIROFISH_INTERVIEW_ALL_TIMEOUT,
     ) -> dict[str, Any]:
         """POST /api/simulation/interview/all — 전체 에이전트 인터뷰."""
         payload: dict[str, Any] = {
@@ -353,7 +368,7 @@ class MiroFishClient:
         if platform:
             payload["platform"] = platform
         resp = await self._request(
-            "post", "/api/simulation/interview/all", json=payload, timeout=float(timeout + 10),
+            "post", "/api/simulation/interview/all", json=payload, timeout=float(timeout + MIROFISH_TIMEOUT_BUFFER),
         )
         resp.raise_for_status()
         body = resp.json()
@@ -364,7 +379,7 @@ class MiroFishClient:
         simulation_id: str,
         interviews: list[dict[str, Any]],
         platform: str | None = None,
-        timeout: int = 120,
+        timeout: int = MIROFISH_INTERVIEW_BATCH_TIMEOUT,
     ) -> dict[str, Any]:
         """POST /api/simulation/interview/batch — 일괄 인터뷰."""
         payload: dict[str, Any] = {
@@ -375,7 +390,7 @@ class MiroFishClient:
         if platform:
             payload["platform"] = platform
         resp = await self._request(
-            "post", "/api/simulation/interview/batch", json=payload, timeout=float(timeout + 10),
+            "post", "/api/simulation/interview/batch", json=payload, timeout=float(timeout + MIROFISH_TIMEOUT_BUFFER),
         )
         resp.raise_for_status()
         body = resp.json()
@@ -401,13 +416,13 @@ class MiroFishClient:
         body = resp.json()
         return body.get("data", body)
 
-    async def close_env(self, simulation_id: str, timeout: int = 30) -> dict[str, Any]:
+    async def close_env(self, simulation_id: str, timeout: int = MIROFISH_CLOSE_ENV_TIMEOUT) -> dict[str, Any]:
         """POST /api/simulation/close-env — 환경 종료."""
         resp = await self._request(
             "post",
             "/api/simulation/close-env",
             json={"simulation_id": simulation_id, "timeout": timeout},
-            timeout=float(timeout + 10),
+            timeout=float(timeout + MIROFISH_TIMEOUT_BUFFER),
         )
         resp.raise_for_status()
         body = resp.json()
@@ -420,8 +435,8 @@ class MiroFishClient:
     async def poll_until_done(
         self,
         poll_fn,
-        interval: float = 5.0,
-        timeout: float = 600.0,
+        interval: float = MIROFISH_POLL_INTERVAL,
+        timeout: float = MIROFISH_POLL_TIMEOUT,
         status_key: str = "status",
         done_values: tuple[str, ...] = ("completed",),
         fail_values: tuple[str, ...] = ("failed",),
@@ -466,7 +481,7 @@ class MiroFishClient:
     async def health_check(self) -> bool:
         """MiroFish 서버 상태 확인."""
         try:
-            resp = await self._client.get("/api/graph/project/list", timeout=5.0)
+            resp = await self._client.get("/api/graph/project/list", timeout=MIROFISH_HEALTHCHECK_TIMEOUT)
             return resp.status_code == 200
         except (httpx.ConnectError, httpx.TimeoutException):
             return False

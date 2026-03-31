@@ -7,9 +7,28 @@ from app.clients.shadowbroker import ShadowBrokerClient
 from app.config import settings
 from app.database import close_db, init_db
 from app.geopolitics.router import router as geopolitics_router
+from app.logging_config import setup_logging
+from app.middleware import RequestIdMiddleware
 from app.ontology.router import router as ontology_router
 from app.resolution.router import router as resolution_router
-from app.routers import actions, analytics, causal, copilot, dashboard, osint, scenario, simulation
+from app.routers import (
+    actions,
+    analytics,
+    briefing,
+    causal,
+    copilot,
+    dashboard,
+    decision_point,
+    osint,
+    scenario,
+    seed,
+    simulation_interactive,
+    simulation_live,
+    simulation_run,
+)
+
+
+setup_logging()
 
 
 @asynccontextmanager
@@ -30,16 +49,22 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(actions.router)
 app.include_router(analytics.router)
+app.include_router(briefing.router)
 app.include_router(causal.router)
 app.include_router(copilot.router)
 app.include_router(dashboard.router)
+app.include_router(decision_point.router)
 app.include_router(geopolitics_router)
 app.include_router(ontology_router)
 app.include_router(resolution_router)
-app.include_router(simulation.router)
+app.include_router(seed.router)
+app.include_router(simulation_run.router)
+app.include_router(simulation_live.router)
+app.include_router(simulation_interactive.router)
 app.include_router(scenario.router)
 app.include_router(osint.router)
 

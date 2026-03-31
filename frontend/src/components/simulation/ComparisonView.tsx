@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/gatewayApi";
 import type { Scenario } from "@/types/simulation";
 
@@ -10,7 +10,7 @@ interface ComparisonViewProps {
 
 type CompareResult = Awaited<ReturnType<typeof api.compareScenarios>>;
 
-export default function ComparisonView({ scenarios }: ComparisonViewProps) {
+function ComparisonView({ scenarios }: ComparisonViewProps) {
   const completed = scenarios.filter((s) => s.status === "completed");
   const [idA, setIdA] = useState("");
   const [idB, setIdB] = useState("");
@@ -105,6 +105,8 @@ export default function ComparisonView({ scenarios }: ComparisonViewProps) {
     </div>
   );
 }
+
+export default memo(ComparisonView);
 
 function ScenarioCard({
   label,

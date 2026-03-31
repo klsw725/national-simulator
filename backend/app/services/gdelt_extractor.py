@@ -97,7 +97,7 @@ def extract_gdelt_context(
 def format_gdelt_text(context: dict[str, Any]) -> str:
     """GDELT 컨텍스트를 LLM 프롬프트용 텍스트로 포맷."""
     if context["event_count"] == 0:
-        return "(해당 해역 인근에서 감지된 GDELT 분쟁 이벤트 없음)"
+        return "(관심 지역 인근에서 감지된 GDELT 분쟁 이벤트 없음)"
 
     lines: list[str] = []
     lines.append(

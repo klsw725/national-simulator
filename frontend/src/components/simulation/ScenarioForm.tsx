@@ -54,7 +54,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
           simulation_requirement: simRequirement || undefined,
           geopolitics_enabled: geopoliticsEnabled,
           ...(geopoliticsEnabled && { geopolitics_mode: geopoliticsMode }),
-          ...(geopoliticsEnabled && geopoliticsMode === "actor_role" && playerActorId.trim() && { player_actor_id: playerActorId.trim() }),
+          ...(geopoliticsEnabled && geopoliticsMode === "actor_role" && playerActorId.trim() && { geopolitics_player_actor_id: playerActorId.trim() }),
           web_search_enabled: webSearchEnabled,
         },
       });
@@ -218,7 +218,11 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
         }}
       >
         <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={showAdvanced}
           onClick={() => setShowAdvanced(!showAdvanced)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowAdvanced(!showAdvanced); } }}
           style={{
             display: "flex",
             alignItems: "center",
@@ -242,6 +246,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
           </span>
           <ChevronDown
             size={14}
+            aria-hidden="true"
             style={{
               color: "var(--text-muted)",
               transition: "transform 0.2s",
@@ -457,7 +462,7 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
             transition: "background 0.15s, color 0.15s",
           }}
         >
-          {submitting && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
+          {submitting && <Loader2 size={14} aria-hidden="true" style={{ animation: "spin 1s linear infinite" }} />}
           {submitting ? "처리 중..." : isRunning ? "실행 중..." : "시뮬레이션 시작"}
         </button>
       </div>

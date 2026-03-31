@@ -3,20 +3,16 @@ from __future__ import annotations
 import logging
 
 import httpx
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
 from app.clients.shadowbroker import BBox, ShadowBrokerClient
+from app.routers._helpers import get_sb_client
 from app.services.observation_collector import ObservationCollector
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/osint", tags=["osint"])
-
-
-def _get_sb(request: Request) -> ShadowBrokerClient:
-    return request.app.state.sb_client
-
 
 def _parse_bbox(
     s: float | None, w: float | None, n: float | None, e: float | None
@@ -26,9 +22,8 @@ def _parse_bbox(
     return None
 
 
-async def _proxy(request: Request, coro):
+async def _proxy(sb: ShadowBrokerClient, coro):
     """SB 클라이언트 호출을 프록시하고 에러를 적절한 HTTP 응답으로 변환."""
-    sb = _get_sb(request)
     try:
         data = await coro
         return data
@@ -62,7 +57,7 @@ async def _proxy(request: Request, coro):
 
 @router.get("/live_data/fast")
 async def proxy_fast_data(
-    request: Request,
+    sb: ShadowBrokerClient = Depends(get_sb_client),
     s: float | None = Query(None, ge=-90, le=90),
     w: float | None = Query(None, ge=-180, le=180),
     n: float | None = Query(None, ge=-90, le=90),
@@ -70,13 +65,12 @@ async def proxy_fast_data(
 ):
     """SB /api/live-data/fast 프록시 — bbox 쿼리 파라미터 포워딩."""
     bbox = _parse_bbox(s, w, n, e)
-    sb = _get_sb(request)
-    return await _proxy(request, sb.get_fast_data(bbox))
+    return await _proxy(sb, sb.get_fast_data(bbox))
 
 
 @router.get("/live_data/slow")
 async def proxy_slow_data(
-    request: Request,
+    sb: ShadowBrokerClient = Depends(get_sb_client),
     s: float | None = Query(None, ge=-90, le=90),
     w: float | None = Query(None, ge=-180, le=180),
     n: float | None = Query(None, ge=-90, le=90),
@@ -84,20 +78,18 @@ async def proxy_slow_data(
 ):
     """SB /api/live-data/slow 프록시 — bbox 쿼리 파라미터 포워딩."""
     bbox = _parse_bbox(s, w, n, e)
-    sb = _get_sb(request)
-    return await _proxy(request, sb.get_slow_data(bbox))
+    return await _proxy(sb, sb.get_slow_data(bbox))
 
 
 @router.get("/live_data")
-async def proxy_all_data(request: Request):
+async def proxy_all_data(sb: ShadowBrokerClient = Depends(get_sb_client)):
     """SB /api/live-data 프록시 — 전체 데이터."""
-    sb = _get_sb(request)
-    return await _proxy(request, sb.get_all_data())
+    return await _proxy(sb, sb.get_all_data())
 
 
 @router.post("/collect")
 async def collect_observations(
-    request: Request,
+    sb: ShadowBrokerClient = Depends(get_sb_client),
     source: str = Query("ship", pattern="^(ship|flight|satellite)$"),
     auto_resolve: bool = Query(True),
     s: float | None = Query(None, ge=-90, le=90),
@@ -106,7 +98,6 @@ async def collect_observations(
     e: float | None = Query(None, ge=-180, le=180),
 ):
     """SB 데이터 수집 → observations INSERT + Entity Resolution 매칭."""
-    sb = _get_sb(request)
     bbox = _parse_bbox(s, w, n, e)
     collector = ObservationCollector(sb)
     try:

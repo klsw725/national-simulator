@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import {
   FileText,
   Network,
@@ -105,14 +106,14 @@ interface Props {
   onReview?: () => void;
 }
 
-export default function PipelineProgress({ pipelineStatus, onReview }: Props) {
+function PipelineProgress({ pipelineStatus, onReview }: Props) {
   if (!pipelineStatus) {
     return (
-      <div style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+      <div className="py-6 text-center text-[var(--text-muted)] text-[13px]">
         시나리오를 실행하면 진행 상태가 표시됩니다.
-      </div>
-    );
-  }
+    </div>
+  );
+}
 
   const { status } = pipelineStatus;
   const isFailed = status === "failed";
@@ -120,37 +121,22 @@ export default function PipelineProgress({ pipelineStatus, onReview }: Props) {
   const activeIdx = activeStepIndex(status);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <div aria-live="polite" className="flex flex-col gap-0">
       {STEPS.map(({ label, Icon }, i) => {
         const st = stepStatus(i, activeIdx, isFailed, isPaused);
         const colors = STATUS_COLORS[st];
         const isLast = i === STEPS.length - 1;
 
         return (
-          <div key={label} style={{ display: "flex", gap: 12, position: "relative" }}>
+          <div key={label} className="flex gap-3 relative">
             {/* Vertical line + icon circle */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                width: 32,
-                flexShrink: 0,
-              }}
-            >
+            <div className="flex flex-col items-center w-8 shrink-0">
               {/* Icon circle */}
               <div
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-[border-color,background] duration-300"
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
                   border: `2px solid ${colors.line}`,
                   background: colors.bg,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  transition: "border-color 0.3s, background 0.3s",
                   boxShadow:
                     st === "running"
                       ? "0 0 10px rgba(34, 211, 238, 0.3)"
@@ -160,33 +146,31 @@ export default function PipelineProgress({ pipelineStatus, onReview }: Props) {
                 }}
               >
                 {st === "completed" ? (
-                  <Check size={14} color={colors.icon} />
+                  <Check size={14} color={colors.icon} aria-hidden="true" />
                 ) : st === "failed" ? (
-                  <X size={14} color={colors.icon} />
+                  <X size={14} color={colors.icon} aria-hidden="true" />
                 ) : st === "paused" ? (
-                  <Pause size={14} color={colors.icon} />
+                  <Pause size={14} color={colors.icon} aria-hidden="true" />
                 ) : st === "running" ? (
                   <Loader2
                     size={14}
                     color={colors.icon}
-                    style={{ animation: "spin 1s linear infinite" }}
+                    aria-hidden="true"
+                    className="animate-spin"
                   />
                 ) : (
-                  <Icon size={14} color={colors.icon} />
+                  <Icon size={14} color={colors.icon} aria-hidden="true" />
                 )}
               </div>
               {/* Connector line */}
               {!isLast && (
                 <div
+                  className="w-0.5 grow min-h-4 transition-[background] duration-300"
                   style={{
-                    width: 2,
-                    flexGrow: 1,
-                    minHeight: 16,
                     background:
                       stepStatus(i + 1, activeIdx, isFailed, isPaused) !== "pending"
                         ? "var(--status-connected)"
                         : "var(--border-secondary)",
-                    transition: "background 0.3s",
                   }}
                 />
               )}
@@ -194,71 +178,35 @@ export default function PipelineProgress({ pipelineStatus, onReview }: Props) {
 
             {/* Label */}
             <div
+              className="pt-1.5 text-[13px] transition-[color] duration-300 flex items-center gap-2 flex-wrap"
               style={{
-                paddingTop: 6,
                 paddingBottom: isLast ? 0 : 16,
-                fontSize: 13,
                 color: st === "pending" ? "var(--text-muted)" : "var(--text-primary)",
                 fontWeight: st === "running" || st === "paused" ? 600 : 400,
-                transition: "color 0.3s",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
               }}
             >
               {label}
               {st === "running" && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "var(--accent-cyan)",
-                    fontWeight: 400,
-                  }}
-                >
+                <span className="text-[10px] text-[var(--accent-cyan)] font-normal">
                   진행 중
                 </span>
               )}
               {st === "failed" && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "var(--accent-red)",
-                    fontWeight: 400,
-                  }}
-                >
+                <span className="text-[10px] text-[var(--accent-red)] font-normal">
                   실패
                 </span>
               )}
               {st === "paused" && (
                 <>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--accent-amber, #f59e0b)",
-                      fontWeight: 400,
-                    }}
-                  >
+                  <span className="text-[10px] text-[var(--accent-amber,#f59e0b)] font-normal">
                     검토 대기
                   </span>
                   {onReview && (
                     <button
                       onClick={onReview}
-                      style={{
-                        padding: "2px 8px",
-                        background: "rgba(245, 158, 11, 0.15)",
-                        border: "1px solid var(--accent-amber, #f59e0b)",
-                        borderRadius: 3,
-                        color: "var(--accent-amber, #f59e0b)",
-                        fontSize: 10,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
+                      className="px-2 py-0.5 bg-[rgba(245,158,11,0.15)] border border-[var(--accent-amber,#f59e0b)] rounded-[3px] text-[var(--accent-amber,#f59e0b)] text-[10px] font-semibold cursor-pointer inline-flex items-center gap-1"
                     >
-                      <Eye size={10} />
+                      <Eye size={10} aria-hidden="true" />
                       검토
                     </button>
                   )}
@@ -271,3 +219,5 @@ export default function PipelineProgress({ pipelineStatus, onReview }: Props) {
     </div>
   );
 }
+
+export default memo(PipelineProgress);

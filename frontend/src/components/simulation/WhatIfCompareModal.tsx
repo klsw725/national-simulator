@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Loader2, ArrowDown, ArrowUp } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
+import VarianceCard from "./whatif/VarianceCard";
+import ActorColumn from "./whatif/ActorColumn";
 import {
   ResponsiveContainer,
   LineChart,
@@ -468,105 +470,5 @@ export default function WhatIfCompareModal({ scenarioId, branchId, onClose }: Pr
         )}
       </div>
     </>
-  );
-}
-
-function VarianceCard({
-  label,
-  original,
-  branch,
-  betterLabel,
-  worseLabel,
-  isBetter,
-}: {
-  label: string;
-  original: number;
-  branch: number;
-  betterLabel: string;
-  worseLabel: string;
-  isBetter: boolean;
-}) {
-  const indicatorColor = isBetter ? "#22c55e" : "#ef4444";
-  const Arrow = isBetter ? ArrowDown : ArrowUp;
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-tertiary)",
-        border: "1px solid var(--border-secondary)",
-        borderRadius: 8,
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
-        {label}
-      </div>
-      <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
-        <div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)" }}>원본</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-            {original.toFixed(4)}
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)" }}>분기</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-            {branch.toFixed(4)}
-          </div>
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: indicatorColor }}>
-        <Arrow size={10} />
-        {isBetter ? betterLabel : worseLabel}
-      </div>
-    </div>
-  );
-}
-
-function ActorColumn({
-  title,
-  actors,
-  accentColor,
-}: {
-  title: string;
-  actors: string[];
-  accentColor: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "var(--bg-tertiary)",
-        border: "1px solid var(--border-secondary)",
-        borderRadius: 8,
-        padding: 12,
-      }}
-    >
-      <div style={{ fontSize: 10, fontWeight: 600, color: accentColor, marginBottom: 8, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
-        {title}
-      </div>
-      {actors.length === 0 ? (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>없음</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {actors.map((actor) => (
-            <div
-              key={actor}
-              style={{
-                fontSize: 11,
-                color: "var(--text-primary)",
-                padding: "3px 8px",
-                background: `${accentColor}10`,
-                borderRadius: 4,
-              }}
-            >
-              {actor}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }

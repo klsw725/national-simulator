@@ -12,6 +12,12 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.constants import (
+    CLIENT_DEFAULT_TIMEOUT,
+    CLIENT_RETRY_ATTEMPTS,
+    CLIENT_RETRY_WAIT_MAX,
+    CLIENT_RETRY_WAIT_MIN,
+)
 from app.services.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
@@ -36,7 +42,7 @@ class ShadowBrokerClient:
     - bbox 쿼리 파라미터 포워딩
     """
 
-    def __init__(self, base_url: str, timeout: float = 30.0):
+    def __init__(self, base_url: str, timeout: float = CLIENT_DEFAULT_TIMEOUT):
         self.base_url = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
         self._circuit_breaker = CircuitBreaker(name="shadowbroker")
@@ -44,8 +50,8 @@ class ShadowBrokerClient:
         self._etag_cache: dict[str, tuple[str, dict]] = {}
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(CLIENT_RETRY_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=CLIENT_RETRY_WAIT_MIN, max=CLIENT_RETRY_WAIT_MAX),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )

@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+import httpx
 import networkx as nx
 from pydantic import BaseModel
 
@@ -282,7 +283,7 @@ async def extract_causal_relations(body: CausalExtractRequest):
         try:
             df = await collector.build_dataframe(body.scenario_id)
             verified = df is not None and len(df) >= 30
-        except Exception:
+        except (httpx.HTTPError, ValueError):
             df = None
             verified = False
 
@@ -336,7 +337,7 @@ async def get_causal_paths(model_id: str, target: str, max_paths: int = 5):
                 str(k): float(v)
                 for k, v in attribution_result.get("attributions", {}).items()
             }
-        except Exception:
+        except (httpx.HTTPError, ValueError):
             attributions = {}
     elif isinstance(fit_metadata, dict):
         raw_attr = fit_metadata.get("attributions")
@@ -385,7 +386,7 @@ async def narrate_causal(body: CausalNarrateRequest):
                 str(k): float(v)
                 for k, v in attribution_result.get("attributions", {}).items()
             }
-        except Exception:
+        except (httpx.HTTPError, ValueError):
             attributions = {}
     elif isinstance(fit_metadata, dict):
         raw_attr = fit_metadata.get("attributions")

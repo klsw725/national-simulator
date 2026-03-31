@@ -110,8 +110,8 @@ export default function GeopoliticsDecisionView({ scenarioId, onResolved }: Prop
     <div style={wrapStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {isActorRole
-          ? <Shield size={14} color="#ef4444" />
-          : <Eye size={14} color="var(--accent-cyan)" />}
+          ? <Shield size={14} color="#ef4444" aria-hidden="true" />
+          : <Eye size={14} color="var(--accent-cyan)" aria-hidden="true" />}
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
           {isActorRole ? "🎖 지정학 이벤트 대응" : "🌐 시나리오 방향 결정"}
         </span>
@@ -258,7 +258,11 @@ function ActorOptionCard({ option, isSelected, isRecommended, onSelect }: {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
       onClick={onSelect}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(); } }}
       style={{
         background: "var(--bg-primary)",
         border: isSelected ? `1.5px solid ${borderColor}` : "1px solid var(--border-secondary)",
@@ -276,7 +280,7 @@ function ActorOptionCard({ option, isSelected, isRecommended, onSelect }: {
           display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           background: isSelected ? `${borderColor}22` : "transparent",
         }}>
-          {isSelected && <Check size={9} color={borderColor} />}
+          {isSelected && <Check size={9} color={borderColor} aria-hidden="true" />}
         </div>
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>
           {option.label}
@@ -358,7 +362,11 @@ function GameMasterBody({ dp, selectedId, onSelect }: {
           return (
             <div
               key={opt.id}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSelected}
               onClick={() => onSelect(opt.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(opt.id); } }}
               style={{
                 background: "var(--bg-primary)",
                 border: isSelected ? `1.5px solid ${meta.color}` : "1px solid var(--border-secondary)",
@@ -373,7 +381,7 @@ function GameMasterBody({ dp, selectedId, onSelect }: {
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>
                   {opt.label}
                 </span>
-                {isSelected && <Check size={10} color={meta.color} style={{ marginLeft: "auto" }} />}
+                {isSelected && <Check size={10} color={meta.color} style={{ marginLeft: "auto" }} aria-hidden="true" />}
               </div>
               {opt.description && (
                 <span style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>

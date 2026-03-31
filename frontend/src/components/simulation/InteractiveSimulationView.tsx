@@ -8,17 +8,7 @@ import {
   resumeSimulation,
   injectEvent,
 } from "@/lib/gatewayApi";
-
-interface InteractiveStatus {
-  scenario_id: string;
-  simulation_status: string;
-  current_round: number;
-  max_rounds: number;
-  is_paused: boolean;
-  pause_reason: string | null;
-  injected_events_count: number;
-  tension_alerts: number;
-}
+import type { InteractiveStatus } from "@/types/simulation";
 
 interface Props {
   scenarioId: string | undefined;

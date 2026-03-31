@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 
 interface BriefingEditorProps {
   content: string;
@@ -9,7 +9,7 @@ interface BriefingEditorProps {
   onBack: () => void;
 }
 
-export default function BriefingEditor({
+function BriefingEditor({
   content,
   version,
   onSave,
@@ -182,3 +182,5 @@ export default function BriefingEditor({
     </div>
   );
 }
+
+export default memo(BriefingEditor);
