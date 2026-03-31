@@ -25,6 +25,46 @@ import sqlite3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+
+_builtin_print = print
+
+
+def print(*args, **kwargs):
+    kwargs.setdefault("file", sys.stderr)
+    return _builtin_print(*args, **kwargs)
+
+
+def _redirect_logging_streams_to_stderr():
+    all_loggers = [logging.getLogger()]
+    for logger_obj in logging.root.manager.loggerDict.values():
+        if isinstance(logger_obj, logging.Logger):
+            all_loggers.append(logger_obj)
+
+    for logger in all_loggers:
+        for handler in logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                stream = getattr(handler, "stream", None)
+                if stream is sys.stdout:
+                    handler.setStream(sys.stderr)
+
+
+def _send_control(msg: Dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+async def _wait_for_control_signal() -> Dict[str, Any]:
+    loop = asyncio.get_event_loop()
+    line = await loop.run_in_executor(None, sys.stdin.readline)
+    if not line:
+        raise EOFError("stdin closed")
+    return json.loads(line.strip())
+
+
+async def _inject_context_to_env(env, context: Dict[str, Any]) -> None:
+    posts = context.get("system_posts", []) if isinstance(context, dict) else []
+    print(f"[round_control] Received {len(posts)} system posts for injection (stub)")
+
 # 전역 변수: 시그널 처리용
 _shutdown_event = None
 _cleanup_done = False
@@ -581,6 +621,7 @@ class RedditSimulationRunner:
         self.config = self._load_config()
         self.simulation_dir = os.path.dirname(config_path)
         self.wait_for_commands = wait_for_commands
+        self.round_control_enabled = bool(self.config.get("round_control_enabled", False))
         self.tools_enabled = False
         self.geopolitics_enabled = False
         self._geo_platform = None
@@ -718,6 +759,16 @@ class RedditSimulationRunner:
                 print(
                     f"\n라운드 수가 잘렸습니다: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})"
                 )
+
+        if self.round_control_enabled:
+            _send_control(
+                {
+                    "type": "ready",
+                    "run_id": self.config.get("simulation_id", "unknown"),
+                    "total_rounds": total_rounds,
+                    "platforms": ["reddit"],
+                }
+            )
 
         print(f"\n시뮬레이션 파라미터:")
         print(f"  - 총 시뮬레이션 시간: {total_hours}시간")
@@ -863,8 +914,56 @@ class RedditSimulationRunner:
 
         start_hour = time_config.get("start_hour", 9)
         start_offset_minutes = start_hour * 60
+        stop_requested = False
 
         for round_num in range(total_rounds):
+            if self.round_control_enabled:
+                try:
+                    while True:
+                        signal = await _wait_for_control_signal()
+                        signal_type = signal.get("type")
+                        if signal_type == "heartbeat":
+                            _send_control(
+                                {
+                                    "type": "heartbeat_ack",
+                                    "timestamp": signal.get("timestamp", ""),
+                                }
+                            )
+                            continue
+                        if signal_type == "stop":
+                            print(
+                                f"Received stop signal: {signal.get('reason', 'unknown')}"
+                            )
+                            stop_requested = True
+                            break
+                        if signal_type == "proceed":
+                            if "inject_context" in signal:
+                                await _inject_context_to_env(
+                                    self.env, signal["inject_context"]
+                                )
+                            break
+                        _send_control(
+                            {
+                                "type": "error",
+                                "round": round_num + 1,
+                                "message": f"Unsupported control message type: {signal_type}",
+                                "recoverable": True,
+                            }
+                        )
+                except (json.JSONDecodeError, EOFError) as e:
+                    _send_control(
+                        {
+                            "type": "error",
+                            "round": round_num + 1,
+                            "message": str(e),
+                            "recoverable": False,
+                        }
+                    )
+                    stop_requested = True
+
+            if stop_requested:
+                break
+
             simulated_minutes = start_offset_minutes + round_num * minutes_per_round
             simulated_hour = (simulated_minutes // 60) % 24
             simulated_day = simulated_minutes // (60 * 24) + 1
@@ -877,6 +976,19 @@ class RedditSimulationRunner:
 
             if not active_agents:
                 action_logger.log_round_end(round_num + 1, 0)
+                if self.round_control_enabled:
+                    _send_control(
+                        {
+                            "type": "round_complete",
+                            "round": round_num + 1,
+                            "actions": [],
+                            "stats": {
+                                "twitter_actions": 0,
+                                "reddit_actions": 0,
+                                "active_agents": 0,
+                            },
+                        }
+                    )
                 continue
 
             actions = {agent: LLMAction() for _, agent in active_agents}
@@ -897,6 +1009,20 @@ class RedditSimulationRunner:
                 round_action_count += 1
 
             action_logger.log_round_end(round_num + 1, round_action_count)
+
+            if self.round_control_enabled:
+                _send_control(
+                    {
+                        "type": "round_complete",
+                        "round": round_num + 1,
+                        "actions": new_actions,
+                        "stats": {
+                            "twitter_actions": 0,
+                            "reddit_actions": round_action_count,
+                            "active_agents": len(active_agents),
+                        },
+                    }
+                )
 
             if (round_num + 1) % 10 == 0 or round_num == 0:
                 elapsed = (datetime.now() - start_time).total_seconds()
@@ -999,6 +1125,7 @@ async def main():
     # 시뮬레이션 로그 설정 초기화 (고정 파일 이름 사용, 이전 로그 정리)
     simulation_dir = os.path.dirname(args.config) or "."
     setup_oasis_logging(os.path.join(simulation_dir, "log"))
+    _redirect_logging_streams_to_stderr()
 
     runner = RedditSimulationRunner(
         config_path=args.config, wait_for_commands=not args.no_wait

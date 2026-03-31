@@ -87,9 +87,213 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
 
+_builtin_print = print
+
+
+def print(*args, **kwargs):
+    kwargs.setdefault("file", sys.stderr)
+    return _builtin_print(*args, **kwargs)
+
+
+def _send_control(msg: Dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+async def _wait_for_control_signal() -> Dict[str, Any]:
+    loop = asyncio.get_event_loop()
+    line = await loop.run_in_executor(None, sys.stdin.readline)
+    if not line:
+        raise EOFError("stdin closed")
+    return json.loads(line.strip())
+
+
 # 전역 변수: 시그널 처리용
 _shutdown_event = None
 _cleanup_done = False
+_control_logger = None
+
+
+def _redirect_logging_streams_to_stderr():
+    all_loggers = [logging.getLogger()]
+    for logger_obj in logging.root.manager.loggerDict.values():
+        if isinstance(logger_obj, logging.Logger):
+            all_loggers.append(logger_obj)
+
+    for logger in all_loggers:
+        for handler in logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                stream = getattr(handler, "stream", None)
+                if stream is sys.stdout:
+                    handler.setStream(sys.stderr)
+
+
+async def _inject_context_to_env(envs: Dict[str, Any], context: Dict[str, Any]) -> None:
+    posts = context.get("system_posts", []) if isinstance(context, dict) else []
+    if _control_logger:
+        _control_logger.info(
+            f"[round_control] Received {len(posts)} system posts for injection (stub)"
+        )
+
+
+class RoundControlCoordinator:
+    def __init__(
+        self,
+        enabled: bool,
+        run_id: str,
+        total_rounds: int,
+        platforms: List[str],
+        main_logger=None,
+    ):
+        self.enabled = enabled
+        self.run_id = run_id
+        self.total_rounds = total_rounds
+        self.platforms = platforms
+        self.main_logger = main_logger
+        self.stop_requested = False
+        self._leader = platforms[0] if platforms else "twitter"
+        self._round_events: Dict[int, asyncio.Event] = {}
+        self._round_payloads: Dict[int, Dict[str, Dict[str, Any]]] = {}
+        self._collect_lock = asyncio.Lock()
+        self._envs: Dict[str, Any] = {}
+        self._ready_sent = False
+
+    def send_ready(self):
+        if not self.enabled or self._ready_sent:
+            return
+        _send_control(
+            {
+                "type": "ready",
+                "run_id": self.run_id,
+                "total_rounds": self.total_rounds,
+                "platforms": self.platforms,
+            }
+        )
+        self._ready_sent = True
+
+    def register_env(self, platform: str, env: Any) -> None:
+        if not self.enabled:
+            return
+        self._envs[platform] = env
+        if len(self._envs) >= len(self.platforms):
+            self.send_ready()
+
+    async def before_round(self, platform: str, round_num: int) -> bool:
+        if not self.enabled:
+            return True
+        if self.stop_requested:
+            return False
+
+        event = self._round_events.setdefault(round_num, asyncio.Event())
+        if platform != self._leader:
+            await event.wait()
+            return not self.stop_requested
+
+        while True:
+            try:
+                signal = await _wait_for_control_signal()
+            except (json.JSONDecodeError, EOFError) as e:
+                _send_control(
+                    {
+                        "type": "error",
+                        "round": round_num + 1,
+                        "message": str(e),
+                        "recoverable": False,
+                    }
+                )
+                self.stop_requested = True
+                event.set()
+                return False
+
+            signal_type = signal.get("type")
+            if signal_type == "heartbeat":
+                _send_control(
+                    {
+                        "type": "heartbeat_ack",
+                        "timestamp": signal.get("timestamp", ""),
+                    }
+                )
+                continue
+
+            if signal_type == "stop":
+                if self.main_logger:
+                    self.main_logger.info(
+                        f"Received stop signal: {signal.get('reason', 'unknown')}"
+                    )
+                self.stop_requested = True
+                event.set()
+                return False
+
+            if signal_type == "proceed":
+                if "inject_context" in signal:
+                    await _inject_context_to_env(self._envs, signal["inject_context"])
+                event.set()
+                return True
+
+            _send_control(
+                {
+                    "type": "error",
+                    "round": round_num + 1,
+                    "message": f"Unsupported control message type: {signal_type}",
+                    "recoverable": True,
+                }
+            )
+
+    async def after_round(
+        self,
+        platform: str,
+        round_num: int,
+        actions: List[Dict[str, Any]],
+        actions_count: int,
+        active_agents_count: int,
+    ) -> None:
+        if not self.enabled or self.stop_requested:
+            return
+
+        async with self._collect_lock:
+            round_payload = self._round_payloads.setdefault(round_num, {})
+            round_payload[platform] = {
+                "actions": actions,
+                "actions_count": actions_count,
+                "active_agents": active_agents_count,
+            }
+
+            if len(round_payload) < len(self.platforms):
+                return
+
+            combined_actions: List[Dict[str, Any]] = []
+            twitter_actions = 0
+            reddit_actions = 0
+            total_active_agents = 0
+
+            for platform_name in self.platforms:
+                payload = round_payload.get(platform_name, {})
+                platform_actions = payload.get("actions", [])
+                combined_actions.extend(platform_actions)
+
+                action_count = payload.get("actions_count", len(platform_actions))
+                if platform_name == "twitter":
+                    twitter_actions = action_count
+                elif platform_name == "reddit":
+                    reddit_actions = action_count
+
+                total_active_agents += payload.get("active_agents", 0)
+
+            _send_control(
+                {
+                    "type": "round_complete",
+                    "round": round_num + 1,
+                    "actions": combined_actions,
+                    "stats": {
+                        "twitter_actions": twitter_actions,
+                        "reddit_actions": reddit_actions,
+                        "active_agents": total_active_agents,
+                    },
+                }
+            )
+
+            self._round_payloads.pop(round_num, None)
+            self._round_events.pop(round_num, None)
 
 # backend 디렉토리를 경로에 추가
 # 스크립트는 backend/scripts/ 디렉토리에 고정되어 있음
@@ -1251,6 +1455,7 @@ async def run_twitter_simulation(
     action_logger: Optional[PlatformActionLogger] = None,
     main_logger: Optional[SimulationLogManager] = None,
     max_rounds: Optional[int] = None,
+    round_coordinator: Optional[RoundControlCoordinator] = None,
 ) -> PlatformSimulation:
     """Twitter 시뮬레이션 실행
 
@@ -1310,6 +1515,8 @@ async def run_twitter_simulation(
     )
 
     await result.env.reset()
+    if round_coordinator:
+        round_coordinator.register_env("twitter", result.env)
     log_info("환경이 시작되었습니다.")
 
     if action_logger:
@@ -1385,6 +1592,11 @@ async def run_twitter_simulation(
                 )
             break
 
+        if round_coordinator:
+            should_continue = await round_coordinator.before_round("twitter", round_num)
+            if not should_continue:
+                break
+
         start_hour = time_config.get("start_hour", 9)
         simulated_minutes = start_hour * 60 + round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
@@ -1402,6 +1614,8 @@ async def run_twitter_simulation(
             # 활성 에이전트가 없을 때도 라운드 종료 기록 (actions_count=0)
             if action_logger:
                 action_logger.log_round_end(round_num + 1, 0)
+            if round_coordinator:
+                await round_coordinator.after_round("twitter", round_num, [], 0, 0)
             continue
 
         actions = {agent: LLMAction() for _, agent in active_agents}
@@ -1427,6 +1641,15 @@ async def run_twitter_simulation(
 
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
+
+        if round_coordinator:
+            await round_coordinator.after_round(
+                "twitter",
+                round_num,
+                actual_actions,
+                round_action_count,
+                len(active_agents),
+            )
 
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
@@ -1454,6 +1677,7 @@ async def run_reddit_simulation(
     action_logger: Optional[PlatformActionLogger] = None,
     main_logger: Optional[SimulationLogManager] = None,
     max_rounds: Optional[int] = None,
+    round_coordinator: Optional[RoundControlCoordinator] = None,
 ) -> PlatformSimulation:
     """Reddit 시뮬레이션 실행
 
@@ -1512,6 +1736,8 @@ async def run_reddit_simulation(
     )
 
     await result.env.reset()
+    if round_coordinator:
+        round_coordinator.register_env("reddit", result.env)
     log_info("환경이 시작되었습니다.")
 
     if action_logger:
@@ -1598,6 +1824,11 @@ async def run_reddit_simulation(
                 )
             break
 
+        if round_coordinator:
+            should_continue = await round_coordinator.before_round("reddit", round_num)
+            if not should_continue:
+                break
+
         start_hour = time_config.get("start_hour", 9)
         simulated_minutes = start_hour * 60 + round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
@@ -1615,6 +1846,8 @@ async def run_reddit_simulation(
             # 활성 에이전트가 없을 때도 라운드 종료 기록 (actions_count=0)
             if action_logger:
                 action_logger.log_round_end(round_num + 1, 0)
+            if round_coordinator:
+                await round_coordinator.after_round("reddit", round_num, [], 0, 0)
             continue
 
         actions = {agent: LLMAction() for _, agent in active_agents}
@@ -1640,6 +1873,15 @@ async def run_reddit_simulation(
 
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
+
+        if round_coordinator:
+            await round_coordinator.after_round(
+                "reddit",
+                round_num,
+                actual_actions,
+                round_action_count,
+                len(active_agents),
+            )
 
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
@@ -1711,6 +1953,7 @@ async def main():
         sys.exit(1)
 
     config = load_config(args.config)
+    round_control_enabled = config.get("round_control_enabled", False)
     simulation_dir = os.path.dirname(args.config) or "."
     wait_for_commands = not args.no_wait
 
@@ -1719,6 +1962,9 @@ async def main():
 
     # 로그 관리자 생성
     log_manager = SimulationLogManager(simulation_dir)
+    _redirect_logging_streams_to_stderr()
+    global _control_logger
+    _control_logger = log_manager
     twitter_logger = log_manager.get_twitter_logger()
     reddit_logger = log_manager.get_reddit_logger()
 
@@ -1733,6 +1979,25 @@ async def main():
     total_hours = time_config.get("total_simulation_hours", 72)
     minutes_per_round = time_config.get("minutes_per_round", 30)
     config_total_rounds = (total_hours * 60) // minutes_per_round
+    effective_total_rounds = (
+        min(config_total_rounds, args.max_rounds)
+        if args.max_rounds is not None and args.max_rounds > 0
+        else config_total_rounds
+    )
+
+    active_platforms: List[str] = []
+    if not args.reddit_only:
+        active_platforms.append("twitter")
+    if not args.twitter_only:
+        active_platforms.append("reddit")
+
+    round_coordinator = RoundControlCoordinator(
+        enabled=round_control_enabled,
+        run_id=config.get("simulation_id", "unknown"),
+        total_rounds=effective_total_rounds,
+        platforms=active_platforms,
+        main_logger=log_manager,
+    )
 
     log_manager.info(f"시뮬레이션 파라미터:")
     log_manager.info(f"  - 총 시뮬레이션 시간: {total_hours}시간")
@@ -1758,20 +2023,40 @@ async def main():
 
     if args.twitter_only:
         twitter_result = await run_twitter_simulation(
-            config, simulation_dir, twitter_logger, log_manager, args.max_rounds
+            config,
+            simulation_dir,
+            twitter_logger,
+            log_manager,
+            args.max_rounds,
+            round_coordinator,
         )
     elif args.reddit_only:
         reddit_result = await run_reddit_simulation(
-            config, simulation_dir, reddit_logger, log_manager, args.max_rounds
+            config,
+            simulation_dir,
+            reddit_logger,
+            log_manager,
+            args.max_rounds,
+            round_coordinator,
         )
     else:
         # 병렬 실행 (플랫폼마다 독립적인 로그 기록기 사용)
         results = await asyncio.gather(
             run_twitter_simulation(
-                config, simulation_dir, twitter_logger, log_manager, args.max_rounds
+                config,
+                simulation_dir,
+                twitter_logger,
+                log_manager,
+                args.max_rounds,
+                round_coordinator,
             ),
             run_reddit_simulation(
-                config, simulation_dir, reddit_logger, log_manager, args.max_rounds
+                config,
+                simulation_dir,
+                reddit_logger,
+                log_manager,
+                args.max_rounds,
+                round_coordinator,
             ),
         )
         twitter_result, reddit_result = results

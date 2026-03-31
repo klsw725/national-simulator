@@ -308,6 +308,21 @@ CREATE TABLE IF NOT EXISTS geopolitics_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_geo_snap_scenario ON geopolitics_snapshots(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_geo_snap_result ON geopolitics_snapshots(result_id);
+
+CREATE TABLE IF NOT EXISTS wargame_state (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
+    result_id TEXT NOT NULL,
+    current_round INTEGER NOT NULL,
+    total_rounds INTEGER NOT NULL,
+    engine_state TEXT NOT NULL,
+    process_pid INTEGER,
+    status TEXT NOT NULL DEFAULT 'running',
+    last_heartbeat TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wargame_state_scenario ON wargame_state(scenario_id);
 """
 
 

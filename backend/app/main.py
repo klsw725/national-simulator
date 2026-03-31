@@ -23,6 +23,7 @@ from app.routers import (
     scenario,
     seed,
     simulation_interactive,
+    simulation_events,
     simulation_live,
     simulation_run,
 )
@@ -63,6 +64,7 @@ app.include_router(ontology_router)
 app.include_router(resolution_router)
 app.include_router(seed.router)
 app.include_router(simulation_run.router)
+app.include_router(simulation_events.router)
 app.include_router(simulation_live.router)
 app.include_router(simulation_interactive.router)
 app.include_router(scenario.router)

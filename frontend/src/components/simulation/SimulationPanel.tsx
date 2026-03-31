@@ -25,6 +25,7 @@ import InteractiveSimulationView from "./InteractiveSimulationView";
 import WhatIfBranchView from "./WhatIfBranchView";
 import CausalDAGView from "./CausalDAGView";
 import CausalQueryPanel from "./CausalQueryPanel";
+import WarRoom from "../wargame/WarRoom";
 
 type Tab = "create" | "progress" | "interactive" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "conversation" | "compare" | "dashboard" | "health" | "causal";
 
@@ -56,6 +57,18 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
   const [tab, setTab] = useState<Tab>("create");
 
   if (!open) return null;
+
+  const isWargameMode = sim.activeScenario?.simulation_params?.wargame_enabled === true;
+  if (isWargameMode && sim.activeScenario) {
+    return (
+      <WarRoom
+        scenarioId={sim.activeScenario.id}
+        totalRounds={sim.activeScenario.simulation_params?.geopolitics_rounds ?? sim.activeScenario.max_rounds}
+        actions={[]}
+        onClose={onClose}
+      />
+    );
+  }
 
   const isCompleted = sim.pipelineStatus?.status === "completed";
   const hasCheckpoint = sim.checkpointData !== null;

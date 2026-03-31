@@ -15,6 +15,7 @@ export interface SimulationParams {
   geopolitics_player_actor_id: string | null;
   geopolitics_rounds: number;
   geopolitics_pause_threshold: number;
+  wargame_enabled?: boolean;
 }
 
 export interface SimulationParamsInput {
@@ -27,6 +28,7 @@ export interface SimulationParamsInput {
   geopolitics_player_actor_id?: string | null;
   geopolitics_rounds?: number;
   geopolitics_pause_threshold?: number;
+  wargame_enabled?: boolean;
 }
 
 export interface ScenarioCreate {
@@ -376,3 +378,41 @@ export interface EnvStatus {
   twitter_available: boolean;
   message: string;
 }
+
+// ── Wargame (v11) ──────────────────────────────────────────
+
+export type WargamePhase = "simulation" | "briefing" | "decision" | "confirmation";
+
+export interface WargameState {
+  phase: WargamePhase;
+  round: number;
+  totalRounds: number;
+  role: "actor_role" | "game_master";
+  actorId: string | null;
+  tension: number;
+  actorStates: Record<string, ActorState>;
+  briefing: RoundBriefing | null;
+  decisionPoint: DecisionPoint | null;
+}
+
+export interface ActorState {
+  actor_id: string;
+  name: string;
+  threat_perception: number;
+  domestic_pressure: number;
+  resource_level: number;
+}
+
+export interface RoundBriefing {
+  round: number;
+  key_events: Array<{
+    type: string;
+    description: string;
+    severity: "low" | "medium" | "high" | "critical";
+  }>;
+  state_deltas: Record<string, number>;
+  previous_decision_outcome: string | null;
+  social_media_summary: { total_posts: number; top_topics: string[] };
+}
+
+export type WargameLens = "info_warfare" | "diplomacy" | "military" | "economy" | "relations" | "whatif";

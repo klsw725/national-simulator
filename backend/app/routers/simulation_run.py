@@ -257,8 +257,9 @@ async def start_simulation(
     )
 
     orchestrator = SimulationOrchestrator(mf_client, sb_client=sb_client)
+    run_method = orchestrator.run_wargame_pipeline if sim_params.wargame_enabled else orchestrator.run_pipeline
     background_tasks.add_task(
-        orchestrator.run_pipeline,
+        run_method,
         scenario_id=scenario_id,
         result_id=result_id,
         seed_text=seed_row["text"],
@@ -427,6 +428,37 @@ async def continue_pipeline(
         raise HTTPException(status_code=404, detail="No simulation found for this scenario")
 
     status = row["status"]
+    if status.startswith("wargame:paused:round_"):
+        pending = await conn.fetch(
+            "SELECT id FROM decision_points WHERE scenario_id = $1 AND status = 'pending' AND type IN ('geopolitics_actor_response', 'geopolitics_direction')",
+            scenario_id,
+        )
+        if pending:
+            raise HTTPException(status_code=400, detail="Unresolved wargame decision points")
+
+        scn_row_wg = await conn.fetchrow("SELECT simulation_params FROM scenarios WHERE id = $1", scenario_id)
+        raw_params_wg = scn_row_wg["simulation_params"] if scn_row_wg and "simulation_params" in scn_row_wg else "{}"
+        sim_params_wg = SimulationParams.model_validate_json(raw_params_wg or "{}")
+
+        orchestrator = SimulationOrchestrator(mf_client, sb_client=sb_client)
+        background_tasks.add_task(
+            orchestrator.continue_wargame,
+            scenario_id=scenario_id,
+            result_id=row["id"],
+            simulation_params=sim_params_wg,
+        )
+        await ActionLogger.log(
+            "simulation.wargame_continue",
+            scenario_id,
+            payload={"result_id": row["id"], "from_status": status},
+        )
+        return {
+            "scenario_id": scenario_id,
+            "result_id": row["id"],
+            "previous_status": status,
+            "message": "Continuing wargame pipeline",
+        }
+
     if status not in CHECKPOINT_STEPS:
         raise HTTPException(
             status_code=400,

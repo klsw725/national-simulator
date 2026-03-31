@@ -974,4 +974,5 @@ MiroFish `run_parallel_simulation.py`에 라운드 배리어를 추가한다. `r
 
 | PRD | 설명 | 상태 |
 |-----|------|------|
-| - | (예정) | - |
+| [v11-backend-wargame-engine.md](prds/v11-backend-wargame-engine.md) | 백엔드 워게임 엔진 (M1~M5: IPC, 컨텍스트 주입, 폭주 방지, 오케스트레이터, SSE) | Draft |
+| [v11-frontend-war-room.md](prds/v11-frontend-war-room.md) | 프론트엔드 상황실 War Room (M6~M8: 레이아웃, 브리핑/결정 카드, 디브리프/타임라인) | Draft |

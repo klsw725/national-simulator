@@ -54,12 +54,31 @@ def transform_content(text: str) -> str:
     return result
 
 
-def map_actions_to_geopolitics(actions: list[dict]) -> list[dict]:
+def map_actions_to_geopolitics(
+    actions: list[dict],
+    source_filter: str | None = None,
+) -> list[dict]:
     mapped = []
+    seen_event_types_this_round: set[str] = set()
+
     for action in actions:
         action_copy = dict(action)
+        metadata = action_copy.get("metadata")
+        source = metadata.get("source") if isinstance(metadata, dict) else None
+
+        if source_filter is not None and source != source_filter:
+            continue
+
+        if source in {"geo_event", "user_decision"}:
+            continue
+
         raw_type = (action_copy.get("action_type") or "").lower()
         geo_type = GEOPOLITICS_ACTION_MAP.get(raw_type, raw_type)
+
+        if geo_type in seen_event_types_this_round:
+            continue
+
+        seen_event_types_this_round.add(geo_type)
         action_copy["geopolitics_action"] = geo_type
         action_copy["geopolitics_label"] = GEOPOLITICS_LABELS.get(geo_type, geo_type)
 

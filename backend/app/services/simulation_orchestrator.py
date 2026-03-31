@@ -13,9 +13,12 @@ Pipeline:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import uuid
@@ -28,11 +31,14 @@ from app.geopolitics.events import GeopoliticsEvent
 from app.models.scenario import GeopoliticsMode, SimulationParams
 from app.ontology.versioning import OntologyVersioning
 from app.services.action_logger import ActionLogger
+from app.services.context_injection import build_inject_context
+from app.services.event_bus import event_bus
 from app.services.geopolitics_interactive import (
     build_actor_response_options,
     build_direction_options,
     create_geopolitics_decision_point,
     find_trigger_event,
+    get_latest_snapshot,
     link_snapshot_to_dp,
     save_geopolitics_snapshot,
     should_pause,
@@ -83,6 +89,9 @@ POLL_INTERVAL = settings.poll_interval
 
 
 class SimulationOrchestrator:
+    _wargame_processes: dict[str, asyncio.subprocess.Process] = {}
+    _wargame_heartbeat_tasks: dict[str, asyncio.Task] = {}
+
     def __init__(self, mf_client: MiroFishClient, sb_client=None):
         self.mf = mf_client
         self.sb_client = sb_client
@@ -433,6 +442,670 @@ class SimulationOrchestrator:
             "final_states": {a.actor_id: a.to_dict() for a in engine.get_all_actors()},
             "total_events": len(engine.get_event_log()),
         }
+
+    async def _emit_sse(self, scenario_id: str, event_type: str, data: dict[str, Any]) -> None:
+        await event_bus.emit(scenario_id, {"type": event_type, "data": data})
+
+    @staticmethod
+    def _wargame_paths(mf_simulation_id: str) -> tuple[Path, Path, Path]:
+        repo_root = Path(__file__).resolve().parents[3]
+        sim_dir = repo_root / "external" / "mirofish-backend" / "uploads" / "simulations" / mf_simulation_id
+        config_path = sim_dir / "simulation_config.json"
+        script_path = repo_root / "external" / "mirofish-backend" / "scripts" / "run_parallel_simulation.py"
+        return sim_dir, config_path, script_path
+
+    async def _start_wargame_process(
+        self,
+        mf_simulation_id: str,
+        max_rounds: int,
+        simulation_params: SimulationParams,
+    ) -> asyncio.subprocess.Process:
+        sim_dir, config_path, script_path = self._wargame_paths(mf_simulation_id)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["round_control_enabled"] = True
+        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        cmd = [
+            sys.executable,
+            str(script_path),
+            "--config",
+            str(config_path),
+            "--max-rounds",
+            str(max_rounds),
+        ]
+        if simulation_params.platform == "twitter":
+            cmd.append("--twitter-only")
+        elif simulation_params.platform == "reddit":
+            cmd.append("--reddit-only")
+        if simulation_params.web_search_enabled:
+            cmd.append("--tools-enabled")
+        if simulation_params.geopolitics_enabled:
+            cmd.append("--geopolitics-enabled")
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(sim_dir),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        self._wargame_processes[mf_simulation_id] = process
+        return process
+
+    async def _send_control_signal(self, process: asyncio.subprocess.Process, payload: dict[str, Any]) -> None:
+        if not process.stdin:
+            raise RuntimeError("Wargame process stdin is not available")
+        process.stdin.write((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+        await process.stdin.drain()
+
+    async def _read_control_signal(self, process: asyncio.subprocess.Process) -> dict[str, Any]:
+        if not process.stdout:
+            raise RuntimeError("Wargame process stdout is not available")
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                if process.returncode is not None:
+                    raise RuntimeError(f"Wargame process exited: {process.returncode}")
+                continue
+            text = line.decode("utf-8").strip()
+            if not text:
+                continue
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                continue
+
+    async def _save_round_actions(
+        self,
+        scenario_id: str,
+        round_num: int,
+        actions: list[dict[str, Any]],
+    ) -> None:
+        await ActionLogger.log(
+            "wargame.round_actions",
+            scenario_id,
+            payload={"round": round_num, "actions_count": len(actions), "actions": actions},
+        )
+
+    async def _save_geopolitics_events_for_round(
+        self,
+        scenario_id: str,
+        result_id: str,
+        round_result: dict[str, Any],
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            for event_dict in round_result.get("events", []) + round_result.get("cascade_events", []):
+                event_id = f"ge_{uuid.uuid4().hex[:12]}"
+                await conn.execute(
+                    """INSERT INTO geopolitics_events
+                       (id, scenario_id, simulation_result_id, action_type, actor_id,
+                        target_actor_ids, content, magnitude, round_number, event_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                    event_id,
+                    scenario_id,
+                    result_id,
+                    event_dict.get("event_type", ""),
+                    event_dict.get("source_actor_id", ""),
+                    json.dumps(event_dict.get("target_actor_ids", [])),
+                    event_dict.get("description", ""),
+                    event_dict.get("magnitude", 0.5),
+                    event_dict.get("round_number", 0),
+                    now,
+                )
+
+    async def _save_wargame_state(
+        self,
+        scenario_id: str,
+        result_id: str,
+        current_round: int,
+        total_rounds: int,
+        engine: DecisionEngine | None,
+        process_pid: int | None,
+        status: str,
+        last_heartbeat: str | None = None,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        engine_state = json.dumps(engine.serialize_state() if engine else {}, ensure_ascii=False)
+        heartbeat = last_heartbeat or now
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            existing = await conn.fetchrow(
+                "SELECT id FROM wargame_state WHERE result_id = $1 ORDER BY created_at DESC LIMIT 1",
+                result_id,
+            )
+            if existing:
+                await conn.execute(
+                    """UPDATE wargame_state
+                       SET current_round = $1, total_rounds = $2, engine_state = $3,
+                           process_pid = $4, status = $5, last_heartbeat = $6, updated_at = $7
+                       WHERE id = $8""",
+                    current_round,
+                    total_rounds,
+                    engine_state,
+                    process_pid,
+                    status,
+                    heartbeat,
+                    now,
+                    existing["id"],
+                )
+            else:
+                state_id = f"wg_{uuid.uuid4().hex[:12]}"
+                await conn.execute(
+                    """INSERT INTO wargame_state
+                       (id, scenario_id, result_id, current_round, total_rounds, engine_state,
+                        process_pid, status, last_heartbeat, created_at, updated_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
+                    state_id,
+                    scenario_id,
+                    result_id,
+                    current_round,
+                    total_rounds,
+                    engine_state,
+                    process_pid,
+                    status,
+                    heartbeat,
+                    now,
+                    now,
+                )
+
+    def _apply_simulation_actions_to_engine(
+        self,
+        engine: DecisionEngine,
+        round_actions: list[dict[str, Any]],
+    ) -> None:
+        mapped_actions = map_actions_to_geopolitics(round_actions)
+        actor_ids = {a.actor_id for a in engine.get_all_actors()}
+        for action in mapped_actions:
+            source_actor = action.get("agent_name", "")
+            if source_actor not in actor_ids:
+                continue
+            raw_type = (action.get("geopolitics_action") or action.get("action_type") or "").lower()
+            event_type = GEOPOLITICS_ACTION_MAP.get(raw_type, raw_type)
+            if not event_type:
+                continue
+            targets = [aid for aid in actor_ids if aid != source_actor][:2]
+            if not targets:
+                continue
+            engine.apply_event(
+                GeopoliticsEvent(
+                    event_type=event_type,
+                    source_actor_id=source_actor,
+                    target_actor_ids=targets,
+                    magnitude=0.3,
+                    description=f"{source_actor}: {event_type}",
+                )
+            )
+
+    @staticmethod
+    def _compute_tension(actor_states: dict[str, Any]) -> float:
+        if not actor_states:
+            return 0.0
+        values = [float(s.get("threat_perception", 0.0)) for s in actor_states.values() if isinstance(s, dict)]
+        return round(sum(values) / len(values), 4) if values else 0.0
+
+    async def _cancel_heartbeat_task(self, result_id: str) -> None:
+        task = self._wargame_heartbeat_tasks.pop(result_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def _is_latest_decision_resolved(self, scenario_id: str, result_id: str) -> bool:
+        snapshot = await get_latest_snapshot(scenario_id, result_id)
+        if not snapshot:
+            return False
+        pending_dp_id = snapshot.get("pending_decision_point_id")
+        if not pending_dp_id:
+            return False
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            status = await conn.fetchval("SELECT status FROM decision_points WHERE id = $1", pending_dp_id)
+        return status == "resolved"
+
+    async def _finalize_wargame(
+        self,
+        scenario_id: str,
+        result_id: str,
+        mf_simulation_id: str,
+        simulation_params: SimulationParams,
+        total_rounds: int,
+    ) -> None:
+        await self._step_report(scenario_id, result_id, mf_simulation_id)
+        await self._collect_and_store_results(result_id, mf_simulation_id, simulation_params=simulation_params)
+        await self._save_wargame_state(
+            scenario_id,
+            result_id,
+            current_round=total_rounds,
+            total_rounds=total_rounds,
+            engine=None,
+            process_pid=None,
+            status="completed",
+        )
+        await self._emit_sse(
+            scenario_id,
+            "simulation_complete",
+            {"result_id": result_id, "total_rounds": total_rounds},
+        )
+
+    async def _start_heartbeat_loop(
+        self,
+        scenario_id: str,
+        result_id: str,
+        mf_simulation_id: str,
+        simulation_params: SimulationParams,
+        total_rounds: int,
+        current_round: int,
+    ) -> None:
+        ttl_minutes = simulation_params.wargame_idle_ttl_minutes
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+        process = self._wargame_processes.get(mf_simulation_id)
+        if not process:
+            return
+        while datetime.now(timezone.utc) < deadline:
+            await asyncio.sleep(30)
+            process = self._wargame_processes.get(mf_simulation_id)
+            if not process or process.returncode is not None:
+                await self._save_wargame_state(
+                    scenario_id,
+                    result_id,
+                    current_round=current_round,
+                    total_rounds=total_rounds,
+                    engine=None,
+                    process_pid=None,
+                    status="crashed",
+                )
+                return
+            if await self._is_latest_decision_resolved(scenario_id, result_id):
+                return
+            ts = datetime.now(timezone.utc).isoformat()
+            await self._send_control_signal(process, {"type": "heartbeat", "timestamp": ts})
+            try:
+                signal = await asyncio.wait_for(self._read_control_signal(process), timeout=5)
+                if signal.get("type") != "heartbeat_ack":
+                    continue
+            except Exception:
+                continue
+            await self._save_wargame_state(
+                scenario_id,
+                result_id,
+                current_round=current_round,
+                total_rounds=total_rounds,
+                engine=None,
+                process_pid=process.pid,
+                status="paused",
+                last_heartbeat=ts,
+            )
+
+        process = self._wargame_processes.get(mf_simulation_id)
+        if process and process.returncode is None:
+            await self._send_control_signal(process, {"type": "stop", "reason": "idle_timeout"})
+            try:
+                await asyncio.wait_for(process.wait(), timeout=20)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+        await self._save_wargame_state(
+            scenario_id,
+            result_id,
+            current_round=current_round,
+            total_rounds=total_rounds,
+            engine=None,
+            process_pid=None,
+            status="completed",
+        )
+        await self._finalize_wargame(
+            scenario_id,
+            result_id,
+            mf_simulation_id,
+            simulation_params,
+            total_rounds,
+        )
+
+    async def _run_wargame_round_loop(
+        self,
+        scenario_id: str,
+        result_id: str,
+        mf_simulation_id: str,
+        process: asyncio.subprocess.Process,
+        start_round: int,
+        total_rounds: int,
+        simulation_params: SimulationParams,
+        engine: DecisionEngine | None,
+        inject_context: dict[str, Any] | None,
+    ) -> tuple[str, int]:
+        current_inject = inject_context
+        for round_num in range(start_round, total_rounds + 1):
+            payload = {"type": "proceed", "round": round_num}
+            if current_inject:
+                payload["inject_context"] = current_inject
+            await self._send_control_signal(process, payload)
+            signal = await self._read_control_signal(process)
+            signal_type = signal.get("type")
+            if signal_type == "error":
+                raise RuntimeError(signal.get("message", "wargame round error"))
+            if signal_type != "round_complete":
+                continue
+
+            round_actions = signal.get("actions", [])
+            if not isinstance(round_actions, list):
+                round_actions = []
+            await self._save_round_actions(scenario_id, round_num, round_actions)
+
+            if engine is None:
+                engine = self._init_geopolitics_engine(round_actions)
+            round_result: dict[str, Any] = {"round": round_num, "events": [], "cascade_events": [], "actor_states": {}}
+            if engine is not None:
+                self._apply_simulation_actions_to_engine(engine, round_actions)
+                round_result = engine.run_single_round()
+                await self._save_geopolitics_events_for_round(scenario_id, result_id, round_result)
+
+            stats = signal.get("stats", {}) if isinstance(signal.get("stats"), dict) else {}
+            geo_event_count = len(round_result.get("events", [])) + len(round_result.get("cascade_events", []))
+            actor_states = round_result.get("actor_states", {}) if isinstance(round_result.get("actor_states"), dict) else {}
+            await self._save_wargame_state(
+                scenario_id,
+                result_id,
+                current_round=round_num,
+                total_rounds=total_rounds,
+                engine=engine,
+                process_pid=process.pid,
+                status="running",
+            )
+            await self._emit_sse(
+                scenario_id,
+                "round_complete",
+                {
+                    "round": round_num,
+                    "actions_count": len(round_actions),
+                    "geo_events": geo_event_count,
+                    "stats": stats,
+                },
+            )
+            await self._emit_sse(
+                scenario_id,
+                "round_stats",
+                {
+                    "round": round_num,
+                    "tension": self._compute_tension(actor_states),
+                    "actor_states": actor_states,
+                },
+            )
+
+            should_pause_now = bool(engine) and should_pause(
+                round_result,
+                simulation_params.geopolitics_mode,
+                simulation_params.geopolitics_player_actor_id,
+                simulation_params.geopolitics_pause_threshold,
+            )
+            if should_pause_now and engine is not None:
+                snapshot_id = await save_geopolitics_snapshot(
+                    scenario_id,
+                    result_id,
+                    round_num,
+                    engine,
+                    simulation_params.geopolitics_mode,
+                    simulation_params.geopolitics_player_actor_id,
+                )
+                if simulation_params.geopolitics_mode == GeopoliticsMode.ACTOR_ROLE and simulation_params.geopolitics_player_actor_id:
+                    trigger_event = find_trigger_event(round_result, simulation_params.geopolitics_player_actor_id)
+                    options = build_actor_response_options(engine, simulation_params.geopolitics_player_actor_id, trigger_event or {})
+                    dp_type = "geopolitics_actor_response"
+                    recommended = next((o["id"] for o in options if o.get("data", {}).get("engine_recommended")), options[0]["id"])
+                else:
+                    options = build_direction_options(round_result)
+                    dp_type = "geopolitics_direction"
+                    recommended = "maintain"
+
+                dp_id = await create_geopolitics_decision_point(scenario_id, dp_type, options, recommended)
+                await link_snapshot_to_dp(snapshot_id, dp_id)
+                await self._update_status(scenario_id, result_id, f"wargame:paused:round_{round_num}")
+                await self._save_wargame_state(
+                    scenario_id,
+                    result_id,
+                    current_round=round_num,
+                    total_rounds=total_rounds,
+                    engine=engine,
+                    process_pid=process.pid,
+                    status="paused",
+                )
+                await self._emit_sse(
+                    scenario_id,
+                    "phase_change",
+                    {"phase": "decision", "round": round_num},
+                )
+                await self._emit_sse(
+                    scenario_id,
+                    "decision_required",
+                    {"round": round_num, "decision_point_id": dp_id},
+                )
+                await self._cancel_heartbeat_task(result_id)
+                heartbeat_task = asyncio.create_task(
+                    self._start_heartbeat_loop(
+                        scenario_id,
+                        result_id,
+                        mf_simulation_id,
+                        simulation_params,
+                        total_rounds,
+                        round_num,
+                    )
+                )
+                self._wargame_heartbeat_tasks[result_id] = heartbeat_task
+                return "paused", round_num
+
+            current_inject = build_inject_context(engine, round_result) if engine else None
+
+        return "completed", total_rounds
+
+    async def run_wargame_pipeline(
+        self,
+        scenario_id: str,
+        result_id: str,
+        seed_text: str,
+        max_rounds: int,
+        simulation_params: SimulationParams,
+    ) -> None:
+        try:
+            if self.sb_client:
+                try:
+                    snapshot_svc = SnapshotService(self.sb_client)
+                    pool = get_pool()
+                    async with pool.acquire() as conn:
+                        scn_row = await conn.fetchrow(
+                            "SELECT region_bbox FROM scenarios WHERE id = $1",
+                            scenario_id,
+                        )
+                    bbox = (
+                        json.loads(scn_row["region_bbox"])
+                        if scn_row and scn_row["region_bbox"]
+                        else None
+                    )
+                    await snapshot_svc.create_snapshot(scenario_id, bbox)
+                except Exception:
+                    logger.warning("[%s] Snapshot creation failed, continuing", scenario_id)
+
+            await self._emit_sse(scenario_id, "phase_change", {"phase": "simulation", "round": 0})
+            ontology_result = await self._step_ontology(
+                scenario_id,
+                result_id,
+                seed_text,
+                simulation_params=simulation_params,
+            )
+            await self._register_ontology_version(scenario_id, result_id, ontology_result)
+            project_id = ontology_result.get("project_id", "")
+            await self._step_graph_build(scenario_id, result_id, project_id)
+            mf_simulation_id = await self._step_create_prepare(
+                scenario_id,
+                result_id,
+                project_id,
+                simulation_params=simulation_params,
+            )
+
+            process = await self._start_wargame_process(mf_simulation_id, max_rounds, simulation_params)
+            ready_signal = await self._read_control_signal(process)
+            if ready_signal.get("type") != "ready":
+                raise RuntimeError(f"unexpected control signal: {ready_signal}")
+
+            await self._update_status(scenario_id, result_id, "simulating:wargame")
+            await self._save_wargame_state(
+                scenario_id,
+                result_id,
+                current_round=0,
+                total_rounds=max_rounds,
+                engine=None,
+                process_pid=process.pid,
+                status="running",
+            )
+
+            loop_status, _ = await self._run_wargame_round_loop(
+                scenario_id,
+                result_id,
+                mf_simulation_id,
+                process,
+                start_round=1,
+                total_rounds=max_rounds,
+                simulation_params=simulation_params,
+                engine=None,
+                inject_context=None,
+            )
+            if loop_status == "paused":
+                return
+
+            await self._send_control_signal(process, {"type": "stop", "reason": "completed"})
+            await asyncio.wait_for(process.wait(), timeout=30)
+            self._wargame_processes.pop(mf_simulation_id, None)
+            await self._finalize_wargame(
+                scenario_id,
+                result_id,
+                mf_simulation_id,
+                simulation_params,
+                max_rounds,
+            )
+        except Exception as exc:
+            logger.exception("[%s] Wargame pipeline failed", scenario_id)
+            await self._update_status(scenario_id, result_id, "failed")
+            await ActionLogger.log(
+                "pipeline.wargame_failed",
+                scenario_id,
+                payload={"error": str(exc)[:500]},
+            )
+
+    async def _continue_wargame(
+        self,
+        scenario_id: str,
+        result_id: str,
+        simulation_params: SimulationParams,
+    ) -> None:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT mirofish_simulation_id FROM simulation_results WHERE id = $1",
+                result_id,
+            )
+        if not row or not row["mirofish_simulation_id"]:
+            raise RuntimeError("MiroFish simulation id not found for wargame resume")
+        mf_simulation_id = row["mirofish_simulation_id"]
+
+        await self._cancel_heartbeat_task(result_id)
+        process = self._wargame_processes.get(mf_simulation_id)
+        if not process or process.returncode is not None:
+            raise RuntimeError("Wargame process is not alive")
+
+        snapshot = await get_latest_snapshot(scenario_id, result_id)
+        if not snapshot:
+            raise RuntimeError("No geopolitics snapshot found")
+
+        pending_dp_id = snapshot.get("pending_decision_point_id")
+        async with pool.acquire() as conn:
+            wargame_row = await conn.fetchrow(
+                "SELECT total_rounds FROM wargame_state WHERE result_id = $1 ORDER BY updated_at DESC LIMIT 1",
+                result_id,
+            )
+            dp_row = await conn.fetchrow(
+                "SELECT type, options, selected_option_id, custom_data FROM decision_points WHERE id = $1 AND status = 'resolved'",
+                pending_dp_id,
+            )
+        if not dp_row:
+            raise RuntimeError("Decision point is not resolved")
+
+        engine_state = json.loads(snapshot["engine_state"]) if snapshot.get("engine_state") else {}
+        engine = DecisionEngine.from_state(engine_state)
+        mode = GeopoliticsMode(snapshot["geopolitics_mode"])
+
+        selected_option = dp_row["selected_option_id"]
+        user_decision: dict[str, Any] | None = None
+        if mode == GeopoliticsMode.ACTOR_ROLE and snapshot.get("player_actor_id") and selected_option:
+            actor_id = snapshot["player_actor_id"]
+            engine.override_next_action(actor_id, selected_option)
+            actor = engine.get_actor(actor_id)
+            user_decision = {"action": selected_option, "actor_name": actor.name if actor else actor_id}
+        elif mode == GeopoliticsMode.GAME_MASTER:
+            options = json.loads(dp_row["options"]) if dp_row["options"] else []
+            selected = next((o for o in options if o["id"] == selected_option), None)
+            if selected and selected.get("data"):
+                deltas = selected["data"].get("state_deltas", {})
+                applies_to = selected["data"].get("applies_to", "all")
+                engine.apply_direction_deltas(deltas, applies_to)
+                user_decision = {"action": selected_option or "maintain", "actor_name": "GameMaster"}
+
+        inject_context = build_inject_context(
+            engine,
+            {
+                "round": snapshot["round_number"],
+                "events": [],
+                "cascade_events": [],
+            },
+            user_decision=user_decision,
+        )
+
+        await self._emit_sse(
+            scenario_id,
+            "decision_resolved",
+            {"decision_point_id": pending_dp_id, "selected": selected_option},
+        )
+        await self._emit_sse(
+            scenario_id,
+            "phase_change",
+            {"phase": "simulation", "round": snapshot["round_number"] + 1},
+        )
+        await self._update_status(scenario_id, result_id, "simulating:wargame")
+
+        total_rounds = int(wargame_row["total_rounds"]) if wargame_row else int(snapshot["round_number"])
+        loop_status, _ = await self._run_wargame_round_loop(
+            scenario_id,
+            result_id,
+            mf_simulation_id,
+            process,
+            start_round=int(snapshot["round_number"]) + 1,
+            total_rounds=total_rounds,
+            simulation_params=simulation_params,
+            engine=engine,
+            inject_context=inject_context,
+        )
+        if loop_status == "paused":
+            return
+
+        await self._send_control_signal(process, {"type": "stop", "reason": "completed"})
+        await asyncio.wait_for(process.wait(), timeout=30)
+        self._wargame_processes.pop(mf_simulation_id, None)
+        await self._finalize_wargame(
+            scenario_id,
+            result_id,
+            mf_simulation_id,
+            simulation_params,
+            total_rounds,
+        )
+
+    async def continue_wargame(
+        self,
+        scenario_id: str,
+        result_id: str,
+        simulation_params: SimulationParams,
+    ) -> None:
+        await self._continue_wargame(scenario_id, result_id, simulation_params)
 
     async def _save_checkpoint_data(self, result_id: str, data: dict) -> None:
         """Save intermediate result JSON to checkpoint_data column."""

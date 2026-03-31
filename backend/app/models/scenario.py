@@ -24,6 +24,8 @@ class SimulationParams(BaseModel):
     geopolitics_player_actor_id: str | None = None
     geopolitics_rounds: int = Field(default=3, ge=1, le=10)
     geopolitics_pause_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    wargame_enabled: bool = Field(default=False, description="Enable wargame loop mode")
+    wargame_idle_ttl_minutes: int = Field(default=30, ge=1, le=120, description="Max pause duration in minutes")
 
 
 class ScenarioCreate(BaseModel):
