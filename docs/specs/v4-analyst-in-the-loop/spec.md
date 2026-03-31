@@ -300,3 +300,16 @@ V4 완료의 정의:
 | 브리핑 문서의 정확성 | Medium | AI 초안 + 분석관 검토/수정 단계 필수 |
 | 인터랙티브 모드의 UX 복잡도 | Medium | 기존 자동 모드 유지. 인터랙티브는 선택 옵션 |
 | 서킷 브레이커 오탐 (정상 서비스 차단) | Low | 보수적 임계치 (5회 연속 실패). 수동 리셋 UI |
+
+---
+
+## PRD 인덱스
+
+| PRD | 설명 | 상태 |
+|-----|------|------|
+| [v4-ai-copilot.md](prds/v4-ai-copilot.md) | AI 코파일럿 | Complete |
+| [v4-ai-guided-decisions.md](prds/v4-ai-guided-decisions.md) | AI 가이드 결정 지점 | Complete |
+| [v4-analyst-workspace.md](prds/v4-analyst-workspace.md) | 분석관 워크스페이스 | Complete |
+| [v4-export-briefing.md](prds/v4-export-briefing.md) | 결과 내보내기 + 브리핑 생성 | Complete |
+| [v4-interactive-simulation.md](prds/v4-interactive-simulation.md) | 인터랙티브 시뮬레이션 | Complete |
+| [v4-operational-resilience.md](prds/v4-operational-resilience.md) | 운영 안정성 | Complete |

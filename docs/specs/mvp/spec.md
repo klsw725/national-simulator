@@ -1276,3 +1276,19 @@ Gateway API (FastAPI, port 4000)
     ├── GeopoliticsPlatform (12 액션 타입)
     └── GeopoliticsActionType (external/mirofish-backend)
 ```
+
+---
+
+## PRD 인덱스
+
+| PRD | 설명 | 상태 |
+|-----|------|------|
+| [frontend-foundation.md](prds/frontend-foundation.md) | Frontend Foundation + OSINT Map | Complete |
+| [gateway-api-foundation.md](prds/gateway-api-foundation.md) | Gateway API Foundation | Complete |
+| [multi-feed-integration.md](prds/multi-feed-integration.md) | 다중 피드 통합 (Multi-Feed Integration) | Complete |
+| [result-projection.md](prds/result-projection.md) | Result Projection | Complete |
+| [scenario-management-ui.md](prds/scenario-management-ui.md) | Scenario Management UI | Complete |
+| [seed-generation.md](prds/seed-generation.md) | Seed Generation | Complete |
+| [shadowbroker-integration.md](prds/shadowbroker-integration.md) | ShadowBroker Integration | Complete |
+| [simulation-orchestration.md](prds/simulation-orchestration.md) | Simulation Orchestration | Complete |
+| [simulation-visualization.md](prds/simulation-visualization.md) | Simulation Visualization | Complete |

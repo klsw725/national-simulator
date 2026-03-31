@@ -267,3 +267,11 @@ V5 완료의 정의:
 | MAXS (arXiv:2601.09259, 2025) | 기존 What-If 비교 메트릭 (tension_advantage 등) |
 | awslabs/causalif (Apache-2.0, 2025) | LLM prior + Hill Climb + BDeu 하이브리드 패턴 |
 | GraphRAG-Causal (arXiv:2506.11600) | Neo4j + 인과 지식 그래프 아키텍처 |
+
+---
+
+## PRD 인덱스
+
+| PRD | 설명 | 상태 |
+|-----|------|------|
+| [v5-full-osint-integration.md](prds/v5-full-osint-integration.md) | 전체 OSINT 피드 통합 + 상황 인식 패널 | Complete |

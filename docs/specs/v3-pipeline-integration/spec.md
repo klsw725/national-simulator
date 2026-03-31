@@ -273,3 +273,16 @@ V3 완료의 정의:
 | simulation_hours 축소 시 시뮬레이션 품질 저하 | Medium | 최소 12시간 권장, 품질 메트릭 도입 |
 | DecisionEngine + OASIS 동시 실행 시 상태 충돌 | Medium | DecisionEngine은 OASIS 결과를 후처리만 (동시 실행 아님) |
 | OASIS 버전 업데이트 시 GeopoliticsPlatform 호환성 | Low | OASIS 버전 고정, 업스트림 모니터링 |
+
+---
+
+## PRD 인덱스
+
+| PRD | 설명 | 상태 |
+|-----|------|------|
+| [v3-geopolitics-integration.md](prds/v3-geopolitics-integration.md) | 지정학 엔진 ↔ 시뮬레이션 통합 | Complete |
+| [v3-graph-tab-ui.md](prds/v3-graph-tab-ui.md) | 그래프 뷰어 상시 접근 | Complete |
+| [v3-intelligent-seed.md](prds/v3-intelligent-seed.md) | 지능형 시드 생성 (ER + Observations 연동) | Complete |
+| [v3-oasis-runtime.md](prds/v3-oasis-runtime.md) | OASIS 런타임 통합 테스트 | Complete |
+| [v3-simulation-params.md](prds/v3-simulation-params.md) | 시뮬레이션 파라미터 완전 제어 | Complete |
+| [v3-web-search-agents.md](prds/v3-web-search-agents.md) | DuckDuckGo 웹 검색 통합 | Complete |
