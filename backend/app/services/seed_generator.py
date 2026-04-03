@@ -599,7 +599,7 @@ class SeedGenerator:
         ctx = await self._collect_and_summarize(bbox, question, region_name, web_search_enabled)
 
         prompt = SEED_GENERATION_PROMPT.format(**ctx["prompt_vars"])
-        seed_text = await self._call_llm(prompt)
+        seed_text = await self._generate_seed_text(prompt)
 
         logger.info(
             "Seed generated: %d vessels, %d actors, %d flights, %d sats, tension=%.1f, +%d osint, +%d web",
@@ -613,6 +613,54 @@ class SeedGenerator:
         )
 
         return {"text": seed_text, "metadata": ctx["metadata"]}
+
+    async def _generate_seed_text(self, prompt: str) -> str:
+        seed_text = await self._call_llm(prompt)
+        if self._is_invalid_seed_text(seed_text):
+            logger.warning("Seed generation returned meta/instructional text; retrying with stricter prompt")
+            retry_prompt = (
+                f"{prompt}\n\n"
+                "중요: 직전 답변처럼 작업계획, 프롬프트 설명, 메타 지시문, 사고과정, 영어 작업 메모를 출력하지 마세요. "
+                "최종 결과물인 시드 문서 본문만 한국어 마크다운으로 바로 출력하세요."
+            )
+            seed_text = await self._call_llm(retry_prompt, temperature=0.2)
+
+        if self._is_invalid_seed_text(seed_text):
+            raise ValueError("LLM returned invalid seed text")
+
+        return seed_text.strip()
+
+    def _is_invalid_seed_text(self, text: str) -> bool:
+        normalized = text.strip()
+        if len(normalized) < 120:
+            return True
+
+        lowered = normalized.lower()
+        meta_markers = [
+            "we need to",
+            "let's craft",
+            "provide summary",
+            "within ~2000 characters",
+            "approx 2000 characters",
+            "use osint data",
+            "다음 형식으로 작성하세요",
+            "작업계획",
+            "프롬프트 설명",
+            "사고과정",
+        ]
+        if any(marker in lowered for marker in meta_markers):
+            return True
+
+        required_markers = [
+            "현재 상황 요약",
+            "주요 행위자",
+            "긴장 요인",
+            "예상 반응",
+        ]
+        if not any(marker in normalized for marker in required_markers):
+            return True
+
+        return False
 
     async def _get_resolver_context(self, bbox: list[float]) -> dict[str, Any]:
         pool = get_pool()
@@ -690,7 +738,9 @@ class SeedGenerator:
             max_tokens=2048,
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
-        return response.choices[0].message.content or ""
+        from app.utils.llm_compat import extract_content
+
+        return extract_content(response.choices[0].message)
 
     async def generate_options(
         self,

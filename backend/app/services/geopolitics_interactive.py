@@ -71,6 +71,7 @@ def should_pause(
     mode: GeopoliticsMode,
     player_actor_id: str | None,
     threshold: float = 0.5,
+    pause_interval: int = 3,
 ) -> bool:
     if mode == GeopoliticsMode.AUTO:
         return False
@@ -90,10 +91,23 @@ def should_pause(
             for event in events
         )
 
+    current_round = int(round_result.get("round") or 0)
+    if current_round < 2:
+        return False
+
     cascade_events = round_result.get("cascade_events", [])
-    return bool(cascade_events) or any(
-        float(event.get("magnitude", 0.0)) >= threshold for event in events
-    )
+    if cascade_events:
+        return True
+
+    # Non-cascade pauses only on interval-aligned rounds (e.g. 2, 5, 8 with interval=3)
+    if pause_interval > 1 and (current_round - 2) % pause_interval != 0:
+        return False
+
+    magnitudes = [max(0.0, float(event.get("magnitude", 0.0))) for event in events]
+    high_impact_count = sum(1 for magnitude in magnitudes if magnitude >= threshold)
+    cumulative_magnitude = sum(magnitudes)
+
+    return high_impact_count >= 2 or cumulative_magnitude >= (threshold * 2)
 
 
 def build_actor_response_options(

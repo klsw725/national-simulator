@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { X, AlertTriangle, RotateCcw, StopCircle } from "lucide-react";
-import { retrySimulation, pauseSimulation } from "@/lib/gatewayApi";
+import { useMemo, useState } from "react";
+import { X, AlertTriangle, RotateCcw } from "lucide-react";
+import { retrySimulation } from "@/lib/gatewayApi";
 import type { UseSimulationReturn } from "@/hooks/useSimulation";
+import { useLiveSimulation } from "@/hooks/useLiveSimulation";
 import ScenarioForm from "./ScenarioForm";
 import PipelineProgress from "./PipelineProgress";
 import CheckpointReview from "./CheckpointReview";
@@ -13,7 +14,6 @@ import ReportViewer from "./ReportViewer";
 import IntermediateResults from "./IntermediateResults";
 import GraphTab from "./GraphTab";
 import DecisionPointView from "./DecisionPointView";
-import GeopoliticsDecisionView from "./GeopoliticsDecisionView";
 import GeopoliticsView from "./GeopoliticsView";
 import HealthDashboard from "./HealthDashboard";
 import ExportPanel from "./ExportPanel";
@@ -21,19 +21,18 @@ import ComparisonView from "./ComparisonView";
 import AnalystDashboard from "./AnalystDashboard";
 import ScenarioSearch from "./ScenarioSearch";
 import ConversationPanel from "./ConversationPanel";
-import InteractiveSimulationView from "./InteractiveSimulationView";
 import WhatIfBranchView from "./WhatIfBranchView";
 import CausalDAGView from "./CausalDAGView";
 import CausalQueryPanel from "./CausalQueryPanel";
 import WarRoom from "../wargame/WarRoom";
 
-type Tab = "create" | "progress" | "interactive" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "conversation" | "compare" | "dashboard" | "health" | "causal";
+type Tab = "create" | "progress" | "what_if" | "decisions" | "list" | "graph" | "geopolitics" | "timeline" | "report" | "export" | "conversation" | "compare" | "dashboard" | "health" | "causal";
 
 type TabGroup = "scenario" | "simulation" | "analysis" | "system";
 
 const TAB_GROUPS: { key: TabGroup; label: string; tabs: Tab[] }[] = [
   { key: "scenario", label: "시나리오", tabs: ["create", "list", "compare"] },
-  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "interactive", "what_if", "decisions", "report"] },
+  { key: "simulation", label: "시뮬레이션", tabs: ["progress", "what_if", "decisions", "report"] },
   { key: "analysis", label: "분석", tabs: ["graph", "geopolitics", "timeline", "causal", "export", "conversation"] },
   { key: "system", label: "시스템", tabs: ["dashboard", "health"] },
 ];
@@ -51,21 +50,43 @@ interface Props {
   sim: UseSimulationReturn;
   onOpenWhatIfCompare?: (branchId: string) => void;
   onFlyTo?: (lng: number, lat: number) => void;
+  onWargameOverlay?: (lens: string | null, phase: string | null) => void;
 }
 
-export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompare, onFlyTo }: Props) {
+export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompare, onFlyTo, onWargameOverlay }: Props) {
   const [tab, setTab] = useState<Tab>("create");
+
+  const isWargameMode = sim.activeScenario?.simulation_params?.wargame_enabled === true;
+  const wargamePhaseActive =
+    sim.pipelineStatus?.status?.startsWith("simulating:wargame") ||
+    sim.pipelineStatus?.status?.startsWith("wargame:");
+  const wargameCompleted = isWargameMode && sim.pipelineStatus?.status === "completed";
+
+  const liveStatusForActions = useMemo(() => {
+    if (isWargameMode && wargamePhaseActive) return "simulating:running";
+    return sim.pipelineStatus?.status ?? null;
+  }, [isWargameMode, wargamePhaseActive, sim.pipelineStatus?.status]);
+
+  const live = useLiveSimulation(
+    isWargameMode && wargamePhaseActive ? sim.activeScenario?.id ?? null : null,
+    liveStatusForActions,
+  );
 
   if (!open) return null;
 
-  const isWargameMode = sim.activeScenario?.simulation_params?.wargame_enabled === true;
-  if (isWargameMode && sim.activeScenario) {
+  const analysisOrSystemTab = getGroupForTab(tab) === "analysis" || getGroupForTab(tab) === "system";
+  if (isWargameMode && sim.activeScenario && (wargamePhaseActive || (wargameCompleted && tab !== "report" && !analysisOrSystemTab))) {
     return (
       <WarRoom
         scenarioId={sim.activeScenario.id}
         totalRounds={sim.activeScenario.simulation_params?.geopolitics_rounds ?? sim.activeScenario.max_rounds}
-        actions={[]}
+        actions={live.actions}
         onClose={onClose}
+        onViewReport={() => setTab("report")}
+        onCreateWhatIf={(round) => {
+          onOpenWhatIfCompare?.(`whatif-round-${round}`);
+        }}
+        onWargameOverlay={onWargameOverlay}
       />
     );
   }
@@ -84,7 +105,6 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: "create", label: "새 시나리오", show: true },
     { key: "progress", label: "진행 상태", show: true },
-    { key: "interactive", label: "인터랙티브", show: hasActiveScenario },
     { key: "what_if", label: "What-If", show: hasActiveScenario },
     { key: "decisions", label: "결정", show: hasActiveScenario },
     { key: "list", label: "목록", show: true },
@@ -372,51 +392,12 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
               onContinue={sim.continueCheckpoint}
               onCancel={() => setTab("list")}
             />
-          ) : sim.pipelineStatus?.status === "simulating:geopolitics_paused" && sim.activeScenario ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <PipelineProgress pipelineStatus={sim.pipelineStatus} onReview={() => {}} />
-              <GeopoliticsDecisionView
-                scenarioId={sim.activeScenario.id}
-                onResolved={() => sim.loadScenarios()}
-              />
-            </div>
           ) : sim.pipelineStatus?.status?.startsWith("simulating:") ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ flex: 1 }}>
                   <PipelineProgress pipelineStatus={sim.pipelineStatus} onReview={() => {}} />
                 </div>
-                <button
-                  onClick={async () => {
-                    if (!sim.activeScenario?.id) return;
-                    if (!confirm("시뮬레이션을 중단하시겠습니까?")) return;
-                    try {
-                      await pauseSimulation(sim.activeScenario.id);
-                      sim.loadScenarios();
-                    } catch {
-                      alert("중단 실패");
-                    }
-                  }}
-                  style={{
-                    padding: "6px 12px",
-                    background: "rgba(239, 68, 68, 0.1)",
-                    border: "1px solid var(--accent-red, #ef4444)",
-                    borderRadius: 4,
-                    color: "var(--accent-red, #ef4444)",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
-                    marginLeft: 12,
-                    alignSelf: "flex-start",
-                  }}
-                >
-                  <StopCircle size={14} aria-hidden="true" />
-                  중단
-                </button>
               </div>
               <div style={{ flex: 1, minHeight: 0, marginTop: 12 }}>
                 <IntermediateResults
@@ -433,10 +414,6 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
               }}
             />
           )
-        )}
-
-        {tab === "interactive" && (
-          <InteractiveSimulationView scenarioId={sim.activeScenario?.id} />
         )}
 
         {tab === "what_if" && (
