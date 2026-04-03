@@ -25,6 +25,7 @@ from app.routers import (
     simulation_events,
     simulation_live,
     simulation_run,
+    simulation_stream,
 )
 
 
@@ -67,6 +68,7 @@ app.include_router(simulation_events.router)
 app.include_router(simulation_live.router)
 app.include_router(scenario.router)
 app.include_router(osint.router)
+app.include_router(simulation_stream.router)
 
 
 @app.get("/api/health")
