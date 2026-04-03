@@ -385,6 +385,20 @@ class MiroFishClient:
         body = resp.json()
         return body.get("data", body)
 
+    async def get_simulation_config(self, simulation_id: str) -> dict[str, Any]:
+        """GET /api/simulation/{id}/config — 시뮬레이션 설정 조회."""
+        resp = await self._request("get", f"/api/simulation/{simulation_id}/config")
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def patch_simulation_config(self, simulation_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        """PATCH /api/simulation/{id}/config — 시뮬레이션 설정 부분 업데이트."""
+        resp = await self._request("patch", f"/api/simulation/{simulation_id}/config", json=patch)
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
     # ------------------------------------------------------------------
     # Interview (명령 대기 모드)
     # ------------------------------------------------------------------

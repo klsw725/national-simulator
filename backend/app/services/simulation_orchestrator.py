@@ -75,6 +75,13 @@ SIMULATION_REQUIREMENT = """\
 - 현실 세계에서 지정학적 긴장 상황이 발생하면 관련 국가들은 반드시 공식 입장을 표명합니다. 완전한 침묵은 비현실적입니다.
 - 국제기구(UN, ASEAN 등)는 최소한 "상황을 주시하고 있다"는 성명을 발표해야 합니다.
 - 강대국(Superpower)과 지역 강국(RegionalPower)은 적극적 행동(CREATE_POST, QUOTE_POST)의 비율이 전체 행동의 50% 이상이어야 합니다.
+
+【시뮬레이션 설정 생성 규칙 (config 생성 LLM 필수 준수)】
+- activity_level: 모든 에이전트의 activity_level은 최소 0.5 이상이어야 합니다. 0.5 미만은 에이전트가 사실상 비활성화됩니다.
+- posts_per_hour: 최소 0.3 이상으로 설정하세요.
+- off_peak_activity_multiplier: 최소 0.2 이상이어야 합니다. 0.05와 같은 극단적으로 낮은 값은 해당 시간대의 활동을 완전히 소멸시킵니다.
+- 시뮬레이션 전체에서 에이전트의 최소 50%가 1회 이상 행동해야 합니다.
+- 72라운드 기준, 최소 10개 라운드에서 에이전트 활동이 발생해야 합니다.
 """
 
 from app.config import settings
@@ -233,6 +240,9 @@ class SimulationOrchestrator:
             raise RuntimeError(f"Prepare failed: {error_msg}")
 
         logger.info("[%s] Prepare done", scenario_id)
+
+        await self._clamp_simulation_config(scenario_id, mf_simulation_id)
+
         await ActionLogger.log(
             "pipeline.prepare",
             scenario_id,
@@ -240,6 +250,52 @@ class SimulationOrchestrator:
         )
 
         return mf_simulation_id
+
+    MIN_ACTIVITY_LEVEL = 0.5
+    MIN_POSTS_PER_HOUR = 0.3
+    MIN_OFF_PEAK_MULTIPLIER = 0.2
+
+    async def _clamp_simulation_config(self, scenario_id: str, mf_simulation_id: str) -> None:
+        try:
+            config = await self.mf.get_simulation_config(mf_simulation_id)
+        except Exception as e:
+            logger.warning("[%s] Config fetch failed, skipping clamp: %s", scenario_id, e)
+            return
+
+        patched = False
+        patch: dict[str, Any] = {}
+
+        time_config = config.get("time_config", {})
+        time_patch: dict[str, Any] = {}
+        if (time_config.get("off_peak_activity_multiplier") or 0) < self.MIN_OFF_PEAK_MULTIPLIER:
+            time_patch["off_peak_activity_multiplier"] = self.MIN_OFF_PEAK_MULTIPLIER
+            patched = True
+
+        if time_patch:
+            patch["time_config"] = time_patch
+
+        agent_configs = config.get("agent_configs", [])
+        clamped_agents = []
+        for agent in agent_configs:
+            changed = False
+            if (agent.get("activity_level") or 0) < self.MIN_ACTIVITY_LEVEL:
+                agent["activity_level"] = self.MIN_ACTIVITY_LEVEL
+                changed = True
+            if (agent.get("posts_per_hour") or 0) < self.MIN_POSTS_PER_HOUR:
+                agent["posts_per_hour"] = self.MIN_POSTS_PER_HOUR
+                changed = True
+            clamped_agents.append(agent)
+            if changed:
+                patched = True
+
+        if patched:
+            patch["agent_configs"] = clamped_agents
+            logger.info("[%s] Clamping simulation config: low activity values detected", scenario_id)
+            try:
+                await self.mf.patch_simulation_config(mf_simulation_id, patch)
+                logger.info("[%s] Config clamped successfully", scenario_id)
+            except Exception as e:
+                logger.warning("[%s] Config clamp failed: %s", scenario_id, e)
 
     async def _step_run_simulation(
         self,
@@ -919,6 +975,8 @@ class SimulationOrchestrator:
                 last_heartbeat=ts,
             )
 
+        snapshot = await get_latest_snapshot(scenario_id, result_id)
+        pending_dp_id = snapshot.get("pending_decision_point_id") if snapshot else None
         auto_outcome = await self._auto_complete_latest_decision(scenario_id, result_id)
         if not auto_outcome:
             await self._save_wargame_state(
@@ -1042,23 +1100,39 @@ class SimulationOrchestrator:
                 },
             )
 
-            should_pause_now = bool(engine) and should_pause(
-                round_result,
-                simulation_params.geopolitics_mode,
-                simulation_params.geopolitics_player_actor_id,
-                simulation_params.geopolitics_pause_threshold,
-                pause_interval=simulation_params.geopolitics_rounds,
-            )
-            if should_pause_now and engine is not None:
+            # Wargame round loop은 항상 주기적으로 멈춰야 브리핑을 보여줄 수 있다.
+            # AUTO 모드일 때 should_pause가 항상 False를 반환하므로,
+            # 워게임 컨텍스트에서는 GAME_MASTER로 오버라이드한다.
+            effective_mode = simulation_params.geopolitics_mode
+            if effective_mode == GeopoliticsMode.AUTO:
+                effective_mode = GeopoliticsMode.GAME_MASTER
+
+            if engine is not None:
+                should_pause_now = should_pause(
+                    round_result,
+                    effective_mode,
+                    simulation_params.geopolitics_player_actor_id,
+                    simulation_params.geopolitics_pause_threshold,
+                    pause_interval=simulation_params.geopolitics_rounds,
+                )
+            else:
+                # 엔진 없음 — 이벤트 기반 판단 불가, 주기 기반으로 일시정지
+                _pi = simulation_params.geopolitics_rounds
+                should_pause_now = round_num >= 2 and (
+                    round_num == 2 or (_pi > 0 and (round_num - 2) % _pi == 0)
+                )
+
+            if should_pause_now:
+                pause_engine = engine if engine is not None else DecisionEngine()
                 snapshot_id = await save_geopolitics_snapshot(
                     scenario_id,
                     result_id,
                     round_num,
-                    engine,
-                    simulation_params.geopolitics_mode,
+                    pause_engine,
+                    effective_mode,
                     simulation_params.geopolitics_player_actor_id,
                 )
-                if simulation_params.geopolitics_mode == GeopoliticsMode.ACTOR_ROLE and simulation_params.geopolitics_player_actor_id:
+                if engine is not None and effective_mode == GeopoliticsMode.ACTOR_ROLE and simulation_params.geopolitics_player_actor_id:
                     trigger_event = find_trigger_event(round_result, simulation_params.geopolitics_player_actor_id)
                     options = build_actor_response_options(engine, simulation_params.geopolitics_player_actor_id, trigger_event or {})
                     dp_type = "geopolitics_actor_response"
@@ -1104,7 +1178,7 @@ class SimulationOrchestrator:
                     result_id,
                     current_round=round_num,
                     total_rounds=total_rounds,
-                    engine=engine,
+                    engine=pause_engine,
                     process_pid=None,
                     status="paused",
                 )

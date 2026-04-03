@@ -46,6 +46,10 @@ BRIEFING_PROMPT = """\
 ## 시뮬레이션 행동 분석
 {simulation_summary}
 
+⚠️ 데이터 충분성 점검: simulation_summary의 "데이터 품질 경고"를 먼저 확인하세요.
+비활동 라운드 비율이 80%를 초과하면 해당 데이터를 "불완전"으로 분류하고,
+각 섹션에서 데이터 한계를 명시하세요. 부족한 데이터를 추측으로 채우지 마세요.
+
 ## 지정학 이벤트 분석 (긴장도·인과관계 포함)
 {geopolitics_summary}
 
@@ -169,9 +173,11 @@ OSINT 데이터(군함 배치, 항공기 활동 등)와 대조하여 판단하�
 을 독자적으로 평가하세요.
 웹 검색 결과를 인용할 때 출처(매체명)를 반드시 명시하세요.
 
-## 4. 반사실적 시나리오 (What-If)
+## 4. 반사실적 시나리오 (What-If) — ⚠️ 추론 섹션
+아래는 시뮬레이션 데이터가 아닌 시나리오 설정과 행위자 프로필에 기반한 **추론**입니다.
 "만약 특정 행위자가 관망 대신 적극적으로 행동했다면?" 시나리오를 2~3개 제시하세요.
 각 시나리오에서 예상되는 연쇄 반응을 분석하세요.
+반드시 모든 문장에 "[추론]" 접두어를 붙이세요. 인용 블록(>)은 사용하지 마세요.
 
 ## 5. 핵심 정보 판단 (Intelligence Key Judgments, 3~5개)
 모든 출처(OSINT, 웹 검색, 시뮬레이션 침묵 패턴)를 종합한 핵심 판단.
@@ -194,9 +200,15 @@ OSINT 데이터(군함 배치, 항공기 활동 등)와 대조하여 판단하�
 - OSINT 기반 분석과 웹 검색 기반 분석의 출처를 명확히 구분하세요.
 - 추측과 데이터 기반 판단을 명확히 구분하세요.
 - 소셜미디어 메타포를 인텔리전스 용어로 반드시 변환하세요.
+- 관측된 데이터 인용과 반사실적 추론을 절대 혼용하지 마세요.
+  - 관측 데이터: "> [행위자명] 원문" 형식 (인용 블록)
+  - 반사실적 추론: "[추론] 설명" 형식 (인용 블록 사용 금지)
+- 시뮬레이션에서 실제로 발생하지 않은 사건을 인용 블록(>)으로 표시하는 것은 금지합니다.
 """
 
 DO_NOTHING_SPARSE_THRESHOLD = 0.7
+SPARSE_ACTION_DENSITY_THRESHOLD = 0.5
+SPARSE_ACTIVE_AGENT_RATIO_THRESHOLD = 0.2
 
 
 class BriefingGenerator:
@@ -211,11 +223,35 @@ class BriefingGenerator:
         actions = self._parse_actions(results_raw)
         if not actions:
             return True
+
+        rounds = set()
+        active_agents = set()
+        for a in actions:
+            rnd = a.get("round")
+            if rnd is not None:
+                rounds.add(rnd)
+            agent = a.get("agent_id") or a.get("agent_name")
+            if agent is not None:
+                active_agents.add(agent)
+
+        total_rounds = max(rounds) + 1 if rounds else 1
+        actions_per_round = len(actions) / total_rounds
+        active_round_ratio = len(rounds) / total_rounds if total_rounds else 0.0
+
+        if actions_per_round < SPARSE_ACTION_DENSITY_THRESHOLD:
+            return True
+
+        if active_round_ratio < 0.3:
+            return True
+
         do_nothing_count = sum(
             1 for a in actions
             if (a.get("action_type") or "").lower() in ("do_nothing", "strategic_observation")
         )
-        return do_nothing_count / len(actions) > DO_NOTHING_SPARSE_THRESHOLD
+        if len(actions) > 0 and do_nothing_count / len(actions) > DO_NOTHING_SPARSE_THRESHOLD:
+            return True
+
+        return False
 
     async def _enrich_with_web_search(
         self, region_name: str, question: str, actors: list[str],
@@ -232,6 +268,27 @@ class BriefingGenerator:
         except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
             logger.warning("Web search enrichment failed for briefing")
             return "외부 웹 검색 실패"
+
+    _SPARSE_REPORT_CAVEAT = (
+        "⚠️ 아래 보고서는 시뮬레이션 행동 데이터가 아닌 엔티티 프로필 설정에 기반한 LLM 생성물입니다.\n"
+        "관측된 행동이 아니므로, 인용 블록(>)으로 인용하거나 사실로 취급하지 마세요.\n"
+        "참고 자료로만 활용하세요.\n\n"
+    )
+
+    _SPARSE_GEO_CAVEAT = (
+        "⚠️ 시뮬레이션 행동 데이터가 부족하여 지정학 이벤트가 미생성되었거나 "
+        "엔티티 설정 기반 추정치입니다. 사실로 인용하지 마세요.\n\n"
+    )
+
+    def _sanitize_sparse_report(self, report_text: str) -> str:
+        if not report_text or report_text == "MiroFish 보고서 없음":
+            return "MiroFish 보고서 없음 (시뮬레이션 행동 데이터 부족)"
+        return self._SPARSE_REPORT_CAVEAT + report_text
+
+    def _sanitize_sparse_geopolitics(self, geopolitics_summary: str) -> str:
+        if not geopolitics_summary or "데이터 없음" in geopolitics_summary:
+            return "지정학 이벤트 데이터 없음 (시뮬레이션 행동 데이터 부족)"
+        return self._SPARSE_GEO_CAVEAT + geopolitics_summary
 
     def _extract_actor_names(self, results_raw: str | None) -> list[str]:
         actions = self._parse_actions(results_raw)
@@ -260,6 +317,26 @@ class BriefingGenerator:
         if not actions:
             return "시뮬레이션 액션 데이터 없음"
 
+        rounds: set[int] = set()
+        for action in actions:
+            rnd = action.get("round")
+            if isinstance(rnd, int):
+                rounds.add(rnd)
+            elif isinstance(rnd, str) and rnd.isdigit():
+                rounds.add(int(rnd))
+        total_rounds = max(rounds) + 1 if rounds else 1
+        active_rounds = len(rounds)
+        unique_agents = len(
+            {
+                a.get("agent_name") or a.get("actor_id")
+                for a in actions
+                if (a.get("agent_name") or a.get("actor_id")) is not None
+            }
+        )
+        empty_round_ratio = ((total_rounds - active_rounds) / total_rounds) * 100 if total_rounds else 0.0
+        active_round_pct = (active_rounds / total_rounds) * 100 if total_rounds else 0.0
+        avg_actions_per_round = len(actions) / total_rounds if total_rounds else float(len(actions))
+
         actor_counter: Counter[str] = Counter()
         geo_label_counter: Counter[str] = Counter()
         round_actions: dict[int, list[dict]] = defaultdict(list)
@@ -280,10 +357,22 @@ class BriefingGenerator:
                 interaction_pairs[f"{actor} → {target}"] += 1
 
         lines = [
+            "### 데이터 품질 경고",
+            f"- 전체 라운드: {total_rounds}, 액션 발생 라운드: {active_rounds} ({active_round_pct:.1f}%)",
+            f"- 활동 에이전트: {unique_agents}명",
+            f"- 라운드당 평균 액션: {avg_actions_per_round:.2f}",
+            f"- ⚠️ 비활동 라운드 비율: {empty_round_ratio:.1f}%",
+        ]
+        if empty_round_ratio > 80:
+            lines.append(
+                "- ⚠️ 경고: 대부분의 라운드에서 에이전트 활동이 없었습니다. 시뮬레이션 설정(activity_level, off_peak_multiplier)을 검토하세요."
+            )
+        lines.extend([
+            "",
             f"총 {len(actions)}건의 시뮬레이션 액션이 {len(round_actions)}개 라운드에 걸쳐 실행됨.",
             "",
             "### 행위자별 활동량",
-        ]
+        ])
         for actor, count in actor_counter.most_common():
             actor_actions = [a for a in actions if (a.get("agent_name") or a.get("actor_id")) == actor]
             actor_types = Counter(
@@ -526,21 +615,27 @@ class BriefingGenerator:
             logger.warning("Failed to collect current OSINT for briefing")
             return "(현재 OSINT 데이터 수집 실패 — ShadowBroker 연결 불가)"
 
-    async def _call_llm(self, prompt: str) -> str:
+    async def _call_llm(self, prompt: str, is_sparse: bool = False) -> str:
+        system_content = (
+            "당신은 국가 안보 정보기관의 수석 분석관입니다. "
+            "Palantir Gotham 스타일의 인텔리전스 브리핑을 작성합니다. "
+            "소셜미디어 용어(트윗, 리트윗, 좋아요, 팔로우, SNS 등)를 절대 사용하지 마세요. "
+            "모든 상호작용을 외교·군사·정보 용어로 번역하세요. "
+            "모든 주장에 구체적 수치와 행위자명을 인용하세요. "
+            "데이터가 없으면 '데이터 없음'으로 표기하세요."
+        )
+        if is_sparse:
+            system_content += (
+                "\n\n【인용 블록 규칙 — 절대 준수】\n"
+                "- 인용 블록(> )은 시뮬레이션에서 실제 관측된 행동 로그에만 사용하세요.\n"
+                "- 반사실적 추론, 엔티티 프로필 설명, 예상 시나리오에는 인용 블록을 사용하지 마세요.\n"
+                "- 반사실적 추론 문장은 반드시 '[추론]' 접두어로 시작하세요.\n"
+                "- ⚠️ 경고가 붙은 데이터는 LLM 생성물이므로 사실로 인용하지 마세요."
+            )
         response = await self._llm.chat.completions.create(
             model=settings.llm_model_name,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "당신은 국가 안보 정보기관의 수석 분석관입니다. "
-                        "Palantir Gotham 스타일의 인텔리전스 브리핑을 작성합니다. "
-                        "소셜미디어 용어(트윗, 리트윗, 좋아요, 팔로우, SNS 등)를 절대 사용하지 마세요. "
-                        "모든 상호작용을 외교·군사·정보 용어로 번역하세요. "
-                        "모든 주장에 구체적 수치와 행위자명을 인용하세요. "
-                        "데이터가 없으면 '데이터 없음'으로 표기하세요."
-                    ),
-                },
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.3,
@@ -660,6 +755,9 @@ class BriefingGenerator:
         is_sparse = self._is_sparse_scenario(sim_row["results"] if sim_row else None)
 
         if is_sparse:
+            report_text = self._sanitize_sparse_report(report_text)
+            geopolitics_summary = self._sanitize_sparse_geopolitics(geopolitics_summary)
+
             actors = self._extract_actor_names(sim_row["results"] if sim_row else None)
             web_search_section = await self._enrich_with_web_search(
                 scenario["region_name"], scenario["question"], actors,
@@ -692,7 +790,7 @@ class BriefingGenerator:
                 extra_sections=extra_sections,
             )
 
-        content = await self._call_llm(prompt)
+        content = await self._call_llm(prompt, is_sparse=is_sparse)
 
         briefing_id = str(uuid.uuid4())
         version = (version_row["version"] if version_row else 0) + 1

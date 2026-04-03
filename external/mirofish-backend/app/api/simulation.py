@@ -3,6 +3,7 @@
 Step2: Zep 엔티티 읽기 및 필터링, OASIS 시뮬레이션 준비 및 실행 (전 과정 자동화)
 """
 
+import json
 import os
 import traceback
 from typing import Optional
@@ -1337,6 +1338,53 @@ def download_simulation_config(simulation_id: str):
 
     except Exception as e:
         logger.error(f"설정 다운로드 실패: {str(e)}")
+        return jsonify(
+            {"success": False, "error": str(e), "traceback": traceback.format_exc()}
+        ), 500
+
+
+@simulation_bp.route("/<simulation_id>/config", methods=["PATCH"])
+def patch_simulation_config(simulation_id: str):
+    """
+    시뮬레이션 설정 부분 업데이트
+
+    요청 (JSON):
+        {
+            "time_config": { ... },      // 선택: 시간 설정 (병합)
+            "agent_configs": [ ... ],    // 선택: 에이전트 설정 (전체 교체)
+        }
+
+    기존 설정에 요청된 필드만 병합(merge)합니다.
+    time_config는 키 단위로 병합, agent_configs는 전체 교체됩니다.
+    """
+    try:
+        manager = SimulationManager()
+        sim_dir = manager._get_simulation_dir(simulation_id)
+        config_path = os.path.join(sim_dir, "simulation_config.json")
+
+        if not os.path.exists(config_path):
+            return jsonify(
+                {"success": False, "error": "설정 파일이 존재하지 않습니다"}
+            ), 404
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+
+        data = request.get_json() or {}
+
+        if "time_config" in data and isinstance(data["time_config"], dict):
+            config.setdefault("time_config", {}).update(data["time_config"])
+
+        if "agent_configs" in data and isinstance(data["agent_configs"], list):
+            config["agent_configs"] = data["agent_configs"]
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+
+        return jsonify({"success": True, "data": config})
+
+    except Exception as e:
+        logger.error(f"설정 업데이트 실패: {str(e)}")
         return jsonify(
             {"success": False, "error": str(e), "traceback": traceback.format_exc()}
         ), 500
