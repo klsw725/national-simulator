@@ -66,7 +66,21 @@ services:
         condition: service_started
       mirofish:
         condition: service_started
+  simulation-service:
+    build: ./simulation-service
+    ports:
+      - "5002:5001"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://osint:osint_dev@postgres:5432/osint_simulator
+      - SHADOWBROKER_URL=http://shadowbroker:8000
+    depends_on:
       postgres:
+        condition: service_healthy
+      dozerdb:
+        condition: service_started
+
+  postgres:
         condition: service_healthy
 
   frontend:

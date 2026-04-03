@@ -1,0 +1,15 @@
+[project]
+name = "simulation-service"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "langgraph>=0.3",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.3",
+    "langgraph-checkpoint-postgres>=2.0",
+    "asyncpg>=0.30",
+    "httpx>=0.28",
+    "psycopg[binary]>=3.2",
+]

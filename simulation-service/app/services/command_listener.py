@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any
+
+import asyncpg
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+_CHANNEL = "sim_commands"
+
+
+class SimulationCommandListener:
+    def __init__(self) -> None:
+        self._graph = None
+        self._running_tasks: dict[str, asyncio.Task] = {}
+
+    def set_graph(self, graph: Any) -> None:
+        self._graph = graph
+
+    async def start(self) -> None:
+        delay = 1.0
+        while True:
+            try:
+                conn = await asyncpg.connect(settings.database_url)
+                delay = 1.0
+                queue: asyncio.Queue[str] = asyncio.Queue()
+
+                def _on_notification(
+                    _conn: asyncpg.Connection,
+                    _pid: int,
+                    _channel: str,
+                    payload: str,
+                ) -> None:
+                    queue.put_nowait(payload)
+
+                await conn.add_listener(_CHANNEL, _on_notification)
+                logger.info("LISTEN %s started", _CHANNEL)
+
+                try:
+                    while True:
+                        raw = await queue.get()
+                        try:
+                            command = json.loads(raw)
+                            await self._handle_command(command)
+                        except json.JSONDecodeError:
+                            logger.warning("Invalid JSON on %s: %s", _CHANNEL, raw[:200])
+                        except Exception:
+                            logger.exception("Command handler error")
+                finally:
+                    await conn.remove_listener(_CHANNEL, _on_notification)
+                    await conn.close()
+
+            except asyncio.CancelledError:
+                logger.info("LISTEN %s cancelled", _CHANNEL)
+                raise
+            except Exception:
+                logger.exception("LISTEN %s connection lost, reconnecting in %.1fs", _CHANNEL, delay)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 30.0)
+
+    async def _handle_command(self, command: dict[str, Any]) -> None:
+        cmd_type = command.get("type")
+        scenario_id = command.get("scenario_id", "")
+
+        if cmd_type == "start_simulation":
+            await self._start_simulation(scenario_id, command)
+        elif cmd_type == "stop_simulation":
+            await self._stop_simulation(scenario_id)
+        elif cmd_type == "user_decision":
+            await self._apply_decision(scenario_id, command)
+        else:
+            logger.warning("Unknown command type: %s", cmd_type)
+
+    async def _start_simulation(self, scenario_id: str, command: dict) -> None:
+        if scenario_id in self._running_tasks:
+            logger.warning("Simulation %s already running", scenario_id)
+            return
+
+        if self._graph is None:
+            logger.error("Graph not initialized")
+            return
+
+        graph = self._graph
+        from app.services.event_emitter import get_emitter
+
+        emitter = get_emitter()
+
+        async def _run() -> None:
+            try:
+                config = {"configurable": {"thread_id": scenario_id}}
+                initial_state = {
+                    "scenario_id": scenario_id,
+                    "seed_text": command.get("seed_text", ""),
+                    "ontology_version": "v12.0",
+                    "graph_id": "",
+                    "situation_summary": "",
+                    "actors": {},
+                    "actor_states": {},
+                    "current_round": 0,
+                    "max_rounds": command.get("max_rounds", 10),
+                    "round_actions": [],
+                    "action_history": [],
+                    "tension_levels": {},
+                    "decision_engine_state": {},
+                    "decision_point": None,
+                    "user_decision": None,
+                    "phase": "analyzing",
+                    "status": "running",
+                }
+
+                await emitter.emit_phase_change(scenario_id, "analyzing", 0)
+
+                result = await graph.ainvoke(initial_state, config)
+
+                if result.get("status") == "completed":
+                    await emitter.emit_report_ready(scenario_id, scenario_id)
+
+            except asyncio.CancelledError:
+                await emitter.emit_phase_change(scenario_id, "cancelled", 0)
+            except Exception as exc:
+                logger.exception("Simulation %s failed", scenario_id)
+                await emitter.emit_error(scenario_id, str(exc))
+            finally:
+                self._running_tasks.pop(scenario_id, None)
+
+        task = asyncio.create_task(_run())
+        self._running_tasks[scenario_id] = task
+
+    async def _stop_simulation(self, scenario_id: str) -> None:
+        task = self._running_tasks.pop(scenario_id, None)
+        if task and not task.done():
+            task.cancel()
+            logger.info("Simulation %s cancelled", scenario_id)
+
+    async def _apply_decision(self, scenario_id: str, command: dict) -> None:
+        if self._graph is None:
+            logger.error("Graph not initialized")
+            return
+
+        config = {"configurable": {"thread_id": scenario_id}}
+        graph = self._graph
+        await graph.aupdate_state(
+            config,
+            {"user_decision": command.get("chosen_action")},
+        )
+        await graph.ainvoke(None, config)
