@@ -206,20 +206,6 @@ CREATE TABLE IF NOT EXISTS briefings (
 );
 CREATE INDEX IF NOT EXISTS idx_briefings_scenario ON briefings(scenario_id);
 
-CREATE TABLE IF NOT EXISTS injected_events (
-    id TEXT PRIMARY KEY,
-    scenario_id TEXT NOT NULL REFERENCES scenarios(id),
-    result_id TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    content TEXT NOT NULL,
-    target_agents TEXT NOT NULL,
-    injected_at_round INTEGER,
-    status TEXT DEFAULT 'pending',
-    created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_injected_events_scenario ON injected_events(scenario_id);
-CREATE INDEX IF NOT EXISTS idx_injected_events_scenario_status ON injected_events(scenario_id, status);
-
 CREATE INDEX IF NOT EXISTS idx_simulation_results_scenario ON simulation_results(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_seeds_scenario ON seeds(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_scenarios_status ON scenarios(status);

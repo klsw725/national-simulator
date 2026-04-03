@@ -31,6 +31,9 @@ const DELTA_LABELS: Record<string, string> = {
   stability: "안정도",
 };
 
+/** Keys where a positive delta is actually desirable (green) */
+const POSITIVE_IS_GOOD = new Set(["resource", "resource_level", "alliance_trust", "stability"]);
+
 const DECISION_TITLES: Record<string, string> = {
   geopolitics_actor_response: "지정학 이벤트 대응",
   geopolitics_direction: "시나리오 방향 결정",
@@ -38,13 +41,24 @@ const DECISION_TITLES: Record<string, string> = {
 
 function getCategoryMeta(opt: DecisionOption) {
   const cat = String(
-    opt.data?.category ?? opt.data?.action_category ?? opt.data?.direction ?? "nothing",
+    opt.data?.category ?? opt.data?.action_category ?? opt.data?.direction ?? opt.data?.action ?? "nothing",
   ).toLowerCase();
   return CATEGORY_META[cat] ?? CATEGORY_META.nothing;
 }
 
 function getDeltas(opt: DecisionOption): { key: string; label: string; val: number }[] {
   const result: { key: string; label: string; val: number }[] = [];
+  const appendRecord = (record: Record<string, unknown>) => {
+    for (const [k, v] of Object.entries(record)) {
+      if (typeof v !== "number") continue;
+      result.push({
+        key: k,
+        label: DELTA_LABELS[k] ?? k,
+        val: v,
+      });
+    }
+  };
+
   for (const [k, v] of Object.entries(opt.data)) {
     if (k.startsWith("delta_") && typeof v === "number") {
       const rawKey = k.replace("delta_", "");
@@ -55,7 +69,22 @@ function getDeltas(opt: DecisionOption): { key: string; label: string; val: numb
       });
     }
   }
-  return result;
+
+  const predicted = opt.data?.predicted_deltas;
+  if (predicted && typeof predicted === "object" && !Array.isArray(predicted)) {
+    appendRecord(predicted as Record<string, unknown>);
+  }
+
+  const stateDeltas = opt.data?.state_deltas;
+  if (stateDeltas && typeof stateDeltas === "object" && !Array.isArray(stateDeltas)) {
+    appendRecord(stateDeltas as Record<string, unknown>);
+  }
+
+  const deduped = new Map<string, { key: string; label: string; val: number }>();
+  for (const delta of result) {
+    deduped.set(delta.key, delta);
+  }
+  return Array.from(deduped.values());
 }
 
 function getNarrative(dp: DecisionPoint): string {
@@ -184,6 +213,11 @@ function OptionCard({
         <span className="text-xs font-bold text-[var(--text-primary)] flex-1">
           {option.label}
         </span>
+        {option.confidence > 0 && (
+          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.05)] text-[var(--text-muted)]">
+            {(option.confidence * 100).toFixed(0)}%
+          </span>
+        )}
         {isEngineRecommended && (
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(34,211,238,0.12)] text-[var(--accent-cyan)]">
             엔진 추천
@@ -216,16 +250,17 @@ function OptionCard({
       {deltas.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pl-6">
           {deltas.map((d) => {
-            const positive = d.val >= 0;
-            const colorCls = positive
-              ? "text-red-400 bg-red-400/10"
-              : "text-emerald-400 bg-emerald-400/10";
+            const positiveVal = d.val >= 0;
+            const isGood = POSITIVE_IS_GOOD.has(d.key) ? positiveVal : !positiveVal;
+            const colorCls = isGood
+              ? "text-emerald-400 bg-emerald-400/10"
+              : "text-red-400 bg-red-400/10";
             return (
               <span
                 key={d.key}
                 className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ${colorCls}`}
               >
-                {d.label} {positive ? "↑" : "↓"}
+                {d.label} {positiveVal ? "↑" : "↓"}
                 {Math.abs(d.val * 100).toFixed(0)}%
               </span>
             );

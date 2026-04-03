@@ -224,6 +224,78 @@ class MiroFishClient:
         body = resp.json()
         return body.get("data", body)
 
+    async def start_round_control(
+        self,
+        simulation_id: str,
+        platform: str = "twitter",
+        max_rounds: int = 10,
+        tools_enabled: bool = False,
+        geopolitics_enabled: bool = False,
+    ) -> dict[str, Any]:
+        resp = await self._request(
+            "post",
+            "/api/simulation/round_control/start",
+            json={
+                "simulation_id": simulation_id,
+                "platform": platform,
+                "max_rounds": max_rounds,
+                "tools_enabled": tools_enabled,
+                "geopolitics_enabled": geopolitics_enabled,
+            },
+            timeout=120,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def proceed_round(
+        self,
+        simulation_id: str,
+        round_num: int,
+        inject_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"simulation_id": simulation_id, "round": round_num}
+        if inject_context is not None:
+            payload["inject_context"] = inject_context
+        resp = await self._request(
+            "post",
+            "/api/simulation/round_control/proceed",
+            json=payload,
+            timeout=300,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def stop_round_control(
+        self,
+        simulation_id: str,
+        reason: str = "completed",
+    ) -> dict[str, Any]:
+        resp = await self._request(
+            "post",
+            "/api/simulation/round_control/stop",
+            json={"simulation_id": simulation_id, "reason": reason},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
+    async def heartbeat_round_control(
+        self,
+        simulation_id: str,
+        timestamp: str,
+    ) -> dict[str, Any]:
+        resp = await self._request(
+            "post",
+            "/api/simulation/round_control/heartbeat",
+            json={"simulation_id": simulation_id, "timestamp": timestamp},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
+
     # ------------------------------------------------------------------
     # Step 6: 보고서 생성 (비동기)
     # ------------------------------------------------------------------
@@ -436,7 +508,7 @@ class MiroFishClient:
         self,
         poll_fn,
         interval: float = MIROFISH_POLL_INTERVAL,
-        timeout: float = MIROFISH_POLL_TIMEOUT,
+        timeout: float | None = MIROFISH_POLL_TIMEOUT,
         status_key: str = "status",
         done_values: tuple[str, ...] = ("completed",),
         fail_values: tuple[str, ...] = ("failed",),
@@ -452,7 +524,7 @@ class MiroFishClient:
             fail_values: 실패 상태 값
         """
         elapsed = 0.0
-        while elapsed < timeout:
+        while timeout is None or timeout <= 0 or elapsed < timeout:
             result = await poll_fn()
             status = result.get(status_key, "")
             progress = result.get("progress", 0)

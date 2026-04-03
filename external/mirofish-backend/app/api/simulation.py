@@ -5,6 +5,7 @@ Step2: Zep 엔티티 읽기 및 필터링, OASIS 시뮬레이션 준비 및 실�
 
 import os
 import traceback
+from typing import Optional
 from flask import request, jsonify, send_file
 
 from . import simulation_bp
@@ -827,7 +828,7 @@ def list_simulations():
         ), 500
 
 
-def _get_report_id_for_simulation(simulation_id: str) -> str:
+def _get_report_id_for_simulation(simulation_id: str) -> Optional[str]:
     """
     시뮬레이션에 해당하는 최신 report_id 획득
 
@@ -1719,6 +1720,152 @@ def stop_simulation():
         return jsonify(
             {"success": False, "error": str(e), "traceback": traceback.format_exc()}
         ), 500
+
+
+@simulation_bp.route("/round_control/start", methods=["POST"])
+def start_round_control():
+    try:
+        data = request.get_json() or {}
+        simulation_id = data.get("simulation_id")
+        if not simulation_id:
+            return jsonify({"success": False, "error": "simulation_id를 제공해 주세요"}), 400
+
+        platform = data.get("platform", "parallel")
+        max_rounds = data.get("max_rounds")
+        tools_enabled = data.get("tools_enabled", False)
+        geopolitics_enabled = data.get("geopolitics_enabled", False)
+
+        if max_rounds is not None:
+            try:
+                max_rounds = int(max_rounds)
+                if max_rounds <= 0:
+                    return jsonify({"success": False, "error": "max_rounds는 양의 정수여야 합니다"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"success": False, "error": "max_rounds는 유효한 정수여야 합니다"}), 400
+
+        if platform not in ["twitter", "reddit", "parallel"]:
+            return jsonify({"success": False, "error": "유효하지 않은 플랫폼 유형입니다"}), 400
+
+        manager = SimulationManager()
+        sim_state = manager.get_simulation(simulation_id)
+        if not sim_state:
+            return jsonify({"success": False, "error": f"시뮬레이션이 존재하지 않습니다: {simulation_id}"}), 404
+
+        ready_signal = SimulationRunner.start_round_controlled(
+            simulation_id=simulation_id,
+            platform=platform,
+            max_rounds=max_rounds,
+            tools_enabled=tools_enabled,
+            geopolitics_enabled=geopolitics_enabled,
+        )
+
+        sim_state.status = SimulationStatus.RUNNING
+        manager._save_simulation_state(sim_state)
+        return jsonify({"success": True, "data": ready_signal})
+
+    except ValueError as e:
+        logger.warning(f"라운드 제어 시작 거부(400): {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except TimeoutError as e:
+        logger.warning(f"라운드 제어 시작 타임아웃(504): {e}")
+        return jsonify({"success": False, "error": str(e)}), 504
+    except Exception as e:
+        logger.error(f"라운드 제어 시작 실패: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route("/round_control/proceed", methods=["POST"])
+def proceed_round():
+    try:
+        data = request.get_json() or {}
+        simulation_id = data.get("simulation_id")
+        if not simulation_id:
+            return jsonify({"success": False, "error": "simulation_id를 제공해 주세요"}), 400
+
+        inject_context = data.get("inject_context")
+        round_num = data.get("round")
+        if round_num is not None:
+            try:
+                round_num = int(round_num)
+                if round_num <= 0:
+                    return jsonify({"success": False, "error": "round는 양의 정수여야 합니다"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"success": False, "error": "round는 유효한 정수여야 합니다"}), 400
+
+        signal_data = SimulationRunner.proceed_round(
+            simulation_id=simulation_id,
+            inject_context=inject_context,
+            round_num=round_num,
+        )
+        return jsonify({"success": True, "data": signal_data})
+
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except TimeoutError as e:
+        return jsonify({"success": False, "error": str(e)}), 504
+    except Exception as e:
+        logger.error(f"라운드 진행 실패: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route("/round_control/stop", methods=["POST"])
+def stop_round_control():
+    try:
+        data = request.get_json() or {}
+        simulation_id = data.get("simulation_id")
+        if not simulation_id:
+            return jsonify({"success": False, "error": "simulation_id를 제공해 주세요"}), 400
+
+        reason = data.get("reason", "completed")
+        result = SimulationRunner.stop_round_controlled(
+            simulation_id=simulation_id,
+            reason=reason,
+        )
+
+        manager = SimulationManager()
+        sim_state = manager.get_simulation(simulation_id)
+        if sim_state:
+            sim_state.status = (
+                SimulationStatus.COMPLETED
+                if reason == "completed"
+                else SimulationStatus.PAUSED
+            )
+            manager._save_simulation_state(sim_state)
+
+        return jsonify({"success": True, "data": result})
+
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"라운드 제어 종료 실패: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route("/round_control/heartbeat", methods=["POST"])
+def heartbeat_round_control():
+    try:
+        data = request.get_json() or {}
+        simulation_id = data.get("simulation_id")
+        if not simulation_id:
+            return jsonify({"success": False, "error": "simulation_id를 제공해 주세요"}), 400
+
+        timestamp = data.get("timestamp")
+        if not timestamp:
+            return jsonify({"success": False, "error": "timestamp를 제공해 주세요"}), 400
+
+        result = SimulationRunner.heartbeat_round_controlled(
+            simulation_id=simulation_id,
+            timestamp=str(timestamp),
+        )
+        return jsonify({"success": True, "data": result})
+
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except TimeoutError as e:
+        return jsonify({"success": False, "error": str(e)}), 504
+    except Exception as e:
+        logger.error(f"라운드 제어 heartbeat 실패: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 
 # ============== 실시간 상태 모니터링 인터페이스 ==============

@@ -547,7 +547,9 @@ class BriefingGenerator:
             max_tokens=4096,
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
-        return response.choices[0].message.content or ""
+        from app.utils.llm_compat import extract_content
+
+        return extract_content(response.choices[0].message)
 
     async def generate(self, scenario_id: str) -> dict[str, Any]:
         pool = get_pool()

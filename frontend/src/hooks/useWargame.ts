@@ -9,9 +9,12 @@ import type {
   RoundBriefing,
   DecisionPoint,
 } from "@/types/simulation";
+import { getWargameStatus } from "@/lib/api/wargameApi";
 
 const POLL_INTERVAL = 5_000;
 const SSE_RECONNECT_DELAY = 3_000;
+const SSE_MAX_RECONNECT_ATTEMPTS = 4;
+const SSE_HEARTBEAT_TIMEOUT = 300_000;
 
 const MOCK_ACTORS: Record<string, ActorState> = {
   usa: { actor_id: "usa", name: "미국", threat_perception: 0.4, domestic_pressure: 0.3, resource_level: 0.85 },
@@ -142,10 +145,36 @@ function createMockDecisionPoint(sid: string, round: number): DecisionPoint {
   };
 }
 
+function extractFinalTension(data: unknown): number | null {
+  if (!data || typeof data !== "object") return null;
+  const payload = data as { final_tension?: unknown; final_state?: { tension?: unknown } };
+  if (typeof payload.final_tension === "number") return payload.final_tension;
+  if (typeof payload.final_state?.tension === "number") return payload.final_state.tension;
+  return null;
+}
+
+function mergeBackendState(prev: WargameState, data: Partial<WargameState>): WargameState {
+  const phase = data.phase ?? prev.phase;
+  const isDecisionPhase = phase === "briefing" || phase === "decision";
+  return {
+    ...prev,
+    ...data,
+    phase,
+    briefing: isDecisionPhase ? (data.briefing ?? prev.briefing) : null,
+    decisionPoint: isDecisionPhase ? (data.decisionPoint ?? prev.decisionPoint) : null,
+  };
+}
+
 export interface DecisionRecord {
   round: number;
   label: string;
   outcome: string;
+}
+
+export interface RoundSnapshot {
+  round: number;
+  tension: number;
+  actorStates: WargameState["actorStates"];
 }
 
 export interface UseWargameReturn {
@@ -160,7 +189,11 @@ export interface UseWargameReturn {
   decisionHistory: DecisionRecord[];
   isComplete: boolean;
   setIsComplete: (v: boolean) => void;
+  showDebrief: boolean;
+  setShowDebrief: (v: boolean) => void;
   recordDecision: (record: DecisionRecord) => void;
+  getSnapshotForRound: (round: number | null) => RoundSnapshot | null;
+  refreshState: () => Promise<void>;
 }
 
 export function useWargame(
@@ -173,11 +206,21 @@ export function useWargame(
   const [isMockMode, setIsMockMode] = useState(true);
   const [tensionHistory, setTensionHistory] = useState<number[]>([0.3]);
   const [decisionHistory, setDecisionHistory] = useState<DecisionRecord[]>([]);
-  const [isComplete, setIsComplete] = useState(false);
+  const [isComplete, setIsCompleteRaw] = useState(false);
+  const [showDebrief, setShowDebrief] = useState(false);
+  const [roundSnapshots, setRoundSnapshots] = useState<Record<number, RoundSnapshot>>({});
+
+  const setIsComplete = useCallback((v: boolean) => {
+    setIsCompleteRaw(v);
+    if (v) setShowDebrief(true);
+  }, []);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrationDoneRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
 
   const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
@@ -192,7 +235,36 @@ export function useWargame(
       clearTimeout(reconnectRef.current);
       reconnectRef.current = null;
     }
+    if (heartbeatRef.current) {
+      clearTimeout(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
   }, []);
+
+  const hydrateFromBackend = useCallback(async () => {
+    if (!scenarioId) return;
+    try {
+      const data = await getWargameStatus(scenarioId);
+      setState((prev) => mergeBackendState(prev, data));
+      if (typeof data.tension === "number") {
+        setTensionHistory((prev) => {
+          if (prev.length <= 1) return [data.tension];
+          return prev;
+        });
+      }
+      if (
+        data.phase === "confirmation" &&
+        !data.decisionPoint &&
+        data.round >= data.totalRounds
+      ) {
+        setIsComplete(true);
+      }
+      setIsMockMode(false);
+      hydrationDoneRef.current = true;
+    } catch {
+      // backend not ready yet — stay in mock mode
+    }
+  }, [scenarioId]);
 
   const handleSSEEvent = useCallback((event: MessageEvent) => {
     try {
@@ -204,44 +276,88 @@ export function useWargame(
           setState((prev) => ({
             ...prev,
             phase: data.phase as WargamePhase,
+            round: data.round ?? prev.round,
             tension: data.tension ?? prev.tension,
+            // FIX: phase_change arrives before decision_required — clear stale data to prevent flash
+            ...(data.phase === "briefing" || data.phase === "simulation"
+              ? { briefing: null, decisionPoint: null }
+              : {}),
           }));
           break;
 
-        case "round_complete": {
-          const nextTension = data.tension ?? state.tension;
-          setState((prev) => ({
-            ...prev,
-            round: data.round ?? prev.round + 1,
-            tension: nextTension,
-            actorStates: data.actor_states ?? prev.actorStates,
-          }));
-          setTensionHistory((prev) => [...prev, nextTension]);
+        case "round_complete":
+          setState((prev) => {
+            const nextTension = data.tension ?? prev.tension;
+            const nextRound = data.round ?? prev.round + 1;
+            const nextActorStates = data.actor_states ?? prev.actorStates;
+            setRoundSnapshots((snapshots) => ({
+              ...snapshots,
+              [nextRound]: {
+                round: nextRound,
+                tension: nextTension,
+                actorStates: nextActorStates,
+              },
+            }));
+            return {
+              ...prev,
+              round: nextRound,
+              tension: nextTension,
+              actorStates: nextActorStates,
+            };
+          });
+          setTensionHistory((prev) => [...prev, data.tension ?? prev[prev.length - 1] ?? 0.3]);
           break;
-        }
 
         case "decision_required":
-          setState((prev) => ({
-            ...prev,
-            phase: "briefing",
-            briefing: data.briefing ?? prev.briefing,
-            decisionPoint: data.decision_point ?? prev.decisionPoint,
-          }));
+          if (data.decision_point || data.briefing) {
+            setState((prev) => ({
+              ...prev,
+              phase: data.briefing ? "briefing" : "decision",
+              briefing: data.briefing ?? prev.briefing,
+              decisionPoint: data.decision_point ?? prev.decisionPoint,
+            }));
+          } else {
+            void hydrateFromBackend();
+          }
           break;
 
         case "decision_resolved": {
           const resolvedLabel = data.label ?? "결정";
           const resolvedOutcome = data.outcome ?? "결정 반영됨";
-          const resolvedRound = data.round ?? state.round;
+          const resolvedRound = data.round ?? 0;
           setState((prev) => ({
             ...prev,
             phase: "confirmation",
             decisionPoint: null,
           }));
-          setDecisionHistory((prev) => [
+          setDecisionHistory((prev) => {
+            const effectiveRound = resolvedRound || prev.length + 1;
+            if (prev.some((d) => d.round === effectiveRound)) return prev;
+            return [...prev, { round: effectiveRound, label: resolvedLabel, outcome: resolvedOutcome }];
+          });
+          break;
+        }
+
+        case "decision_auto_completed": {
+          const resolvedRound = data.round ?? 0;
+          setState((prev) => ({
             ...prev,
-            { round: resolvedRound, label: resolvedLabel, outcome: resolvedOutcome },
-          ]);
+            phase: "confirmation",
+            briefing: null,
+            decisionPoint: null,
+          }));
+          setDecisionHistory((prev) => {
+            const effectiveRound = resolvedRound || prev.length + 1;
+            if (prev.some((d) => d.round === effectiveRound)) return prev;
+            return [
+              ...prev,
+              {
+                round: effectiveRound,
+                label: data.selected ?? "자동 결정",
+                outcome: data.outcome ?? "TTL 만료로 자동 결정되었습니다.",
+              },
+            ];
+          });
           break;
         }
 
@@ -254,25 +370,87 @@ export function useWargame(
           break;
 
         case "simulation_complete":
+          {
+            const finalTension = extractFinalTension(data);
           setState((prev) => ({
             ...prev,
             phase: "confirmation",
-            round: prev.totalRounds,
+            round: data.total_rounds ?? data.final_state?.round ?? prev.totalRounds,
+            totalRounds: data.total_rounds ?? data.final_state?.total_rounds ?? prev.totalRounds,
+            tension: finalTension ?? prev.tension,
+            actorStates:
+              (data.final_state && typeof data.final_state === "object" && data.final_state.actor_states) ??
+              prev.actorStates,
           }));
+          if (finalTension !== null) {
+            setTensionHistory((prev) => {
+              const last = prev[prev.length - 1];
+              return last === finalTension ? prev : [...prev, finalTension];
+            });
+          }
           setIsComplete(true);
           break;
+          }
       }
     } catch {
       if (process.env.NODE_ENV === "development") {
         console.warn("useWargame: failed to parse SSE event");
       }
     }
-  }, []);
+  }, [hydrateFromBackend]);
+
+  const startPollingFallback = useCallback(() => {
+    if (pollRef.current || !scenarioId) return;
+
+    pollRef.current = setInterval(() => {
+      getWargameStatus(scenarioId)
+        .then((data) => {
+          setState((prev) => mergeBackendState(prev, data));
+          if (typeof data.tension === "number") {
+            setTensionHistory((prev) => {
+              const last = prev[prev.length - 1];
+              if (last !== data.tension) return [...prev, data.tension];
+              return prev;
+            });
+          }
+          if (
+            data.phase === "confirmation" &&
+            !data.decisionPoint &&
+            data.round >= data.totalRounds
+          ) {
+            setIsComplete(true);
+          }
+          setIsMockMode(false);
+        })
+        .catch(() => {});
+    }, POLL_INTERVAL);
+  }, [scenarioId]);
+
+  const resetHeartbeatTimer = useCallback(() => {
+    if (heartbeatRef.current) clearTimeout(heartbeatRef.current);
+    heartbeatRef.current = setTimeout(() => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      setIsConnected(false);
+      reconnectAttemptsRef.current += 1;
+      if (reconnectAttemptsRef.current <= SSE_MAX_RECONNECT_ATTEMPTS) {
+        const delay = SSE_RECONNECT_DELAY * reconnectAttemptsRef.current;
+        reconnectRef.current = setTimeout(() => connectSSE(), delay);
+      } else {
+        setIsMockMode(true);
+        startPollingFallback();
+      }
+    }, SSE_HEARTBEAT_TIMEOUT);
+  }, [startPollingFallback]);
 
   const connectSSE = useCallback(() => {
     if (!scenarioId) return;
 
     cleanup();
+
+    void hydrateFromBackend();
 
     try {
       const es = new EventSource(`/api/scenario/${scenarioId}/events`);
@@ -283,64 +461,67 @@ export function useWargame(
         "round_complete",
         "decision_required",
         "decision_resolved",
+        "decision_auto_completed",
         "round_stats",
         "simulation_complete",
       ];
       for (const type of eventTypes) {
-        es.addEventListener(type, handleSSEEvent);
+        es.addEventListener(type, (event: Event) => {
+          resetHeartbeatTimer();
+          handleSSEEvent(event as MessageEvent);
+        });
       }
+
+      es.addEventListener("heartbeat", () => {
+        resetHeartbeatTimer();
+      });
+
+      es.onmessage = () => {
+        resetHeartbeatTimer();
+      };
 
       es.onopen = () => {
         setIsConnected(true);
         setIsMockMode(false);
+        reconnectAttemptsRef.current = 0;
+        resetHeartbeatTimer();
       };
 
       es.onerror = () => {
         setIsConnected(false);
         es.close();
         eventSourceRef.current = null;
-        setIsMockMode(true);
-        startPollingFallback();
+
+        reconnectAttemptsRef.current += 1;
+        if (reconnectAttemptsRef.current <= SSE_MAX_RECONNECT_ATTEMPTS) {
+          const delay = SSE_RECONNECT_DELAY * reconnectAttemptsRef.current;
+          reconnectRef.current = setTimeout(() => connectSSE(), delay);
+        } else {
+          setIsMockMode(true);
+          startPollingFallback();
+        }
       };
     } catch {
       setIsMockMode(true);
       startPollingFallback();
     }
-  }, [scenarioId, cleanup, handleSSEEvent]);
-
-  const startPollingFallback = useCallback(() => {
-    if (pollRef.current) return;
-
-    pollRef.current = setInterval(() => {
-      if (!scenarioId) return;
-
-      fetch(`/api/scenario/${scenarioId}/wargame_status`)
-        .then((res) => {
-          if (!res.ok) throw new Error("poll failed");
-          return res.json();
-        })
-        .then((data: Partial<WargameState>) => {
-          setState((prev) => ({ ...prev, ...data }));
-        })
-        .catch(() => {});
-    }, POLL_INTERVAL);
-
-    reconnectRef.current = setTimeout(() => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      connectSSE();
-    }, SSE_RECONNECT_DELAY * 10);
-  }, [scenarioId, connectSSE]);
+  }, [scenarioId, cleanup, handleSSEEvent, hydrateFromBackend, startPollingFallback, resetHeartbeatTimer]);
 
   const setPhase = useCallback((phase: WargamePhase) => {
     setState((prev) => ({ ...prev, phase }));
   }, []);
 
   const recordDecision = useCallback((record: DecisionRecord) => {
-    setDecisionHistory((prev) => [...prev, record]);
+    setDecisionHistory((prev) => {
+      if (prev.some((d) => d.round === record.round)) return prev;
+      return [...prev, record];
+    });
   }, []);
+
+  const getSnapshotForRound = useCallback((round: number | null) => {
+    if (round == null) return null;
+    return roundSnapshots[round] ?? null;
+  }, [roundSnapshots]);
 
   const advancePhase = useCallback(() => {
     setState((prev) => {
@@ -384,6 +565,7 @@ export function useWargame(
       cleanup();
       setIsConnected(false);
       setIsMockMode(true);
+      hydrationDoneRef.current = false;
       return;
     }
 
@@ -395,8 +577,34 @@ export function useWargame(
     setState(createInitialState(totalRounds));
     setTensionHistory([0.3]);
     setDecisionHistory([]);
-    setIsComplete(false);
+    setIsCompleteRaw(false);
+    setShowDebrief(false);
+    setRoundSnapshots({});
+    hydrationDoneRef.current = false;
   }, [totalRounds]);
+
+  useEffect(() => {
+    if (!isMockMode || state.phase !== "confirmation" || isComplete) return;
+
+    const timer = setTimeout(() => {
+      setState((prev) => {
+        const nextRound = Math.min(prev.round + 1, prev.totalRounds);
+        if (prev.round >= prev.totalRounds) {
+          setIsComplete(true);
+          return prev;
+        }
+        return {
+          ...prev,
+          phase: "simulation",
+          round: nextRound,
+          briefing: null,
+          decisionPoint: null,
+        };
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [isMockMode, state.phase, state.round, isComplete, setIsComplete]);
 
   const briefingRound = state.briefing?.round ?? -1;
   useEffect(() => {
@@ -430,6 +638,10 @@ export function useWargame(
     decisionHistory,
     isComplete,
     setIsComplete,
+    showDebrief,
+    setShowDebrief,
     recordDecision,
+    getSnapshotForRound,
+    refreshState: hydrateFromBackend,
   };
 }

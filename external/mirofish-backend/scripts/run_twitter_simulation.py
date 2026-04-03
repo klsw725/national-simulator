@@ -61,9 +61,25 @@ async def _wait_for_control_signal() -> Dict[str, Any]:
     return json.loads(line.strip())
 
 
-async def _inject_context_to_env(env, context: Dict[str, Any]) -> None:
+async def _inject_context_to_env(
+    db_path: str,
+    context: Dict[str, Any],
+    agent_names: Dict[int, str],
+    constraint_state: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    from round_control_context import (
+        inject_context_into_db,
+        merge_env_constraints,
+    )
+
     posts = context.get("system_posts", []) if isinstance(context, dict) else []
-    print(f"[round_control] Received {len(posts)} system posts for injection (stub)")
+    env_constraints = context.get("env_constraints", []) if isinstance(context, dict) else []
+    injected = inject_context_into_db(db_path, "twitter", context)
+    next_constraints = merge_env_constraints(constraint_state, env_constraints, agent_names)
+    print(
+        f"[round_control] Injected {injected}/{len(posts)} Twitter system posts, active constraints={len(next_constraints)}"
+    )
+    return next_constraints
 
 # 전역 변수: 시그널 처리용
 _shutdown_event = None
@@ -306,6 +322,41 @@ def _patch_tool_call_text_fallback():
 
 
 _patch_tool_call_text_fallback()
+
+
+def _patch_interview_system_message():
+    """perform_interview에서 memory에 섞인 system role 메시지가
+    openai_messages 중간에 위치하는 문제를 수정한다.
+
+    vLLM/OpenRouter 등 엄격한 프로바이더는 system 메시지가 배열 첫 번째에만
+    올 수 있도록 강제하므로, memory.get_context() 결과에서 system role을
+    필터링해야 한다.
+    """
+    from oasis.social_agent.agent import SocialAgent
+
+    _orig_interview = SocialAgent.perform_interview
+
+    async def _patched_interview(self, interview_prompt: str):
+        orig_get = self._aget_model_response
+
+        async def filtered_get(**kwargs):
+            msgs = kwargs.get("openai_messages")
+            if msgs and len(msgs) > 1:
+                kwargs["openai_messages"] = [msgs[0]] + [
+                    m for m in msgs[1:] if m.get("role") != "system"
+                ]
+            return await orig_get(**kwargs)
+
+        self._aget_model_response = filtered_get
+        try:
+            return await _orig_interview(self, interview_prompt)
+        finally:
+            self._aget_model_response = orig_get
+
+    SocialAgent.perform_interview = _patched_interview
+
+
+_patch_interview_system_message()
 
 
 class UnicodeFormatter(logging.Formatter):
@@ -708,16 +759,45 @@ def _fetch_new_actions(
             ):
                 if k in args:
                     simplified[k] = args[k]
+            metadata = None
+            for related_key in ("post_id", "quoted_id", "new_post_id"):
+                related_id = simplified.get(related_key)
+                if related_id is None:
+                    continue
+                metadata = _get_post_metadata(cur, related_id)
+                if metadata:
+                    break
             actions.append({
                 "agent_id": user_id,
                 "agent_name": agent_names.get(user_id, f"Agent_{user_id}"),
                 "action_type": ACTION_TYPE_MAP.get(action, action.upper()),
                 "action_args": simplified,
+                "metadata": metadata or {},
             })
         conn.close()
     except Exception:
         pass
     return actions, new_last
+
+
+def _get_post_metadata(cur, post_id: Any) -> Dict[str, Any] | None:
+    try:
+        cur.execute("SELECT metadata, info FROM post WHERE post_id = ?", (post_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        for raw in row:
+            if not raw:
+                continue
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+    except Exception:
+        return None
+    return None
 
 
 class TwitterSimulationRunner:
@@ -903,16 +983,6 @@ class TwitterSimulationRunner:
                     f"\n라운드 수가 잘렸습니다: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})"
                 )
 
-        if self.round_control_enabled:
-            _send_control(
-                {
-                    "type": "ready",
-                    "run_id": self.config.get("simulation_id", "unknown"),
-                    "total_rounds": total_rounds,
-                    "platforms": ["twitter"],
-                }
-            )
-
         print(f"\n시뮬레이션 파라미터:")
         print(f"  - 총 시뮬레이션 시간: {total_hours}시간")
         print(f"  - 라운드당 시간: {minutes_per_round}분")
@@ -1045,6 +1115,16 @@ class TwitterSimulationRunner:
 
         action_logger.log_round_end(0, initial_action_count)
 
+        if self.round_control_enabled:
+            _send_control(
+                {
+                    "type": "ready",
+                    "run_id": self.config.get("simulation_id", "unknown"),
+                    "total_rounds": total_rounds,
+                    "platforms": ["twitter"],
+                }
+            )
+
         # 메인 시뮬레이션 루프
         print("\n시뮬레이션 루프 시작...")
         start_time = datetime.now()
@@ -1052,6 +1132,9 @@ class TwitterSimulationRunner:
         start_hour = time_config.get("start_hour", 9)
         start_offset_minutes = start_hour * 60
         stop_requested = False
+        constraint_state: List[Dict[str, Any]] = []
+
+        from round_control_context import is_agent_blocked, tick_constraints
 
         for round_num in range(total_rounds):
             if self.round_control_enabled:
@@ -1074,9 +1157,24 @@ class TwitterSimulationRunner:
                             stop_requested = True
                             break
                         if signal_type == "proceed":
+                            requested_round = signal.get("round")
+                            if requested_round is not None and int(requested_round) != round_num + 1:
+                                _send_control(
+                                    {
+                                        "type": "error",
+                                        "round": round_num + 1,
+                                        "message": f"Round mismatch: expected {round_num + 1}, got {requested_round}",
+                                        "recoverable": False,
+                                    }
+                                )
+                                stop_requested = True
+                                break
                             if "inject_context" in signal:
-                                await _inject_context_to_env(
-                                    self.env, signal["inject_context"]
+                                constraint_state = await _inject_context_to_env(
+                                    db_path,
+                                    signal["inject_context"],
+                                    agent_names,
+                                    constraint_state,
                                 )
                             break
                         _send_control(
@@ -1128,9 +1226,17 @@ class TwitterSimulationRunner:
                     )
                 continue
 
-            actions = {agent: LLMAction() for _, agent in active_agents}
+            actions = {
+                agent: (
+                    ManualAction(action_type=ActionType.DO_NOTHING, action_args={})
+                    if is_agent_blocked(constraint_state, agent_id, "create_post")
+                    else LLMAction()
+                )
+                for agent_id, agent in active_agents
+            }
 
             await self.env.step(actions)
+            constraint_state = tick_constraints(constraint_state)
 
             new_actions, last_rowid = _fetch_new_actions(db_path, last_rowid, agent_names)
             round_action_count = 0

@@ -1,11 +1,15 @@
 "use client";
 
 import type { ActorState, WargamePhase } from "@/types/simulation";
+import type { SelectedFeedEntity } from "./FeedPanel";
 
 interface Props {
   actorStates: Record<string, ActorState>;
   phase: WargamePhase;
   playerActorId: string | null;
+  phaseAccent?: string;
+  selectedEntity?: SelectedFeedEntity | null;
+  onClearEntity?: () => void;
 }
 
 const STATE_BARS: { key: keyof ActorState; label: string; color: string }[] = [
@@ -67,7 +71,7 @@ function ActorCard({ actor, isPlayer }: { actor: ActorState; isPlayer: boolean }
   );
 }
 
-export default function ContextPanel({ actorStates, phase, playerActorId }: Props) {
+export default function ContextPanel({ actorStates, phase, playerActorId, phaseAccent, selectedEntity, onClearEntity }: Props) {
   const actors = Object.values(actorStates);
   const sortedActors = [...actors].sort((a, b) => {
     if (a.actor_id === playerActorId) return -1;
@@ -83,7 +87,10 @@ export default function ContextPanel({ actorStates, phase, playerActorId }: Prop
   };
 
   return (
-    <div className="flex flex-col w-[320px] shrink-0 border-l border-[var(--border-secondary)] bg-[var(--bg-secondary)] overflow-hidden">
+    <div
+      className="flex flex-col w-[320px] shrink-0 border-l bg-[var(--bg-secondary)] overflow-hidden transition-colors duration-500"
+      style={{ borderColor: phaseAccent ?? "var(--border-secondary)" }}
+    >
       <div className="px-3 py-2.5 border-b border-[var(--border-secondary)] flex items-center justify-between">
         <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
           상황판
@@ -108,6 +115,39 @@ export default function ContextPanel({ actorStates, phase, playerActorId }: Prop
       </div>
 
       <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
+        {selectedEntity && (
+          <div className="flex flex-col gap-1.5 p-2.5 rounded border border-[var(--accent-cyan)] bg-[rgba(34,211,238,0.05)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-[var(--accent-cyan)] uppercase tracking-widest">
+                선택된 에이전트
+              </span>
+              <button
+                onClick={onClearEntity}
+                className="text-[9px] text-[var(--text-muted)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)]"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-xs font-bold text-[var(--text-primary)]">
+              {selectedEntity.agentName}
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+              <span className="px-1.5 py-px rounded bg-[rgba(255,255,255,0.06)]">
+                R{selectedEntity.round}
+              </span>
+              <span>{selectedEntity.actionType.replace(/_/g, " ")}</span>
+              <span className="opacity-60">{selectedEntity.platform}</span>
+            </div>
+            {selectedEntity.content && (
+              <p className="text-[10px] text-[var(--text-muted)] leading-relaxed mt-1 border-l-2 border-[var(--accent-cyan)] pl-2 italic">
+                {selectedEntity.content.length > 200
+                  ? `${selectedEntity.content.slice(0, 200)}…`
+                  : selectedEntity.content}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-0.5">
           행위자 상태 ({actors.length})
         </div>

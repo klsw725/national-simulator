@@ -16,7 +16,7 @@ from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from queue import Queue
+from queue import Queue, Empty
 
 from ..config import Config
 from ..utils.logger import get_logger
@@ -230,6 +230,8 @@ class SimulationRunner:
     # 메모리 내 실행 상태
     _run_states: Dict[str, SimulationRunState] = {}
     _processes: Dict[str, subprocess.Popen] = {}
+    _rc_processes: Dict[str, subprocess.Popen] = {}
+    _rc_locks: Dict[str, threading.Lock] = {}
     _action_queues: Dict[str, Queue] = {}
     _monitor_threads: Dict[str, threading.Thread] = {}
     _stdout_files: Dict[str, Any] = {}  # stdout 파일 핸들 저장
@@ -327,9 +329,9 @@ class SimulationRunner:
         cls,
         simulation_id: str,
         platform: str = "parallel",
-        max_rounds: int = None,
+        max_rounds: Optional[int] = None,
         enable_graph_memory_update: bool = False,
-        graph_id: str = None,
+        graph_id: Optional[str] = None,
         tools_enabled: bool = False,
         geopolitics_enabled: bool = False,
     ) -> SimulationRunState:
@@ -510,6 +512,482 @@ class SimulationRunner:
             raise
 
         return state
+
+    @classmethod
+    def _read_control_stdout_line(
+        cls, process: subprocess.Popen, timeout: float
+    ) -> str:
+        stdout_pipe = process.stdout
+        if stdout_pipe is None:
+            raise RuntimeError("시뮬레이션 stdout 파이프를 사용할 수 없습니다")
+
+        q: Queue = Queue(maxsize=1)
+
+        def _reader():
+            try:
+                line = stdout_pipe.readline()
+                q.put(("line", line))
+            except Exception as e:
+                q.put(("error", e))
+
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+
+        try:
+            kind, payload = q.get(timeout=timeout)
+        except Empty as e:
+            raise TimeoutError(f"stdout 응답 대기 시간 초과({timeout}초)") from e
+
+        if kind == "error":
+            raise payload
+        return payload
+
+    @classmethod
+    def _cleanup_round_controlled_resources(cls, simulation_id: str):
+        process = cls._rc_processes.pop(simulation_id, None)
+        cls._rc_locks.pop(simulation_id, None)
+
+        if process:
+            try:
+                if process.stdin:
+                    process.stdin.close()
+            except Exception:
+                pass
+            try:
+                if process.stdout:
+                    process.stdout.close()
+            except Exception:
+                pass
+
+        if simulation_id in cls._stderr_files and cls._stderr_files[simulation_id]:
+            try:
+                cls._stderr_files[simulation_id].close()
+            except Exception:
+                pass
+            cls._stderr_files.pop(simulation_id, None)
+
+    @classmethod
+    def _monitor_round_controlled(cls, simulation_id: str):
+        process = cls._rc_processes.get(simulation_id)
+        state = cls.get_run_state(simulation_id)
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+
+        if not process or not state:
+            return
+
+        try:
+            while process.poll() is None:
+                time.sleep(2)
+
+            exit_code = process.returncode
+
+            if state.runner_status not in [RunnerStatus.STOPPING, RunnerStatus.STOPPED]:
+                if exit_code == 0:
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = datetime.now().isoformat()
+                    logger.info(f"라운드 제어 시뮬레이션 완료: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    stderr_log_path = os.path.join(sim_dir, "simulation.log")
+                    error_info = ""
+                    try:
+                        if os.path.exists(stderr_log_path):
+                            with open(stderr_log_path, "r", encoding="utf-8") as f:
+                                error_info = f.read()[-2000:]
+                    except Exception:
+                        pass
+                    state.error = (
+                        f"프로세스 종료 코드: {exit_code}, stderr: {error_info}"
+                    )
+                    logger.error(
+                        f"라운드 제어 시뮬레이션 실패: {simulation_id}, error={state.error}"
+                    )
+
+            state.twitter_running = False
+            state.reddit_running = False
+            cls._save_run_state(state)
+
+        except Exception as e:
+            logger.error(
+                f"라운드 제어 모니터링 스레드 예외: {simulation_id}, error={str(e)}"
+            )
+            state.runner_status = RunnerStatus.FAILED
+            state.error = str(e)
+            cls._save_run_state(state)
+        finally:
+            cls._cleanup_round_controlled_resources(simulation_id)
+
+    @classmethod
+    def start_round_controlled(
+        cls,
+        simulation_id: str,
+        platform: str = "parallel",
+        max_rounds: Optional[int] = None,
+        tools_enabled: bool = False,
+        geopolitics_enabled: bool = False,
+    ) -> Dict[str, Any]:
+        existing = cls.get_run_state(simulation_id)
+        if existing and existing.runner_status in [
+            RunnerStatus.RUNNING,
+            RunnerStatus.STARTING,
+        ]:
+            old_process = cls._rc_processes.get(simulation_id)
+            process_actually_alive = old_process is not None and old_process.poll() is None
+            if process_actually_alive:
+                raise ValueError(f"시뮬레이션이 이미 실행 중입니다: {simulation_id}")
+            logger.warning(
+                "이전 상태가 %s이나 프로세스가 없거나 종료됨, 정리 후 재시작: %s",
+                existing.runner_status,
+                simulation_id,
+            )
+            cls._cleanup_round_controlled_resources(simulation_id)
+            existing.runner_status = RunnerStatus.STOPPED
+            cls._save_run_state(existing)
+
+        stale_process = cls._processes.pop(simulation_id, None)
+        if stale_process and stale_process.poll() is None:
+            logger.warning("이전 일반 프로세스가 살아 있음, 종료 대기: %s", simulation_id)
+            cls._terminate_process(stale_process, simulation_id, timeout=10)
+
+        if existing and existing.process_pid:
+            try:
+                os.kill(existing.process_pid, 0)
+                logger.warning(
+                    "PID %d가 아직 살아 있음, SIGKILL 후 대기: %s",
+                    existing.process_pid,
+                    simulation_id,
+                )
+                try:
+                    pgid = os.getpgid(existing.process_pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    try:
+                        os.kill(existing.process_pid, signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                import time as _time
+                _time.sleep(2)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        config_path = os.path.join(sim_dir, "simulation_config.json")
+
+        if not os.path.exists(config_path):
+            raise ValueError(
+                "시뮬레이션 설정이 존재하지 않습니다. 먼저 /prepare 인터페이스를 호출하세요."
+            )
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+
+        config["round_control_enabled"] = True
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+
+        time_config = config.get("time_config", {})
+        total_hours = time_config.get("total_simulation_hours", 72)
+        minutes_per_round = time_config.get("minutes_per_round", 30)
+        total_rounds = int(total_hours * 60 / minutes_per_round)
+
+        if max_rounds is not None and max_rounds > 0:
+            total_rounds = min(total_rounds, max_rounds)
+
+        state = SimulationRunState(
+            simulation_id=simulation_id,
+            runner_status=RunnerStatus.STARTING,
+            total_rounds=total_rounds,
+            total_simulation_hours=total_hours,
+            started_at=datetime.now().isoformat(),
+        )
+
+        if platform == "twitter":
+            script_name = "run_twitter_simulation.py"
+            state.twitter_running = True
+        elif platform == "reddit":
+            script_name = "run_reddit_simulation.py"
+            state.reddit_running = True
+        else:
+            script_name = "run_parallel_simulation.py"
+            state.twitter_running = True
+            state.reddit_running = True
+
+        cls._save_run_state(state)
+
+        script_path = os.path.join(cls.SCRIPTS_DIR, script_name)
+        if not os.path.exists(script_path):
+            raise ValueError(f"스크립트가 존재하지 않습니다: {script_path}")
+
+        process = None
+        try:
+            cmd = [
+                sys.executable,
+                script_path,
+                "--config",
+                config_path,
+            ]
+
+            if max_rounds is not None and max_rounds > 0:
+                cmd.extend(["--max-rounds", str(max_rounds)])
+
+            if tools_enabled:
+                cmd.append("--tools-enabled")
+
+            if geopolitics_enabled:
+                cmd.append("--geopolitics-enabled")
+
+            stderr_log_path = os.path.join(sim_dir, "simulation.log")
+            stderr_log_file = open(stderr_log_path, "w", encoding="utf-8")
+
+            env = os.environ.copy()
+            env["PYTHONUTF8"] = "1"
+            env["PYTHONIOENCODING"] = "utf-8"
+
+            process = subprocess.Popen(
+                cmd,
+                cwd=sim_dir,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=stderr_log_file,
+                text=True,
+                encoding="utf-8",
+                bufsize=1,
+                env=env,
+                start_new_session=True,
+            )
+
+            cls._stderr_files[simulation_id] = stderr_log_file
+            cls._rc_processes[simulation_id] = process
+            cls._rc_locks[simulation_id] = threading.Lock()
+
+            state.process_pid = process.pid
+            state.runner_status = RunnerStatus.RUNNING
+            cls._save_run_state(state)
+
+            deadline = time.time() + 120
+            ready_signal = None
+            while time.time() < deadline:
+                remaining = max(1, deadline - time.time())
+                line = cls._read_control_stdout_line(process, timeout=remaining)
+                if not line:
+                    if process.poll() is not None:
+                        raise RuntimeError(
+                            f"ready 신호를 받기 전에 프로세스가 종료되었습니다 (exit={process.returncode})"
+                        )
+                    continue
+                text = line.strip()
+                if not text:
+                    continue
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    logger.debug("ready 대기 중 비-JSON 줄 무시: %s", text[:120])
+                    continue
+                if parsed.get("type") == "ready":
+                    ready_signal = parsed
+                    break
+                logger.debug("ready 대기 중 다른 메시지 무시: %s", parsed.get("type"))
+            if ready_signal is None:
+                raise RuntimeError("120초 내에 ready 신호를 받지 못했습니다")
+
+            monitor_thread = threading.Thread(
+                target=cls._monitor_round_controlled,
+                args=(simulation_id,),
+                daemon=True,
+            )
+            monitor_thread.start()
+            cls._monitor_threads[simulation_id] = monitor_thread
+
+            return ready_signal
+
+        except Exception:
+            if process and process.poll() is None:
+                try:
+                    cls._terminate_process(process, simulation_id)
+                except Exception:
+                    pass
+            cls._cleanup_round_controlled_resources(simulation_id)
+            state.runner_status = RunnerStatus.FAILED
+            state.error = "라운드 제어 시뮬레이션 시작 실패"
+            cls._save_run_state(state)
+            raise
+
+    @classmethod
+    def proceed_round(
+        cls,
+        simulation_id: str,
+        inject_context: Optional[Dict[str, Any]] = None,
+        round_num: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        process = cls._rc_processes.get(simulation_id)
+        if not process:
+            raise ValueError(f"라운드 제어 시뮬레이션이 존재하지 않습니다: {simulation_id}")
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"라운드 제어 시뮬레이션 프로세스가 이미 종료되었습니다: {process.returncode}"
+            )
+        if process.stdin is None:
+            raise RuntimeError("시뮬레이션 stdin 파이프를 사용할 수 없습니다")
+
+        lock = cls._rc_locks.setdefault(simulation_id, threading.Lock())
+        with lock:
+            state = cls.get_run_state(simulation_id)
+            next_round = round_num
+            if next_round is None:
+                next_round = (state.current_round if state else 0) + 1
+
+            payload: Dict[str, Any] = {"type": "proceed", "round": int(next_round)}
+            if inject_context is not None:
+                payload["inject_context"] = inject_context
+
+            process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+
+            deadline = time.time() + 300
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    raise TimeoutError("라운드 완료 응답 대기 시간 초과(300초)")
+
+                line = cls._read_control_stdout_line(process, timeout=remaining)
+                if not line:
+                    if process.poll() is not None:
+                        raise RuntimeError(
+                            f"라운드 응답 대기 중 프로세스 종료: {process.returncode}"
+                        )
+                    continue
+
+                text = line.strip()
+                if not text:
+                    continue
+
+                try:
+                    signal_data = json.loads(text)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"라운드 제어 응답 JSON 파싱 실패 (무시): simulation_id={simulation_id}"
+                    )
+                    continue
+
+                signal_type = signal_data.get("type")
+
+                if signal_type == "error":
+                    if state:
+                        state.runner_status = RunnerStatus.FAILED
+                        state.error = signal_data.get("message", "round control error")
+                        cls._save_run_state(state)
+                    raise RuntimeError(signal_data.get("message", "라운드 제어 에러"))
+
+                if state and signal_type == "round_complete":
+                    done_round = signal_data.get("round", next_round)
+                    try:
+                        state.current_round = max(state.current_round, int(done_round))
+                    except (TypeError, ValueError):
+                        pass
+                    cls._save_run_state(state)
+
+                return signal_data
+
+    @classmethod
+    def stop_round_controlled(
+        cls, simulation_id: str, reason: str = "completed"
+    ) -> Dict[str, Any]:
+        process = cls._rc_processes.get(simulation_id)
+        state = cls.get_run_state(simulation_id)
+        if not process:
+            return {
+                "simulation_id": simulation_id,
+                "runner_status": (state.runner_status.value if state else RunnerStatus.STOPPED.value),
+                "reason": reason,
+            }
+
+        lock = cls._rc_locks.setdefault(simulation_id, threading.Lock())
+        with lock:
+            if state:
+                state.runner_status = RunnerStatus.STOPPING
+                cls._save_run_state(state)
+
+            if process.poll() is None and process.stdin is not None:
+                try:
+                    stop_msg = {"type": "stop", "reason": reason}
+                    process.stdin.write(json.dumps(stop_msg, ensure_ascii=False) + "\n")
+                    process.stdin.flush()
+                except Exception as e:
+                    logger.warning(f"stop 신호 전송 실패: {simulation_id}, error={e}")
+
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                cls._terminate_process(process, simulation_id, timeout=5)
+
+            if state:
+                state.runner_status = RunnerStatus.STOPPED
+                state.twitter_running = False
+                state.reddit_running = False
+                state.completed_at = datetime.now().isoformat()
+                cls._save_run_state(state)
+
+        cls._cleanup_round_controlled_resources(simulation_id)
+        return {
+            "simulation_id": simulation_id,
+            "runner_status": RunnerStatus.STOPPED.value,
+            "reason": reason,
+        }
+
+    @classmethod
+    def heartbeat_round_controlled(
+        cls,
+        simulation_id: str,
+        timestamp: str,
+    ) -> Dict[str, Any]:
+        process = cls._rc_processes.get(simulation_id)
+        if not process:
+            raise ValueError(f"라운드 제어 시뮬레이션이 존재하지 않습니다: {simulation_id}")
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"라운드 제어 시뮬레이션 프로세스가 이미 종료되었습니다: {process.returncode}"
+            )
+        if process.stdin is None:
+            raise RuntimeError("시뮬레이션 stdin 파이프를 사용할 수 없습니다")
+
+        lock = cls._rc_locks.setdefault(simulation_id, threading.Lock())
+        with lock:
+            heartbeat_msg = {"type": "heartbeat", "timestamp": timestamp}
+            process.stdin.write(json.dumps(heartbeat_msg, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+
+            deadline = time.time() + 30
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    raise TimeoutError("heartbeat_ack 대기 시간 초과(30초)")
+
+                line = cls._read_control_stdout_line(process, timeout=remaining)
+                if not line:
+                    if process.poll() is not None:
+                        raise RuntimeError(
+                            f"heartbeat 대기 중 프로세스 종료: {process.returncode}"
+                        )
+                    continue
+
+                text = line.strip()
+                if not text:
+                    continue
+
+                try:
+                    signal_data = json.loads(text)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "heartbeat 응답 JSON 파싱 실패 (무시): simulation_id=%s",
+                        simulation_id,
+                    )
+                    continue
+
+                signal_type = signal_data.get("type")
+                if signal_type == "heartbeat_ack":
+                    return signal_data
+                if signal_type == "error":
+                    raise RuntimeError(signal_data.get("message", "heartbeat error"))
 
     @classmethod
     def _monitor_simulation(cls, simulation_id: str):
@@ -1280,7 +1758,7 @@ class SimulationRunner:
         cls._cleanup_done = True
 
         # 정리할 내용이 있는지 확인 (빈 프로세스에 대해 불필요한 로그 출력 방지)
-        has_processes = bool(cls._processes)
+        has_processes = bool(cls._processes) or bool(cls._rc_processes)
         has_updaters = bool(cls._graph_memory_enabled)
 
         if not has_processes and not has_updaters:
@@ -1296,7 +1774,7 @@ class SimulationRunner:
         cls._graph_memory_enabled.clear()
 
         # 반복 중 수정을 피하기 위해 딕셔너리 복사
-        processes = list(cls._processes.items())
+        processes = list(cls._processes.items()) + list(cls._rc_processes.items())
 
         for simulation_id, process in processes:
             try:
@@ -1370,6 +1848,8 @@ class SimulationRunner:
 
         # 메모리 내 상태 정리
         cls._processes.clear()
+        cls._rc_processes.clear()
+        cls._rc_locks.clear()
         cls._action_queues.clear()
 
         logger.info("시뮬레이션 프로세스 정리 완료")
@@ -1414,7 +1894,7 @@ class SimulationRunner:
         def cleanup_handler(signum=None, frame=None):
             """신호 처리기: 먼저 시뮬레이션 프로세스를 정리한 후 기존 처리기 호출"""
             # 정리할 프로세스가 있을 때만 로그 출력
-            if cls._processes or cls._graph_memory_enabled:
+            if cls._processes or cls._rc_processes or cls._graph_memory_enabled:
                 logger.info(f"신호 {signum} 수신, 정리 시작...")
             cls.cleanup_all_simulations()
 
@@ -1461,6 +1941,9 @@ class SimulationRunner:
         """
         running = []
         for sim_id, process in cls._processes.items():
+            if process.poll() is None:
+                running.append(sim_id)
+        for sim_id, process in cls._rc_processes.items():
             if process.poll() is None:
                 running.append(sim_id)
         return running
@@ -1527,7 +2010,7 @@ class SimulationRunner:
         simulation_id: str,
         agent_id: int,
         prompt: str,
-        platform: str = None,
+        platform: Optional[str] = None,
         timeout: float = 60.0,
     ) -> Dict[str, Any]:
         """
@@ -1565,9 +2048,19 @@ class SimulationRunner:
             f"인터뷰 명령 전송: simulation_id={simulation_id}, agent_id={agent_id}, platform={platform}"
         )
 
-        response = ipc_client.send_interview(
-            agent_id=agent_id, prompt=prompt, platform=platform, timeout=timeout
-        )
+        if platform is not None:
+            response = ipc_client.send_interview(
+                agent_id=agent_id,
+                prompt=prompt,
+                platform=platform,
+                timeout=timeout,
+            )
+        else:
+            response = ipc_client.send_interview(
+                agent_id=agent_id,
+                prompt=prompt,
+                timeout=timeout,
+            )
 
         if response.status.value == "completed":
             return {
@@ -1591,7 +2084,7 @@ class SimulationRunner:
         cls,
         simulation_id: str,
         interviews: List[Dict[str, Any]],
-        platform: str = None,
+        platform: Optional[str] = None,
         timeout: float = 120.0,
     ) -> Dict[str, Any]:
         """
@@ -1628,9 +2121,17 @@ class SimulationRunner:
             f"일괄 인터뷰 명령 전송: simulation_id={simulation_id}, count={len(interviews)}, platform={platform}"
         )
 
-        response = ipc_client.send_batch_interview(
-            interviews=interviews, platform=platform, timeout=timeout
-        )
+        if platform is not None:
+            response = ipc_client.send_batch_interview(
+                interviews=interviews,
+                platform=platform,
+                timeout=timeout,
+            )
+        else:
+            response = ipc_client.send_batch_interview(
+                interviews=interviews,
+                timeout=timeout,
+            )
 
         if response.status.value == "completed":
             return {
@@ -1652,7 +2153,7 @@ class SimulationRunner:
         cls,
         simulation_id: str,
         prompt: str,
-        platform: str = None,
+        platform: Optional[str] = None,
         timeout: float = 180.0,
     ) -> Dict[str, Any]:
         """
@@ -1819,7 +2320,7 @@ class SimulationRunner:
     def get_interview_history(
         cls,
         simulation_id: str,
-        platform: str = None,
+        platform: Optional[str] = None,
         agent_id: Optional[int] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:

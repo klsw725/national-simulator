@@ -65,7 +65,9 @@ class CausalExtractor:
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
 
-        content = response.choices[0].message.content or ""
+        from app.utils.llm_compat import extract_content
+
+        content = extract_content(response.choices[0].message)
         payload = self._parse_json_array(content)
         if payload is None:
             logger.warning("Failed to parse causal extraction response as JSON array")

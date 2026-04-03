@@ -128,12 +128,28 @@ def _redirect_logging_streams_to_stderr():
                     handler.setStream(sys.stderr)
 
 
-async def _inject_context_to_env(envs: Dict[str, Any], context: Dict[str, Any]) -> None:
-    posts = context.get("system_posts", []) if isinstance(context, dict) else []
-    if _control_logger:
-        _control_logger.info(
-            f"[round_control] Received {len(posts)} system posts for injection (stub)"
+async def _inject_context_to_env(
+    envs: Dict[str, Any],
+    db_paths: Dict[str, str],
+    context: Dict[str, Any],
+) -> Dict[str, int]:
+    from round_control_context import inject_context_into_db
+
+    del envs
+    injected_counts: Dict[str, int] = {}
+    for platform, db_path in db_paths.items():
+        injected_counts[platform] = inject_context_into_db(
+            db_path,
+            platform,
+            context,
+            logger=_control_logger,
         )
+    if _control_logger:
+        total_posts = len(context.get("system_posts", []) if isinstance(context, dict) else [])
+        _control_logger.info(
+            f"[round_control] Injected context posts total={total_posts}, per_platform={injected_counts}"
+        )
+    return injected_counts
 
 
 class RoundControlCoordinator:
@@ -156,6 +172,11 @@ class RoundControlCoordinator:
         self._round_payloads: Dict[int, Dict[str, Dict[str, Any]]] = {}
         self._collect_lock = asyncio.Lock()
         self._envs: Dict[str, Any] = {}
+        self._db_paths: Dict[str, str] = {}
+        self._agent_names_by_platform: Dict[str, Dict[int, str]] = {}
+        self._constraint_state: Dict[str, List[Dict[str, Any]]] = {
+            platform: [] for platform in platforms
+        }
         self._ready_sent = False
 
     def send_ready(self):
@@ -171,12 +192,32 @@ class RoundControlCoordinator:
         )
         self._ready_sent = True
 
-    def register_env(self, platform: str, env: Any) -> None:
+    def register_env(
+        self,
+        platform: str,
+        env: Any,
+        db_path: str,
+        agent_names: Dict[int, str],
+    ) -> None:
         if not self.enabled:
             return
         self._envs[platform] = env
+        self._db_paths[platform] = db_path
+        self._agent_names_by_platform[platform] = dict(agent_names)
         if len(self._envs) >= len(self.platforms):
             self.send_ready()
+
+    def is_agent_blocked(self, platform: str, agent_id: int, action_name: str | None = None) -> bool:
+        from round_control_context import is_agent_blocked
+
+        return is_agent_blocked(self._constraint_state.get(platform, []), agent_id, action_name)
+
+    def tick_constraints(self, platform: str) -> None:
+        from round_control_context import tick_constraints
+
+        self._constraint_state[platform] = tick_constraints(
+            self._constraint_state.get(platform, [])
+        )
 
     async def before_round(self, platform: str, round_num: int) -> bool:
         if not self.enabled:
@@ -225,8 +266,35 @@ class RoundControlCoordinator:
                 return False
 
             if signal_type == "proceed":
+                requested_round = signal.get("round")
+                if requested_round is not None and int(requested_round) != round_num + 1:
+                    _send_control(
+                        {
+                            "type": "error",
+                            "round": round_num + 1,
+                            "message": f"Round mismatch: expected {round_num + 1}, got {requested_round}",
+                            "recoverable": False,
+                        }
+                    )
+                    self.stop_requested = True
+                    event.set()
+                    return False
                 if "inject_context" in signal:
-                    await _inject_context_to_env(self._envs, signal["inject_context"])
+                    await _inject_context_to_env(
+                        self._envs,
+                        self._db_paths,
+                        signal["inject_context"],
+                    )
+                    from round_control_context import merge_env_constraints
+
+                    env_constraints = signal["inject_context"].get("env_constraints", [])
+                    for target_platform in self.platforms:
+                        self._constraint_state[target_platform] = merge_env_constraints(
+                            self._constraint_state.get(target_platform, []),
+                            env_constraints,
+                            self._agent_names_by_platform.get(target_platform, {}),
+                            logger=_control_logger,
+                        )
                 event.set()
                 return True
 
@@ -465,6 +533,41 @@ except ImportError as e:
     print(f"오류: 종속성 누락 {e}")
     print("먼저 설치하십시오: pip install oasis-ai camel-ai")
     sys.exit(1)
+
+
+def _patch_interview_system_message():
+    """perform_interview에서 memory에 섞인 system role 메시지가
+    openai_messages 중간에 위치하는 문제를 수정한다.
+
+    vLLM/OpenRouter 등 엄격한 프로바이더는 system 메시지가 배열 첫 번째에만
+    올 수 있도록 강제하므로, memory.get_context() 결과에서 system role을
+    필터링해야 한다.
+    """
+    from oasis.social_agent.agent import SocialAgent
+
+    _orig_interview = SocialAgent.perform_interview
+
+    async def _patched_interview(self, interview_prompt: str):
+        orig_get = self._aget_model_response
+
+        async def filtered_get(**kwargs):
+            msgs = kwargs.get("openai_messages")
+            if msgs and len(msgs) > 1:
+                kwargs["openai_messages"] = [msgs[0]] + [
+                    m for m in msgs[1:] if m.get("role") != "system"
+                ]
+            return await orig_get(**kwargs)
+
+        self._aget_model_response = filtered_get
+        try:
+            return await _orig_interview(self, interview_prompt)
+        finally:
+            self._aget_model_response = orig_get
+
+    SocialAgent.perform_interview = _patched_interview
+
+
+_patch_interview_system_message()
 
 
 # Twitter 사용 가능 액션 (INTERVIEW 제외, INTERVIEW는 ManualAction을 통해서만 수동으로 트리거 가능)
@@ -1516,7 +1619,7 @@ async def run_twitter_simulation(
 
     await result.env.reset()
     if round_coordinator:
-        round_coordinator.register_env("twitter", result.env)
+        round_coordinator.register_env("twitter", result.env, db_path, agent_names)
     log_info("환경이 시작되었습니다.")
 
     if action_logger:
@@ -1618,8 +1721,17 @@ async def run_twitter_simulation(
                 await round_coordinator.after_round("twitter", round_num, [], 0, 0)
             continue
 
-        actions = {agent: LLMAction() for _, agent in active_agents}
+        actions = {
+            agent: (
+                ManualAction(action_type=ActionType.DO_NOTHING, action_args={})
+                if round_coordinator and round_coordinator.is_agent_blocked("twitter", agent_id, "create_post")
+                else LLMAction()
+            )
+            for agent_id, agent in active_agents
+        }
         await result.env.step(actions)
+        if round_coordinator:
+            round_coordinator.tick_constraints("twitter")
 
         # 데이터베이스에서 실제 실행된 액션을 가져와 기록
         actual_actions, last_rowid = fetch_new_actions_from_db(
@@ -1737,7 +1849,7 @@ async def run_reddit_simulation(
 
     await result.env.reset()
     if round_coordinator:
-        round_coordinator.register_env("reddit", result.env)
+        round_coordinator.register_env("reddit", result.env, db_path, agent_names)
     log_info("환경이 시작되었습니다.")
 
     if action_logger:
@@ -1850,8 +1962,17 @@ async def run_reddit_simulation(
                 await round_coordinator.after_round("reddit", round_num, [], 0, 0)
             continue
 
-        actions = {agent: LLMAction() for _, agent in active_agents}
+        actions = {
+            agent: (
+                ManualAction(action_type=ActionType.DO_NOTHING, action_args={})
+                if round_coordinator and round_coordinator.is_agent_blocked("reddit", agent_id, "create_post")
+                else LLMAction()
+            )
+            for agent_id, agent in active_agents
+        }
         await result.env.step(actions)
+        if round_coordinator:
+            round_coordinator.tick_constraints("reddit")
 
         # 데이터베이스에서 실제 실행된 액션을 가져와 기록
         actual_actions, last_rowid = fetch_new_actions_from_db(

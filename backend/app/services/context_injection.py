@@ -86,6 +86,77 @@ def _render_event_post(template: str, event: dict, engine: DecisionEngine) -> st
     )
 
 
+def _append_system_post(
+    system_posts: list[dict],
+    *,
+    author: str,
+    content: str,
+    metadata: dict,
+) -> None:
+    for platform in ("twitter", "reddit"):
+        system_posts.append(
+            {
+                "platform": platform,
+                "author": author,
+                "content": content,
+                "metadata": dict(metadata),
+            },
+        )
+
+
+def _build_env_constraints(
+    events: list[dict],
+    user_decision: dict | None = None,
+) -> list[dict]:
+    constraints: list[dict] = []
+
+    if user_decision:
+        action = str(user_decision.get("action") or "").strip().lower()
+        actor_ref = user_decision.get("actor_id") or user_decision.get("actor_name")
+        if actor_ref and action and action != "do_nothing":
+            constraints.append(
+                {
+                    "type": "block_action",
+                    "target_agents": [actor_ref],
+                    "blocked_actions": ["create_post"],
+                    "duration_rounds": 1,
+                    "reason": f"previous_decision:{action}: 공식 입장 반복 발표 억제",
+                },
+            )
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        source_actor = str(event.get("source_actor_id") or "").strip()
+        if not source_actor:
+            continue
+        event_type = str(event.get("event_type") or "").strip().lower()
+        magnitude = float(event.get("magnitude") or 0.0)
+
+        if event_type in {"military_movement", "military_exercise"} and magnitude >= 0.5:
+            constraints.append(
+                {
+                    "type": "block_action",
+                    "target_agents": [source_actor],
+                    "blocked_actions": ["create_post"],
+                    "duration_rounds": 1,
+                    "reason": f"high_tension:{event_type}: 반복 선전성 게시 억제",
+                },
+            )
+        elif event_type in {"sanction_impose", "trade_restriction"}:
+            constraints.append(
+                {
+                    "type": "block_action",
+                    "target_agents": [source_actor],
+                    "blocked_actions": ["create_post"],
+                    "duration_rounds": 1,
+                    "reason": f"policy_enforcement:{event_type}: 제재/무역조치 직후 발언 제한",
+                },
+            )
+
+    return constraints
+
+
 def build_inject_context(
     engine: DecisionEngine,
     round_result: dict,
@@ -105,17 +176,15 @@ def build_inject_context(
         content = _render_event_post(template_info["template"], event, engine)
         event_round = int(event.get("round_number") or current_round)
 
-        system_posts.append(
-            {
-                "platform": "twitter",
-                "author": template_info["author"],
-                "content": content,
-                "metadata": {
-                    "source": "geo_event",
-                    "event_type": event_type,
-                    "event_id": event.get("id", ""),
-                    "round": event_round,
-                },
+        _append_system_post(
+            system_posts,
+            author=template_info["author"],
+            content=content,
+            metadata={
+                "source": "geo_event",
+                "event_type": event_type,
+                "event_id": event.get("id", ""),
+                "round": event_round,
             },
         )
 
@@ -125,17 +194,16 @@ def build_inject_context(
         actor_name = user_decision.get("actor_name", "해당 국가")
         template = DECISION_POST_TEMPLATES.get(action)
         if template:
-            system_posts.append(
-                {
-                    "platform": "twitter",
-                    "author": "@OfficialStatement",
-                    "content": template.format(actor=actor_name),
-                    "metadata": {
-                        "source": "user_decision",
-                        "action": action,
-                        "round": current_round,
-                    },
+            _append_system_post(
+                system_posts,
+                author="@OfficialStatement",
+                content=template.format(actor=actor_name),
+                metadata={
+                    "source": "user_decision",
+                    "action": action,
+                    "round": current_round,
                 },
             )
 
-    return {"system_posts": system_posts, "env_constraints": []}
+    env_constraints = _build_env_constraints(events, user_decision=user_decision)
+    return {"system_posts": system_posts, "env_constraints": env_constraints}

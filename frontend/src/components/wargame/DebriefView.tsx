@@ -66,15 +66,16 @@ export default function DebriefView({
     : 1;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto">
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
         onClick={onClose}
       />
 
       <div
         className="relative z-10 flex flex-col gap-6 w-[min(90vw,860px)] max-h-[88vh] overflow-y-auto rounded-xl border border-[var(--border-secondary)]"
         style={{ background: "var(--bg-secondary)", padding: "32px 36px" }}
+        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
@@ -212,9 +213,11 @@ export default function DebriefView({
             ) : (
               <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[140px]">
                 {decisions.map((d, i) => (
-                  <div
+                  <button
                     key={i}
-                    className="flex items-start gap-2 text-[11px] leading-snug"
+                    onClick={() => onWhatIf(d.round)}
+                    className="flex items-start gap-2 text-[11px] leading-snug text-left bg-transparent border-none p-0 cursor-pointer group"
+                    title={`R${d.round}에서 What-If 분기`}
                   >
                     <span
                       className="shrink-0 font-bold tabular-nums"
@@ -222,13 +225,19 @@ export default function DebriefView({
                     >
                       R{d.round}
                     </span>
-                    <span style={{ color: "var(--text-primary)" }}>
+                    <span
+                      className="group-hover:text-[var(--accent-cyan)] transition-colors"
+                      style={{ color: "var(--text-primary)" }}
+                    >
                       {d.label}
                     </span>
                     <span style={{ color: "var(--text-muted)" }}>
                       → {d.outcome}
                     </span>
-                  </div>
+                    <span className="text-[9px] text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0">
+                      ↗ What-If
+                    </span>
+                  </button>
                 ))}
               </div>
             )}

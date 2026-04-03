@@ -16,6 +16,7 @@ export interface SimulationParams {
   geopolitics_rounds: number;
   geopolitics_pause_threshold: number;
   wargame_enabled?: boolean;
+  wargame_idle_ttl_minutes?: number;
 }
 
 export interface SimulationParamsInput {
@@ -29,6 +30,7 @@ export interface SimulationParamsInput {
   geopolitics_rounds?: number;
   geopolitics_pause_threshold?: number;
   wargame_enabled?: boolean;
+  wargame_idle_ttl_minutes?: number;
 }
 
 export interface ScenarioCreate {
@@ -65,7 +67,7 @@ export interface ScenarioResponse {
 
 export interface Scenario extends ScenarioResponse {}
 
-export type PipelineMode = 'auto' | 'checkpoint' | 'interactive';
+export type PipelineMode = 'auto' | 'checkpoint';
 
 export interface ScenarioFormData {
   name: string;
@@ -289,23 +291,6 @@ export type DecisionPoint = DecisionPointResponse;
 export interface DecisionPointResolveRequest {
   selected_option_id?: string | null;
   custom_data?: Record<string, unknown> | null;
-}
-
-export interface InjectEventRequest {
-  event_type?: string;
-  content: string;
-  target_agents?: string[];
-}
-
-export interface InteractiveStatus {
-  scenario_id: string;
-  simulation_status: string;
-  current_round: number;
-  max_rounds: number;
-  is_paused: boolean;
-  pause_reason: string | null;
-  injected_events_count: number;
-  tension_alerts: number;
 }
 
 export interface WhatIfCreateRequest {

@@ -4,10 +4,10 @@ import re
 
 GEOPOLITICS_ACTION_MAP = {
     "create_post": "diplomatic_statement",
-    "quote_post": "official_response",
-    "repost": "alliance_support",
-    "like_post": "tacit_approval",
-    "follow": "diplomatic_engagement",
+    "quote_post": "diplomatic_statement",
+    "repost": "diplomatic_statement",
+    "like_post": "diplomatic_statement",
+    "follow": "treaty_sign",
     "do_nothing": "strategic_observation",
 }
 

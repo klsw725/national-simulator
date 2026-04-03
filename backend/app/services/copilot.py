@@ -63,7 +63,9 @@ class CopilotService:
         )
 
         choice = response.choices[0]
-        assistant_content = choice.message.content or ""
+        from app.utils.llm_compat import extract_content
+
+        assistant_content = extract_content(choice.message)
 
         history.append({"role": "assistant", "content": assistant_content})
 

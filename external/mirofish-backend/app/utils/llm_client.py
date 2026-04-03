@@ -60,8 +60,13 @@ class LLMClient:
             kwargs["response_format"] = response_format
 
         response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content or ""
-        # 일부 모델(예: MiniMax M2.5)은 content에 <think> 사고 내용을 포함하므로 제거가 필요함
+        msg = response.choices[0].message
+        content = msg.content or ""
+        if not content:
+            content = getattr(msg, "reasoning_content", "") or ""
+            if not content:
+                pf = getattr(msg, "provider_specific_fields", None) or {}
+                content = pf.get("reasoning_content", "") or pf.get("reasoning", "") or ""
         content = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
         return content
 

@@ -112,6 +112,50 @@ const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   internetOutages: false,
 };
 
+const LENS_LAYER_PRESETS: Record<string, Partial<LayerVisibility>> = {
+  military: {
+    ships: true, militaryFlights: true, uavs: true, trackedFlights: true,
+    satellites: true, militaryBases: true, gpsJamming: true,
+    cctv: false, powerPlants: false, datacenters: false, kiwisdr: false,
+    earthquakes: false, firmsFires: false, internetOutages: false,
+  },
+  economy: {
+    ships: true, powerPlants: true, datacenters: true, internetOutages: true,
+    militaryFlights: false, uavs: false, trackedFlights: false,
+    satellites: false, militaryBases: false, gpsJamming: false,
+    cctv: false, kiwisdr: false, earthquakes: false, firmsFires: false,
+  },
+  info_warfare: {
+    kiwisdr: true, gpsJamming: true, cctv: true, internetOutages: true,
+    datacenters: true,
+    ships: false, militaryFlights: false, uavs: false, trackedFlights: false,
+    satellites: true, militaryBases: false, powerPlants: false,
+    earthquakes: false, firmsFires: false,
+  },
+  diplomacy: {
+    ships: false, militaryFlights: false, uavs: false, trackedFlights: false,
+    satellites: false, militaryBases: false, gpsJamming: false,
+    cctv: false, powerPlants: false, datacenters: false, kiwisdr: false,
+    earthquakes: false, firmsFires: false, internetOutages: false,
+  },
+  relations: {
+    ships: false, militaryFlights: false, uavs: false, trackedFlights: false,
+    satellites: false, militaryBases: false, gpsJamming: false,
+    cctv: false, powerPlants: false, datacenters: false, kiwisdr: false,
+    earthquakes: false, firmsFires: false, internetOutages: false,
+  },
+};
+
+function applyLensOverride(
+  base: LayerVisibility,
+  lens: string | null,
+): LayerVisibility {
+  if (!lens) return base;
+  const preset = LENS_LAYER_PRESETS[lens];
+  if (!preset) return base;
+  return { ...base, ...preset } as LayerVisibility;
+}
+
 export default function HomePage() {
   const polling = useDataPolling();
   const {
@@ -158,6 +202,16 @@ export default function HomePage() {
     mapRefHolder.current?.flyTo({ center: [lng, lat], zoom: 6, duration: 1500 });
   }, []);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(DEFAULT_LAYER_VISIBILITY);
+  const [wargameOverlay, setWargameOverlay] = useState<{ lens: string | null; phase: string | null }>({ lens: null, phase: null });
+
+  const handleWargameOverlay = useCallback((lens: string | null, phase: string | null) => {
+    setWargameOverlay({ lens, phase });
+  }, []);
+
+  const effectiveLayerVisibility = useMemo(
+    () => applyLensOverride(layerVisibility, wargameOverlay.lens),
+    [layerVisibility, wargameOverlay.lens],
+  );
 
   const layerCounts: Partial<Record<keyof LayerVisibility, number>> = useMemo(
     () => ({
@@ -213,14 +267,17 @@ export default function HomePage() {
         datacentersGeoJSON={datacentersGeoJSON}
         internetOutagesGeoJSON={internetOutagesGeoJSON}
         simulationGeoJSON={sim.simulationGeoJSON}
-        layerVisibility={layerVisibility}
+        layerVisibility={effectiveLayerVisibility}
+        wargamePhase={wargameOverlay.phase}
         onMapRef={(ref) => { mapRefHolder.current = ref; }}
       />
-      <LayerToggle
-        visibility={layerVisibility}
-        onChange={setLayerVisibility}
-        counts={layerCounts}
-      />
+      {!wargameOverlay.lens && (
+        <LayerToggle
+          visibility={layerVisibility}
+          onChange={setLayerVisibility}
+          counts={layerCounts}
+        />
+      )}
 
       <OSINTPanel
         open={osintPanelOpen}
@@ -236,6 +293,7 @@ export default function HomePage() {
         sim={sim}
         onOpenWhatIfCompare={(branchId) => setWhatIfCompareBranchId(branchId)}
         onFlyTo={handleFlyTo}
+        onWargameOverlay={handleWargameOverlay}
       />
 
       {whatIfCompareBranchId && sim.activeScenario && (

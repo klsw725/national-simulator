@@ -5,12 +5,10 @@ from datetime import datetime, timezone
 
 import asyncpg
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import JSONResponse
 
 from app.clients.mirofish import MiroFishClient
 from app.clients.shadowbroker import ShadowBrokerClient
 from app.database import get_db, get_pool
-from app.models.decision_point import DecisionOption, DecisionPointResponse
 from app.models.result import (
     CheckpointResponse,
     ContinueRequest,
@@ -20,8 +18,7 @@ from app.models.result import (
 from app.models.scenario import SimulationParams
 from app.routers._helpers import get_mf_client, get_sb_client, row_to_decision_point
 from app.services.action_logger import ActionLogger
-from app.services.param_recommender import recommend_params
-from app.services.seed_generator import SeedGenerator
+from app.services.geopolitics_interactive import get_latest_snapshot
 from app.services.simulation_orchestrator import SimulationOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -37,90 +34,7 @@ CHECKPOINT_STEPS = {
     "checkpoint:config": {"step": "config", "editable": True},
     "checkpoint:geopolitics": {"step": "geopolitics", "editable": False},
     "checkpoint:decision": {"step": "decision", "editable": True},
-    "simulating:geopolitics_paused": {"step": "geopolitics_interactive", "editable": True},
 }
-
-
-async def _generate_decision_options(
-    scenario_id: str,
-    result_id: str,
-    sb_client,
-    bbox: list[float],
-    question: str,
-    region_name: str,
-    web_search_enabled: bool,
-) -> None:
-    pool = get_pool()
-    try:
-        generator = SeedGenerator(sb_client)
-        seed_result = await generator.generate_options(
-            bbox=bbox,
-            question=question,
-            region_name=region_name,
-            web_search_enabled=web_search_enabled,
-        )
-
-        param_result = recommend_params(seed_result["metadata"])
-
-        now = datetime.now(timezone.utc).isoformat()
-        async with pool.acquire() as conn:
-            seed_dp_id = f"dp_{uuid.uuid4().hex[:12]}"
-            await conn.execute(
-                """INSERT INTO decision_points
-                   (id, scenario_id, type, options, recommended, allow_custom, status, created_at)
-                   VALUES ($1, $2, 'seed_selection', $3, $4, TRUE, 'pending', $5)""",
-                seed_dp_id, scenario_id,
-                json.dumps(seed_result["options"], ensure_ascii=False),
-                seed_result["recommended"], now,
-            )
-
-            param_dp_id = f"dp_{uuid.uuid4().hex[:12]}"
-            await conn.execute(
-                """INSERT INTO decision_points
-                   (id, scenario_id, type, options, recommended, allow_custom, status, created_at)
-                   VALUES ($1, $2, 'parameter_recommendation', $3, $4, TRUE, 'pending', $5)""",
-                param_dp_id, scenario_id,
-                json.dumps(param_result["options"], ensure_ascii=False),
-                param_result["recommended"], now,
-            )
-
-            await conn.execute(
-                "UPDATE simulation_results SET status = 'checkpoint:decision' WHERE id = $1",
-                result_id,
-            )
-            await conn.execute(
-                "UPDATE scenarios SET simulation_status = 'checkpoint', status = 'checkpoint', updated_at = $1 WHERE id = $2",
-                now, scenario_id,
-            )
-
-        await ActionLogger.log(
-            "decision_options.generated",
-            scenario_id,
-            payload={"seed_dp_id": seed_dp_id, "param_dp_id": param_dp_id},
-        )
-        logger.info("[%s] Decision options generated: seed=%s, params=%s", scenario_id, seed_dp_id, param_dp_id)
-
-    except Exception as exc:
-        logger.exception("[%s] Decision options generation failed", scenario_id)
-        async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE simulation_results SET status = 'failed' WHERE id = $1",
-                result_id,
-            )
-            now = datetime.now(timezone.utc).isoformat()
-            await conn.execute(
-                "UPDATE scenarios SET simulation_status = 'failed', status = 'failed', updated_at = $1 WHERE id = $2",
-                now, scenario_id,
-            )
-        try:
-            await ActionLogger.log(
-                "decision_options.failed", scenario_id,
-                payload={"error": str(exc)[:500]},
-            )
-        except Exception:
-            pass
-
-
 @router.post("/{scenario_id}/simulate", status_code=202)
 async def start_simulation(
     scenario_id: str,
@@ -140,8 +54,8 @@ async def start_simulation(
     같은 row를 UPDATE하려 해서 데드락이 발생한다.
     """
     mode = (body.mode if body else "auto") or "auto"
-    if mode not in ("auto", "checkpoint", "interactive"):
-        raise HTTPException(status_code=400, detail="mode must be 'auto', 'checkpoint', or 'interactive'")
+    if mode not in ("auto", "checkpoint"):
+        raise HTTPException(status_code=400, detail="mode must be 'auto' or 'checkpoint'")
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -200,46 +114,6 @@ async def start_simulation(
                 "status": "checkpoint:seed",
                 "pipeline_mode": "checkpoint",
                 "message": "Pipeline paused at seed review checkpoint",
-            }
-
-        if mode == "interactive":
-            async with conn.transaction():
-                await conn.execute(
-                    """INSERT INTO simulation_results
-                       (id, scenario_id, status, platform, pipeline_mode, created_at)
-                       VALUES ($1, $2, 'generating_options', $3, 'interactive', $4)""",
-                    result_id,
-                    scenario_id,
-                    sim_params_cp.platform,
-                    now,
-                )
-                await conn.execute(
-                    "UPDATE scenarios SET simulation_status = 'simulating', status = 'simulating', updated_at = $1 WHERE id = $2",
-                    now,
-                    scenario_id,
-                )
-            background_tasks.add_task(
-                _generate_decision_options,
-                scenario_id=scenario_id,
-                result_id=result_id,
-                sb_client=sb_client,
-                bbox=json.loads(scenario["region_bbox"]),
-                question=scenario["question"],
-                region_name=scenario["region_name"],
-                web_search_enabled=sim_params_cp.web_search_enabled,
-            )
-            await ActionLogger.log(
-                "simulation.start",
-                scenario_id,
-                payload={"result_id": result_id, "mode": "interactive"},
-            )
-
-            return {
-                "scenario_id": scenario_id,
-                "result_id": result_id,
-                "status": "generating_options",
-                "pipeline_mode": "interactive",
-                "message": "Generating AI decision options",
             }
 
         raw_params = scenario["simulation_params"] if "simulation_params" in scenario else "{}"
@@ -450,6 +324,8 @@ async def continue_pipeline(
             scn_row_wg = await conn.fetchrow("SELECT simulation_params FROM scenarios WHERE id = $1", scenario_id)
             raw_params_wg = scn_row_wg["simulation_params"] if scn_row_wg and "simulation_params" in scn_row_wg else "{}"
             sim_params_wg = SimulationParams.model_validate_json(raw_params_wg or "{}")
+            snapshot = await get_latest_snapshot(scenario_id, row["id"])
+            expected_decision_point_id = snapshot.get("pending_decision_point_id") if snapshot else None
 
             orchestrator = SimulationOrchestrator(mf_client, sb_client=sb_client)
             background_tasks.add_task(
@@ -457,6 +333,7 @@ async def continue_pipeline(
                 scenario_id=scenario_id,
                 result_id=row["id"],
                 simulation_params=sim_params_wg,
+                expected_decision_point_id=expected_decision_point_id,
             )
             await ActionLogger.log(
                 "simulation.wargame_continue",
@@ -476,8 +353,8 @@ async def continue_pipeline(
                 detail=f"Cannot continue — not at a checkpoint (current status: {status})",
             )
 
-        if row["pipeline_mode"] not in ("checkpoint", "interactive"):
-            raise HTTPException(status_code=400, detail="Pipeline is not in checkpoint/interactive mode")
+        if row["pipeline_mode"] != "checkpoint":
+            raise HTTPException(status_code=400, detail="Pipeline is not in checkpoint mode")
 
         if status == "checkpoint:decision":
             pending = await conn.fetch(
@@ -554,93 +431,6 @@ async def continue_pipeline(
                 payload={"result_id": row["id"]},
             )
 
-        if status == "simulating:geopolitics_paused":
-            pending = await conn.fetch(
-                "SELECT id FROM decision_points WHERE scenario_id = $1 AND status = 'pending' AND type IN ('geopolitics_actor_response', 'geopolitics_direction')",
-                scenario_id,
-            )
-            if pending:
-                raise HTTPException(status_code=400, detail="Unresolved geopolitics decision points")
-
-            snapshot = await conn.fetchrow(
-                "SELECT * FROM geopolitics_snapshots WHERE scenario_id = $1 AND result_id = $2 ORDER BY round_number DESC LIMIT 1",
-                scenario_id, row["id"],
-            )
-            if not snapshot:
-                raise HTTPException(status_code=400, detail="No geopolitics snapshot found")
-
-            dp_row = await conn.fetchrow(
-                "SELECT type, options, selected_option_id, custom_data FROM decision_points WHERE id = $1 AND status = 'resolved'",
-                snapshot["pending_decision_point_id"],
-            )
-            if not dp_row:
-                raise HTTPException(status_code=400, detail="Decision point not resolved")
-
-            from app.geopolitics.engine import DecisionEngine
-            from app.models.scenario import GeopoliticsMode
-
-            engine_state = json.loads(snapshot["engine_state"])
-            engine = DecisionEngine.from_state(engine_state)
-            mode = GeopoliticsMode(snapshot["geopolitics_mode"])
-
-            if mode == GeopoliticsMode.ACTOR_ROLE:
-                selected_action = dp_row["selected_option_id"]
-                if selected_action and snapshot["player_actor_id"]:
-                    engine.override_next_action(snapshot["player_actor_id"], selected_action)
-            elif mode == GeopoliticsMode.GAME_MASTER:
-                options = json.loads(dp_row["options"])
-                selected = next((o for o in options if o["id"] == dp_row["selected_option_id"]), None)
-                if selected and selected.get("data"):
-                    deltas = selected["data"].get("state_deltas", {})
-                    applies_to = selected["data"].get("applies_to", "all")
-                    engine.apply_direction_deltas(deltas, applies_to)
-
-            scn_row_geo = await conn.fetchrow("SELECT simulation_params FROM scenarios WHERE id = $1", scenario_id)
-            raw_params_geo = scn_row_geo["simulation_params"] if scn_row_geo else "{}"
-            sim_params_geo = SimulationParams.model_validate_json(raw_params_geo or "{}")
-            remaining_rounds = sim_params_geo.geopolitics_rounds - snapshot["round_number"]
-
-            now = datetime.now(timezone.utc).isoformat()
-            for _ in range(remaining_rounds):
-                round_result = engine.run_single_round()
-                for event_dict in round_result.get("events", []) + round_result.get("cascade_events", []):
-                    event_id = f"ge_{uuid.uuid4().hex[:12]}"
-                    await conn.execute(
-                        """INSERT INTO geopolitics_events
-                           (id, scenario_id, simulation_result_id, action_type, actor_id,
-                            target_actor_ids, content, magnitude, round_number, event_at)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
-                        event_id, scenario_id, row["id"],
-                        event_dict.get("event_type", ""),
-                        event_dict.get("source_actor_id", ""),
-                        json.dumps(event_dict.get("target_actor_ids", [])),
-                        event_dict.get("description", ""),
-                        event_dict.get("magnitude", 0.5),
-                        event_dict.get("round_number", 0),
-                        now,
-                    )
-
-                from app.services.geopolitics_interactive import should_pause, build_actor_response_options, build_direction_options, find_trigger_event, save_geopolitics_snapshot, create_geopolitics_decision_point, link_snapshot_to_dp
-
-                if should_pause(round_result, mode, sim_params_geo.geopolitics_player_actor_id, sim_params_geo.geopolitics_pause_threshold):
-                    snap_id = await save_geopolitics_snapshot(
-                        scenario_id, row["id"], snapshot["round_number"] + 1, engine, mode, snapshot.get("player_actor_id"),
-                    )
-                    if mode == GeopoliticsMode.ACTOR_ROLE and snapshot["player_actor_id"]:
-                        trigger = find_trigger_event(round_result, snapshot["player_actor_id"])
-                        opts = build_actor_response_options(engine, snapshot["player_actor_id"], trigger or {})
-                        new_dp_id = await create_geopolitics_decision_point(scenario_id, "geopolitics_actor_response", opts, next((o["id"] for o in opts if o.get("data", {}).get("engine_recommended")), opts[0]["id"]))
-                    else:
-                        opts = build_direction_options(round_result)
-                        new_dp_id = await create_geopolitics_decision_point(scenario_id, "geopolitics_direction", opts, "maintain")
-                    await link_snapshot_to_dp(snap_id, new_dp_id)
-                    await conn.execute("UPDATE simulation_results SET status = 'simulating:geopolitics_paused' WHERE id = $1", row["id"])
-                    return {"scenario_id": scenario_id, "result_id": row["id"], "status": "paused_again", "decision_point_id": new_dp_id}
-
-            await conn.execute("UPDATE simulation_results SET status = 'completed' WHERE id = $1", row["id"])
-            await conn.execute("UPDATE scenarios SET simulation_status = 'completed', status = 'completed' WHERE id = $1", scenario_id)
-            return {"scenario_id": scenario_id, "result_id": row["id"], "status": "completed"}
-
         if status != "checkpoint:profiles" and not await mf_client.health_check():
             raise HTTPException(status_code=503, detail="MiroFish service unavailable")
 
@@ -707,6 +497,91 @@ async def get_simulation_status(
         if error_row and error_row["payload"]:
             payload = json.loads(error_row["payload"])
             result["error_message"] = payload.get("error", "")
+
+    return result
+
+
+@router.get("/{scenario_id}/wargame_status")
+async def get_wargame_status(
+    scenario_id: str,
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    ws = await conn.fetchrow(
+        "SELECT * FROM wargame_state WHERE scenario_id = $1 ORDER BY updated_at DESC LIMIT 1",
+        scenario_id,
+    )
+    if not ws:
+        raise HTTPException(status_code=404, detail="No wargame state found")
+
+    sim_row = await conn.fetchrow(
+        "SELECT id FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+    result_id = sim_row["id"] if sim_row else None
+
+    dp = await conn.fetchrow(
+        "SELECT * FROM decision_points "
+        "WHERE scenario_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+        scenario_id,
+    )
+
+    briefing = None
+    briefing_row = await conn.fetchrow(
+        """SELECT payload FROM action_log
+           WHERE scenario_id = $1 AND action_type = 'wargame.round_briefing'
+           ORDER BY created_at DESC LIMIT 1""",
+        scenario_id,
+    )
+    if briefing_row and briefing_row["payload"]:
+        try:
+            briefing_payload = json.loads(briefing_row["payload"])
+            if not dp or briefing_payload.get("decision_point_id") in {None, dp["id"]}:
+                briefing = briefing_payload.get("briefing")
+        except (json.JSONDecodeError, TypeError):
+            briefing = None
+
+    snapshot = None
+    if result_id:
+        snapshot = await conn.fetchrow(
+            "SELECT geopolitics_mode, player_actor_id FROM geopolitics_snapshots WHERE scenario_id = $1 AND result_id = $2 ORDER BY round_number DESC LIMIT 1",
+            scenario_id,
+            result_id,
+        )
+
+    phase = "simulation"
+    if ws["status"] == "paused":
+        phase = "briefing" if briefing else ("decision" if dp else "briefing")
+    elif ws["status"] == "crashed":
+        phase = "briefing" if briefing else "simulation"
+    elif ws["status"] == "completed":
+        phase = "confirmation"
+
+    actor_states = {}
+    engine_state = json.loads(ws["engine_state"]) if ws["engine_state"] else {}
+    for actor_id, actor in engine_state.get("actors", {}).items():
+        actor_states[actor_id] = {
+            "actor_id": actor_id,
+            "name": actor.get("name", actor_id),
+            "threat_perception": actor.get("threat_perception", 0.5),
+            "domestic_pressure": actor.get("domestic_pressure", 0.3),
+            "resource_level": actor.get("resource_level", 0.8),
+        }
+
+    result: dict = {
+        "phase": phase,
+        "round": ws["current_round"],
+        "totalRounds": ws["total_rounds"],
+        "role": (snapshot["geopolitics_mode"] if snapshot and snapshot["geopolitics_mode"] else "actor_role"),
+        "actorId": (snapshot["player_actor_id"] if snapshot else None),
+        "tension": engine_state.get("global_tension", 0.3),
+        "actorStates": actor_states,
+        "briefing": briefing if isinstance(briefing, dict) else None,
+    }
+
+    if dp:
+        result["decisionPoint"] = row_to_decision_point(dp).model_dump()
+    else:
+        result["decisionPoint"] = None
 
     return result
 

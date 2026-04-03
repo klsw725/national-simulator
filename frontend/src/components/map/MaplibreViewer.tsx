@@ -37,6 +37,7 @@ interface MaplibreViewerProps {
   powerPlantsGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
   datacentersGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
   internetOutagesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point>;
+  wargamePhase?: string | null;
   onMapRef?: (ref: MapRef | null) => void;
 }
 
@@ -68,6 +69,7 @@ function MaplibreViewer({
   powerPlantsGeoJSON,
   datacentersGeoJSON,
   internetOutagesGeoJSON,
+  wargamePhase,
   onMapRef,
 }: MaplibreViewerProps) {
   const mapRef = useRef<MapRef>(null);
@@ -818,19 +820,23 @@ function MaplibreViewer({
           id="simulation-relations-layer"
           type="line"
           paint={{
-            "line-color": ["coalesce", ["get", "color"], "#22d3ee"],
+            "line-color": wargamePhase === "briefing"
+              ? "#60a5fa"
+              : wargamePhase === "decision"
+                ? "#f59e0b"
+                : ["coalesce", ["get", "color"], "#22d3ee"],
             "line-width": [
               "interpolate",
               ["linear"],
               ["coalesce", ["get", "strength"], 0.5],
               0,
-              1,
+              wargamePhase ? 2 : 1,
               0.5,
-              2,
+              wargamePhase ? 3 : 2,
               1,
-              4,
+              wargamePhase ? 5 : 4,
             ],
-            "line-opacity": 0.6,
+            "line-opacity": wargamePhase ? 0.8 : 0.6,
           }}
         />
       </Source>
@@ -846,16 +852,22 @@ function MaplibreViewer({
               ["linear"],
               ["coalesce", ["get", "tension_level"], 0],
               0,
-              8,
+              wargamePhase === "decision" ? 12 : 8,
               0.5,
-              14,
+              wargamePhase === "decision" ? 18 : 14,
               1,
-              22,
+              wargamePhase === "decision" ? 28 : 22,
             ],
-            "circle-color": ["coalesce", ["get", "color"], "#22d3ee"],
-            "circle-opacity": 0.8,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
+            "circle-color": wargamePhase === "decision"
+              ? "#f59e0b"
+              : wargamePhase === "briefing"
+                ? "#60a5fa"
+                : ["coalesce", ["get", "color"], "#22d3ee"],
+            "circle-opacity": wargamePhase === "decision" || wargamePhase === "briefing" ? 0.9 : 0.8,
+            "circle-stroke-width": wargamePhase === "decision" ? 3 : 2,
+            "circle-stroke-color": wargamePhase === "decision"
+              ? "#fbbf24"
+              : "#ffffff",
           }}
         />
         <Layer

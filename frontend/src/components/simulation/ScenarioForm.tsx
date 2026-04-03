@@ -27,9 +27,9 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [platform, setPlatform] = useState<string>("twitter");
   const [simulationHours, setSimulationHours] = useState(24);
+  const [wargameIdleTtlMinutes, setWargameIdleTtlMinutes] = useState(30);
   const [simRequirement, setSimRequirement] = useState("");
-  const [geopoliticsEnabled, setGeopoliticsEnabled] = useState(false);
-  const [geopoliticsMode, setGeopoliticsMode] = useState<GeopoliticsMode>("auto");
+  const [geopoliticsMode, setGeopoliticsMode] = useState<GeopoliticsMode>("game_master");
   const [playerActorId, setPlayerActorId] = useState("");
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
@@ -52,10 +52,12 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
           platform,
           simulation_hours: simulationHours,
           simulation_requirement: simRequirement || undefined,
-          geopolitics_enabled: geopoliticsEnabled,
-          ...(geopoliticsEnabled && { geopolitics_mode: geopoliticsMode }),
-          ...(geopoliticsEnabled && geopoliticsMode === "actor_role" && playerActorId.trim() && { geopolitics_player_actor_id: playerActorId.trim() }),
+          geopolitics_enabled: true,
+          geopolitics_mode: geopoliticsMode,
+          ...(geopoliticsMode === "actor_role" && playerActorId.trim() && { geopolitics_player_actor_id: playerActorId.trim() }),
           web_search_enabled: webSearchEnabled,
+          wargame_enabled: true,
+          wargame_idle_ttl_minutes: wargameIdleTtlMinutes,
         },
       });
     } finally {
@@ -321,60 +323,75 @@ export default function ScenarioForm({ onSubmit, isRunning }: Props) {
               />
             </div>
 
-            {/* Geopolitics Enabled */}
             <div>
-              <label style={labelStyle}>지정학적 이벤트</label>
+              <label style={labelStyle}>워게임 입력 대기 TTL (분)</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={wargameIdleTtlMinutes}
+                  onChange={(e) => setWargameIdleTtlMinutes(Number(e.target.value) || 1)}
+                  style={{ ...inputStyle, width: 100 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setWargameIdleTtlMinutes(1)}
+                  style={{
+                    padding: "7px 10px",
+                    background: "rgba(34, 211, 238, 0.1)",
+                    border: "1px solid rgba(34, 211, 238, 0.25)",
+                    borderRadius: 4,
+                    color: "var(--accent-cyan)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  재현용 1분
+                </button>
+              </div>
               <div
                 style={{
-                  display: "flex",
-                  background: "var(--bg-primary)",
-                  border: "1px solid var(--border-secondary)",
-                  borderRadius: 4,
-                  overflow: "hidden",
+                  marginTop: 6,
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.5,
                 }}
               >
-                {([
-                  { value: false, label: "비활성" },
-                  { value: true, label: "활성" },
-                ] as const).map((opt) => (
-                  <button
-                    key={String(opt.value)}
-                    type="button"
-                    onClick={() => setGeopoliticsEnabled(opt.value)}
-                    style={{
-                      flex: 1,
-                      padding: "7px 12px",
-                      background: geopoliticsEnabled === opt.value ? "var(--accent-cyan)" : "transparent",
-                      color: geopoliticsEnabled === opt.value ? "var(--bg-primary)" : "var(--text-muted)",
-                      border: "none",
-                      fontSize: 12,
-                      fontWeight: geopoliticsEnabled === opt.value ? 700 : 400,
-                      cursor: "pointer",
-                      transition: "background 0.15s, color 0.15s",
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                idle timeout 재현 시 1분으로 낮추면 결정 화면에서 장시간 대기 버그를 빠르게 확인할 수 있습니다.
               </div>
             </div>
 
-            {geopoliticsEnabled && (
-              <div>
-                <label style={labelStyle}>지정학 개입 모드</label>
-                <select
-                  value={geopoliticsMode}
-                  onChange={(e) => setGeopoliticsMode(e.target.value as GeopoliticsMode)}
-                  style={{ ...inputStyle, cursor: "pointer" }}
-                >
-                  <option value="auto">자동 (개입 없음)</option>
-                  <option value="actor_role">국가 역할 수행</option>
-                  <option value="game_master">시나리오 방향 결정</option>
-                </select>
+            <div>
+              <label style={labelStyle}>워게임 개입 방식</label>
+              <select
+                value={geopoliticsMode}
+                onChange={(e) => setGeopoliticsMode(e.target.value as GeopoliticsMode)}
+                style={{ ...inputStyle, cursor: "pointer" }}
+              >
+                <option value="game_master">시나리오 방향 결정</option>
+                <option value="actor_role">특정 국가 역할 수행</option>
+              </select>
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: "8px 10px",
+                  background: "rgba(34, 211, 238, 0.06)",
+                  border: "1px solid rgba(34, 211, 238, 0.15)",
+                  borderRadius: 4,
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                워게임 모드에서는 지정학 엔진이 항상 활성화됩니다. 여기서는
+                <strong style={{ color: "var(--text-primary)", marginLeft: 4 }}>어떤 방식으로 개입할지</strong>만 선택합니다.
               </div>
-            )}
+            </div>
 
-            {geopoliticsEnabled && geopoliticsMode === "actor_role" && (
+            {geopoliticsMode === "actor_role" && (
               <div>
                 <label style={labelStyle}>역할 국가</label>
                 <input

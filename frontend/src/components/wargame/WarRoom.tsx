@@ -1,30 +1,96 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWargame } from "@/hooks/useWargame";
+import { resolveWargameDecision, resumeWargame } from "@/lib/api/wargameApi";
 import type { LiveAction } from "@/types/simulation";
 import PhaseBar from "./PhaseBar";
 import LensPanel from "./LensPanel";
 import ContextPanel from "./ContextPanel";
-import FeedPanel from "./FeedPanel";
+import FeedPanel, { type SelectedFeedEntity } from "./FeedPanel";
 import BriefingOverlay from "./BriefingOverlay";
 import DecisionCard from "./DecisionCard";
 import DebriefView from "./DebriefView";
+
+/** Phase → CSS accent color token for color-temperature shifting */
+const PHASE_ACCENT: Record<string, string> = {
+  simulation: "var(--accent-cyan)",
+  briefing: "var(--text-muted)",
+  decision: "#f59e0b",
+  confirmation: "var(--text-muted)",
+};
 
 interface Props {
   scenarioId: string;
   totalRounds: number;
   actions: LiveAction[];
   onClose: () => void;
+  onViewReport?: () => void;
+  onCreateWhatIf?: (round: number) => void;
+  onWargameOverlay?: (lens: string | null, phase: string | null) => void;
 }
 
-export default function WarRoom({ scenarioId, totalRounds, actions, onClose }: Props) {
+export default function WarRoom({
+  scenarioId,
+  totalRounds,
+  actions,
+  onClose,
+  onViewReport,
+  onCreateWhatIf,
+  onWargameOverlay,
+}: Props) {
   const wargame = useWargame(scenarioId, totalRounds);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<SelectedFeedEntity | null>(null);
+  const resumePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resumePollRef.current) clearInterval(resumePollRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (wargame.state.phase !== "confirmation" && resumePollRef.current) {
+      clearInterval(resumePollRef.current);
+      resumePollRef.current = null;
+    }
+  }, [wargame.state.phase]);
+
+  useEffect(() => {
+    onWargameOverlay?.(wargame.activeLens, wargame.state.phase);
+  }, [wargame.activeLens, wargame.state.phase, onWargameOverlay]);
+
+  useEffect(() => {
+    return () => onWargameOverlay?.(null, null);
+  }, [onWargameOverlay]);
+
+  const phaseAccent = PHASE_ACCENT[wargame.state.phase] ?? "var(--text-muted)";
+
+  const handleScrub = (round: number) => {
+    setSelectedRound(round === 0 ? null : round);
+  };
 
   const decisionRounds = useMemo(
     () => wargame.decisionHistory.map((d) => d.round),
     [wargame.decisionHistory],
+  );
+
+  const displaySnapshot = useMemo(
+    () => wargame.getSnapshotForRound(selectedRound),
+    [selectedRound, wargame],
+  );
+
+  const displayState = useMemo(
+    () => displaySnapshot
+      ? {
+          ...wargame.state,
+          round: displaySnapshot.round,
+          tension: displaySnapshot.tension,
+          actorStates: displaySnapshot.actorStates,
+        }
+      : wargame.state,
+    [displaySnapshot, wargame.state],
   );
 
   const handleDecisionConfirm = async (selectedOptionId: string) => {
@@ -38,36 +104,62 @@ export default function WarRoom({ scenarioId, totalRounds, actions, onClose }: P
       outcome: selectedOption?.reasoning ?? "결정 반영됨",
     });
 
-    try {
-      await fetch(`/api/scenario/${scenarioId}/decision_points/${dp.id}/resolve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_option_id: selectedOptionId }),
-      });
-    } catch (err) {
-      console.error("Failed to resolve decision:", err);
-    }
     wargame.setPhase("confirmation");
-    setTimeout(() => wargame.setPhase("simulation"), 2000);
+
+    if (resumePollRef.current) {
+      clearInterval(resumePollRef.current);
+      resumePollRef.current = null;
+    }
+
+    try {
+      await resolveWargameDecision(scenarioId, dp.id, selectedOptionId);
+      await resumeWargame(scenarioId);
+    } catch (err) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("Failed to resolve/resume wargame:", err);
+      }
+    }
+
+    if (!wargame.isConnected) {
+      resumePollRef.current = setInterval(() => {
+        wargame.refreshState().catch(() => {});
+      }, 3000);
+      setTimeout(() => {
+        if (resumePollRef.current) {
+          clearInterval(resumePollRef.current);
+          resumePollRef.current = null;
+        }
+      }, 120_000);
+    }
   };
 
-  const handleWhatIf = (_round?: number) => {
-    console.log("What-If branch requested", _round);
+  const handleWhatIf = (round?: number) => {
+    if (onCreateWhatIf) {
+      onCreateWhatIf(round ?? wargame.state.round);
+    }
   };
 
   const handleViewReport = () => {
-    console.log("View report requested");
+    wargame.setShowDebrief(false);
+    if (onViewReport) {
+      onViewReport();
+    }
+    onClose();
   };
 
   const handleNewSimulation = () => {
     wargame.setIsComplete(false);
+    wargame.setShowDebrief(false);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col pointer-events-none">
+    <div
+      className="fixed inset-0 z-20 flex flex-col pointer-events-none transition-colors duration-500"
+      style={{ "--war-room-accent": phaseAccent } as React.CSSProperties}
+    >
       <div className="pointer-events-auto">
-        <PhaseBar state={wargame.state} isMockMode={wargame.isMockMode} />
+        <PhaseBar state={displayState} isMockMode={wargame.isMockMode} />
       </div>
 
       <div className="flex flex-1 min-h-0">
@@ -83,11 +175,14 @@ export default function WarRoom({ scenarioId, totalRounds, actions, onClose }: P
         </div>
 
         <div className="pointer-events-auto">
-          <ContextPanel
-            actorStates={wargame.state.actorStates}
-            phase={wargame.state.phase}
-            playerActorId={wargame.state.actorId}
-          />
+            <ContextPanel
+              actorStates={displayState.actorStates}
+              phase={displayState.phase}
+              playerActorId={displayState.actorId}
+              phaseAccent={phaseAccent}
+              selectedEntity={selectedEntity}
+              onClearEntity={() => setSelectedEntity(null)}
+            />
         </div>
       </div>
 
@@ -97,18 +192,21 @@ export default function WarRoom({ scenarioId, totalRounds, actions, onClose }: P
           currentRound={wargame.state.round}
           totalRounds={totalRounds}
           decisionRounds={decisionRounds}
+          decisions={wargame.decisionHistory}
           selectedRound={selectedRound}
-          onScrub={setSelectedRound}
+          onScrub={handleScrub}
+          phaseAccent={phaseAccent}
+          onActionClick={setSelectedEntity}
         />
       </div>
 
       {wargame.state.phase === "briefing" && wargame.state.briefing && (
         <BriefingOverlay
           briefing={wargame.state.briefing}
-          round={wargame.state.round}
-          onProceedToDecision={() => wargame.setPhase("decision")}
-        />
-      )}
+            round={displayState.round}
+            onProceedToDecision={() => wargame.setPhase("decision")}
+          />
+        )}
 
       {wargame.state.phase === "decision" && wargame.state.decisionPoint && (
         <DecisionCard
@@ -120,14 +218,25 @@ export default function WarRoom({ scenarioId, totalRounds, actions, onClose }: P
       )}
 
       {wargame.state.phase === "confirmation" && !wargame.isComplete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-emerald-900/90 text-emerald-100 px-8 py-4 rounded-lg text-lg font-medium">
-            결정이 반영되었습니다. 다음 라운드를 준비합니다...
-          </div>
+        <RoundProgressOverlay
+          round={wargame.state.round}
+          totalRounds={totalRounds}
+          tension={wargame.state.tension}
+        />
+      )}
+
+      {wargame.isComplete && !wargame.showDebrief && (
+        <div className="fixed bottom-56 right-4 z-30 pointer-events-auto">
+          <button
+            onClick={() => wargame.setShowDebrief(true)}
+            className="px-3 py-2 rounded-md text-xs font-semibold bg-[rgba(34,211,238,0.12)] border border-[var(--accent-cyan)] text-[var(--accent-cyan)] cursor-pointer transition-colors hover:bg-[rgba(34,211,238,0.2)]"
+          >
+            📊 디브리프 보기
+          </button>
         </div>
       )}
 
-      {wargame.isComplete && (
+      {wargame.showDebrief && (
         <DebriefView
           totalRounds={totalRounds}
           tensionCurve={wargame.tensionHistory}
@@ -136,9 +245,114 @@ export default function WarRoom({ scenarioId, totalRounds, actions, onClose }: P
           onViewReport={handleViewReport}
           onNewSimulation={handleNewSimulation}
           onWhatIf={handleWhatIf}
-          onClose={() => wargame.setIsComplete(false)}
+          onClose={() => wargame.setShowDebrief(false)}
         />
       )}
+    </div>
+  );
+}
+
+function RoundProgressOverlay({
+  round,
+  totalRounds,
+  tension,
+}: {
+  round: number;
+  totalRounds: number;
+  tension: number;
+}) {
+  const [dots, setDots] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const dotTimer = setInterval(() => setDots((d) => (d + 1) % 4), 500);
+    const elapsedTimer = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => {
+      clearInterval(dotTimer);
+      clearInterval(elapsedTimer);
+    };
+  }, []);
+
+  const pct = Math.round((round / totalRounds) * 100);
+  const tensionPct = Math.round(tension * 100);
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}분 ${sec}초` : `${sec}초`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <div
+        className="pointer-events-auto rounded-2xl border px-10 py-8 flex flex-col items-center gap-5 min-w-[360px] max-w-[480px]"
+        style={{
+          background: "linear-gradient(135deg, rgba(6,30,42,0.97) 0%, rgba(8,20,32,0.98) 100%)",
+          borderColor: "var(--accent-cyan)",
+          boxShadow: "0 0 40px rgba(34,211,238,0.12), 0 4px 24px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest" style={{ color: "var(--accent-cyan)" }}>
+          <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+          시뮬레이션 진행 중
+        </div>
+
+        <div className="text-center">
+          <div className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+            라운드 {round + 1} / {totalRounds}
+          </div>
+          <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+            에이전트가 행동을 결정하고 있습니다{".".repeat(dots)}
+          </div>
+        </div>
+
+        <div className="w-full space-y-3">
+          <div>
+            <div className="flex justify-between text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>
+              <span>전체 진행률</span>
+              <span>{pct}%</span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700 relative overflow-hidden"
+                style={{
+                  width: `${pct}%`,
+                  background: "linear-gradient(90deg, #22d3ee, #06b6d4)",
+                }}
+              >
+                <div
+                  className="absolute inset-0 animate-pulse"
+                  style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)" }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>
+              <span>긴장도</span>
+              <span>{tensionPct}%</span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${tensionPct}%`,
+                  background: tensionPct > 70
+                    ? "linear-gradient(90deg, #ef4444, #dc2626)"
+                    : tensionPct > 40
+                    ? "linear-gradient(90deg, #f59e0b, #d97706)"
+                    : "linear-gradient(90deg, #22c55e, #16a34a)",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="text-[11px] tabular-nums" style={{ color: "var(--text-muted)" }}>
+          경과 시간: {formatTime(elapsed)}
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,15 +2,28 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAction } from "@/types/simulation";
+import type { DecisionRecord } from "@/hooks/useWargame";
 import RoundTimeline from "./RoundTimeline";
+
+export interface SelectedFeedEntity {
+  agentId: number;
+  agentName: string;
+  actionType: string;
+  content: string;
+  round: number;
+  platform: string;
+}
 
 interface Props {
   actions: LiveAction[];
   currentRound: number;
   totalRounds: number;
   decisionRounds: number[];
+  decisions?: DecisionRecord[];
   selectedRound: number | null;
   onScrub: (round: number) => void;
+  phaseAccent?: string;
+  onActionClick?: (entity: SelectedFeedEntity) => void;
 }
 
 const ACTION_META: Record<string, { icon: string; color: string }> = {
@@ -27,11 +40,16 @@ function truncate(text: string, max = 80): string {
   return `${text.slice(0, max)}…`;
 }
 
-function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, selectedRound, onScrub }: Props) {
+function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisions, selectedRound, onScrub, phaseAccent, onActionClick }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
-  const visibleActions = useMemo(() => actions.slice(-150), [actions]);
+  const visibleActions = useMemo(() => {
+    if (selectedRound !== null) {
+      return actions.filter((a) => a.round_num === selectedRound);
+    }
+    return actions.slice(-150);
+  }, [actions, selectedRound]);
 
   useEffect(() => {
     if (!autoScroll || !containerRef.current) return;
@@ -46,13 +64,29 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, selecte
   };
 
   return (
-    <div className="flex h-[200px] shrink-0 border-t border-[var(--border-secondary)] bg-[var(--bg-secondary)]">
+    <div
+      className="flex h-[200px] shrink-0 border-t bg-[var(--bg-secondary)] transition-colors duration-500"
+      style={{ borderColor: phaseAccent ?? "var(--border-secondary)" }}
+    >
       <div className="flex-[7] flex flex-col min-w-0 border-r border-[var(--border-secondary)]">
         <div className="px-3 py-1.5 border-b border-[var(--border-secondary)] flex items-center justify-between">
           <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
             소셜 미디어 피드
+            {selectedRound !== null && (
+              <span className="ml-1.5 text-[var(--accent-cyan)] normal-case tracking-normal">
+                · R{selectedRound}
+              </span>
+            )}
           </span>
-          {!autoScroll && (
+          {selectedRound !== null && (
+            <button
+              onClick={() => onScrub(0)}
+              className="text-[10px] font-semibold text-[var(--accent-cyan)] bg-[rgba(34,211,238,0.12)] border border-[var(--accent-cyan)] rounded px-1.5 py-0.5 cursor-pointer"
+            >
+              전체 보기
+            </button>
+          )}
+          {selectedRound === null && !autoScroll && (
             <button
               onClick={() => {
                 if (containerRef.current) {
@@ -94,7 +128,17 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, selecte
                     <div className="flex-1 h-px bg-[var(--border-secondary)]" />
                   </div>
                 )}
-                <div className="flex items-start gap-1.5 py-0.5">
+                <div
+                  className="flex items-start gap-1.5 py-0.5 cursor-pointer rounded px-0.5 transition-colors hover:bg-[rgba(34,211,238,0.06)]"
+                  onClick={() => onActionClick?.({
+                    agentId: action.agent_id,
+                    agentName: action.agent_name,
+                    actionType: action.action_type,
+                    content,
+                    round: action.round_num,
+                    platform: action.platform,
+                  })}
+                >
                   <span className="text-xs leading-none mt-px shrink-0">{meta.icon}</span>
                   <span className="text-[10px] font-semibold text-[var(--text-primary)] shrink-0">
                     {action.agent_name}
@@ -122,6 +166,7 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, selecte
             currentRound={currentRound}
             totalRounds={totalRounds}
             decisionRounds={decisionRounds}
+            decisions={decisions}
             selectedRound={selectedRound}
             onScrub={onScrub}
           />
