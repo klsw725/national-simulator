@@ -95,13 +95,15 @@ def should_pause(
     if current_round < 2:
         return False
 
+    if current_round == 2:
+        return True
+
+    if pause_interval > 1 and (current_round - 2) % pause_interval != 0:
+        return False
+
     cascade_events = round_result.get("cascade_events", [])
     if cascade_events:
         return True
-
-    # Non-cascade pauses only on interval-aligned rounds (e.g. 2, 5, 8 with interval=3)
-    if pause_interval > 1 and (current_round - 2) % pause_interval != 0:
-        return False
 
     magnitudes = [max(0.0, float(event.get("magnitude", 0.0))) for event in events]
     high_impact_count = sum(1 for magnitude in magnitudes if magnitude >= threshold)

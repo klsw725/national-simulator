@@ -272,18 +272,29 @@ export function useWargame(
       const eventType = (event as MessageEvent & { type: string }).type || data.type;
 
       switch (eventType) {
-        case "phase_change":
-          setState((prev) => ({
-            ...prev,
-            phase: data.phase as WargamePhase,
-            round: data.round ?? prev.round,
-            tension: data.tension ?? prev.tension,
-            // FIX: phase_change arrives before decision_required — clear stale data to prevent flash
-            ...(data.phase === "briefing" || data.phase === "simulation"
-              ? { briefing: null, decisionPoint: null }
-              : {}),
-          }));
+        case "phase_change": {
+          const incomingPhase = data.phase as WargamePhase;
+          setState((prev) => {
+            const fromDecisionFlow =
+              prev.phase === "briefing" ||
+              prev.phase === "decision" ||
+              prev.phase === "confirmation";
+            const nextPhase =
+              incomingPhase === "simulation" && fromDecisionFlow
+                ? "confirmation"
+                : incomingPhase;
+            return {
+              ...prev,
+              phase: nextPhase,
+              round: data.round ?? prev.round,
+              tension: data.tension ?? prev.tension,
+              ...(nextPhase === "simulation"
+                ? { briefing: null, decisionPoint: null }
+                : {}),
+            };
+          });
           break;
+        }
 
         case "round_complete":
           setState((prev) => {

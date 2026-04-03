@@ -526,19 +526,20 @@ async def get_wargame_status(
     )
 
     briefing = None
-    briefing_row = await conn.fetchrow(
-        """SELECT payload FROM action_log
-           WHERE scenario_id = $1 AND action_type = 'wargame.round_briefing'
-           ORDER BY created_at DESC LIMIT 1""",
-        scenario_id,
-    )
-    if briefing_row and briefing_row["payload"]:
-        try:
-            briefing_payload = json.loads(briefing_row["payload"])
-            if not dp or briefing_payload.get("decision_point_id") in {None, dp["id"]}:
-                briefing = briefing_payload.get("briefing")
-        except (json.JSONDecodeError, TypeError):
-            briefing = None
+    if dp:
+        briefing_row = await conn.fetchrow(
+            """SELECT payload FROM action_log
+               WHERE scenario_id = $1 AND action_type = 'wargame.round_briefing'
+               ORDER BY created_at DESC LIMIT 1""",
+            scenario_id,
+        )
+        if briefing_row and briefing_row["payload"]:
+            try:
+                briefing_payload = json.loads(briefing_row["payload"])
+                if briefing_payload.get("decision_point_id") == dp["id"]:
+                    briefing = briefing_payload.get("briefing")
+            except (json.JSONDecodeError, TypeError):
+                briefing = None
 
     snapshot = None
     if result_id:
@@ -550,7 +551,10 @@ async def get_wargame_status(
 
     phase = "simulation"
     if ws["status"] == "paused":
-        phase = "briefing" if briefing else ("decision" if dp else "briefing")
+        if dp:
+            phase = "briefing" if briefing else "decision"
+        else:
+            phase = "confirmation"
     elif ws["status"] == "crashed":
         phase = "briefing" if briefing else "simulation"
     elif ws["status"] == "completed":

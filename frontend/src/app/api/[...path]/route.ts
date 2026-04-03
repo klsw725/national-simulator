@@ -34,6 +34,16 @@ async function proxyRequest(req: NextRequest) {
       }
     });
 
+    const contentType = upstream.headers.get("content-type") || "";
+    if (contentType.includes("text/event-stream") && upstream.body) {
+      responseHeaders.set("cache-control", "no-cache");
+      responseHeaders.set("connection", "keep-alive");
+      return new Response(upstream.body as ReadableStream, {
+        status: upstream.status,
+        headers: responseHeaders,
+      });
+    }
+
     const body = await upstream.arrayBuffer();
     return new NextResponse(body, {
       status: upstream.status,
@@ -43,7 +53,7 @@ async function proxyRequest(req: NextRequest) {
   } catch {
     return NextResponse.json(
       { error: "Gateway unreachable" },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }

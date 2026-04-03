@@ -59,7 +59,7 @@ def map_actions_to_geopolitics(
     source_filter: str | None = None,
 ) -> list[dict]:
     mapped = []
-    seen_event_types_this_round: set[str] = set()
+    seen: set[tuple[object, int, str]] = set()
 
     for action in actions:
         action_copy = dict(action)
@@ -75,10 +75,13 @@ def map_actions_to_geopolitics(
         raw_type = (action_copy.get("action_type") or "").lower()
         geo_type = GEOPOLITICS_ACTION_MAP.get(raw_type, raw_type)
 
-        if geo_type in seen_event_types_this_round:
+        round_num = action_copy.get("round_num") or action_copy.get("round")
+        agent_id = action_copy.get("agent_id", 0)
+        dedup_key = (round_num, agent_id, geo_type)
+        if dedup_key in seen:
             continue
 
-        seen_event_types_this_round.add(geo_type)
+        seen.add(dedup_key)
         action_copy["geopolitics_action"] = geo_type
         action_copy["geopolitics_label"] = GEOPOLITICS_LABELS.get(geo_type, geo_type)
 

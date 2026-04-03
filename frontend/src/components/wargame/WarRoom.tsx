@@ -113,11 +113,20 @@ export default function WarRoom({
 
     try {
       await resolveWargameDecision(scenarioId, dp.id, selectedOptionId);
-      await resumeWargame(scenarioId);
     } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to resolve/resume wargame:", err);
+      const is409 = err instanceof Error && err.message.includes("409");
+      if (!is409) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("Failed to resolve wargame decision:", err);
+        }
+        return;
       }
+    }
+
+    try {
+      await resumeWargame(scenarioId);
+    } catch {
+      void wargame.refreshState();
     }
 
     if (!wargame.isConnected) {
@@ -217,7 +226,7 @@ export default function WarRoom({
         />
       )}
 
-      {wargame.state.phase === "confirmation" && !wargame.isComplete && (
+      {(wargame.state.phase === "simulation" || wargame.state.phase === "confirmation") && !wargame.isComplete && (
         <RoundProgressOverlay
           round={wargame.state.round}
           totalRounds={totalRounds}
