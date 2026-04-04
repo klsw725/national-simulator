@@ -58,5 +58,4 @@ async def get_graph():
     await _checkpointer.setup()
     return _builder.compile(
         checkpointer=_checkpointer,
-        interrupt_before=["check_intervention"],
     )
