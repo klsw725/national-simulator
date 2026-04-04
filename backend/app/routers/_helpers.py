@@ -4,7 +4,6 @@ import json
 import asyncpg
 from fastapi import HTTPException, Request
 
-from app.clients.mirofish import MiroFishClient
 from app.clients.shadowbroker import ShadowBrokerClient
 from app.models.decision_point import DecisionOption, DecisionPointResponse
 from app.models.seed import SeedMetadata, SeedResponse
@@ -45,10 +44,6 @@ def row_to_decision_point(row: asyncpg.Record) -> DecisionPointResponse:
         created_at=row["created_at"],
         resolved_at=row["resolved_at"],
     )
-
-
-def get_mf_client(request: Request) -> MiroFishClient:
-    return request.app.state.mf_client
 
 
 def get_sb_client(request: Request) -> ShadowBrokerClient:

@@ -1,12 +1,11 @@
+import json
 import logging
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import asyncpg
-from app.clients.mirofish import MiroFishClient
-from app.database import get_db
+from app.database import get_db, get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -41,121 +40,58 @@ async def copilot_chat(
     body: CopilotChatRequest,
     conn: asyncpg.Connection = Depends(get_db),
 ):
-    scenario = await conn.fetchrow("SELECT id FROM scenarios WHERE id = $1", body.scenario_id)
-    if not scenario:
+    row = await conn.fetchrow(
+        "SELECT id FROM scenarios WHERE id = $1", body.scenario_id,
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
-    from app.services.copilot import CopilotService
-
-    service = CopilotService()
-    try:
-        result = await service.chat(
-            scenario_id=body.scenario_id,
-            message=body.message,
-            conversation_id=body.conversation_id,
-        )
-    except (httpx.HTTPError, ValueError) as e:
-        logger.exception("Copilot chat failed for scenario %s", body.scenario_id)
-        raise HTTPException(status_code=502, detail="Copilot LLM 호출 실패") from e
-    return result
+    return {
+        "response": f"[Copilot] 시나리오 {body.scenario_id}에 대한 분석을 준비 중입니다.",
+        "scenario_id": body.scenario_id,
+        "conversation_id": body.conversation_id,
+    }
 
 
 @router.post("/env-status")
-async def get_env_status(
-    body: EnvRequest,
-    conn: asyncpg.Connection = Depends(get_db),
-):
-    row = await conn.fetchrow(
-        "SELECT mirofish_simulation_id FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
-        body.scenario_id,
-    )
-    if not row or not row["mirofish_simulation_id"]:
+async def get_env_status(body: EnvRequest):
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        latest = await conn.fetchrow(
+            """SELECT event_type, payload FROM simulation_events
+               WHERE scenario_id = $1 ORDER BY sequence_num DESC LIMIT 1""",
+            body.scenario_id,
+        )
+    if not latest:
         raise HTTPException(status_code=404, detail="Simulation environment not found")
 
-    from app.config import settings
-    client = MiroFishClient(settings.mirofish_url)
-    try:
-        return await client.get_env_status(row["mirofish_simulation_id"])
-    except httpx.HTTPError as e:
-        logger.exception("Env status failed for scenario %s", body.scenario_id)
-        raise HTTPException(status_code=502, detail="환경 상태 조회 실패") from e
-    finally:
-        await client.close()
+    payload = json.loads(latest["payload"]) if isinstance(latest["payload"], str) else (latest["payload"] or {})
+    return {"status": "active", "phase": payload.get("phase", "unknown"), "scenario_id": body.scenario_id}
 
 
 @router.post("/interview")
-async def interview_agent(
-    body: InterviewAgentRequest,
-    conn: asyncpg.Connection = Depends(get_db),
-):
-    row = await conn.fetchrow(
-        "SELECT mirofish_simulation_id FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
-        body.scenario_id,
-    )
-    if not row or not row["mirofish_simulation_id"]:
-        raise HTTPException(status_code=404, detail="Simulation environment not found")
-
-    from app.config import settings
-    client = MiroFishClient(settings.mirofish_url)
-    try:
-        return await client.interview_agent(
-            row["mirofish_simulation_id"],
-            body.agent_id,
-            body.prompt,
-            platform=body.platform,
-        )
-    except httpx.HTTPError as e:
-        logger.exception("Interview agent failed for scenario %s", body.scenario_id)
-        raise HTTPException(status_code=502, detail="에이전트 인터뷰 실패") from e
-    finally:
-        await client.close()
+async def interview_agent(body: InterviewAgentRequest):
+    return {
+        "agent_id": body.agent_id,
+        "response": f"[v2 stub] 에이전트 {body.agent_id} 인터뷰 기능은 Simulation Service에서 직접 제공 예정입니다.",
+    }
 
 
 @router.post("/interview/all")
-async def interview_all_agents(
-    body: InterviewAllRequest,
-    conn: asyncpg.Connection = Depends(get_db),
-):
-    row = await conn.fetchrow(
-        "SELECT mirofish_simulation_id FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
-        body.scenario_id,
-    )
-    if not row or not row["mirofish_simulation_id"]:
-        raise HTTPException(status_code=404, detail="Simulation environment not found")
-
-    from app.config import settings
-    client = MiroFishClient(settings.mirofish_url)
-    try:
-        return await client.interview_all_agents(
-            row["mirofish_simulation_id"],
-            body.prompt,
-            platform=body.platform,
-        )
-    except httpx.HTTPError as e:
-        logger.exception("Interview all failed for scenario %s", body.scenario_id)
-        raise HTTPException(status_code=502, detail="전체 에이전트 인터뷰 실패") from e
-    finally:
-        await client.close()
+async def interview_all_agents(body: InterviewAllRequest):
+    return {
+        "responses": [],
+        "message": "[v2 stub] 전체 에이전트 인터뷰 기능은 Simulation Service에서 직접 제공 예정입니다.",
+    }
 
 
 @router.post("/close-env")
-async def close_simulation_env(
-    body: EnvRequest,
-    conn: asyncpg.Connection = Depends(get_db),
-):
-    row = await conn.fetchrow(
-        "SELECT mirofish_simulation_id FROM simulation_results WHERE scenario_id = $1 ORDER BY created_at DESC LIMIT 1",
-        body.scenario_id,
-    )
-    if not row or not row["mirofish_simulation_id"]:
-        raise HTTPException(status_code=404, detail="Simulation environment not found")
-
-    from app.config import settings
-    client = MiroFishClient(settings.mirofish_url)
-    try:
-        return await client.close_env(row["mirofish_simulation_id"])
-    except httpx.HTTPError as e:
-        logger.exception("Close env failed for scenario %s", body.scenario_id)
-        raise HTTPException(status_code=502, detail="환경 종료 실패") from e
-    finally:
-        await client.close()
+async def close_simulation_env(body: EnvRequest):
+    pool = get_pool()
+    command = json.dumps({
+        "type": "stop_simulation",
+        "scenario_id": body.scenario_id,
+    }, ensure_ascii=False)
+    async with pool.acquire() as conn:
+        await conn.execute("SELECT pg_notify($1, $2)", "sim_commands", command)
+    return {"status": "closed", "scenario_id": body.scenario_id}
