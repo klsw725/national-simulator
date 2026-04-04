@@ -48,17 +48,16 @@ async def get_simulation_status(scenario_id: str):
             except (json.JSONDecodeError, TypeError):
                 pass
 
-    if sim_status == "running" and is_wargame:
+    if sim_status == "running":
         phase_map = {
-            "analyzing": "simulating:wargame:analyzing",
-            "building": "simulating:wargame:building",
-            "configuring": "simulating:wargame:configuring",
-            "simulating": "simulating:wargame:simulation",
-            "reporting": "simulating:wargame:reporting",
+            "": "starting",
+            "analyzing": "simulating:ontology",
+            "building": "simulating:graph_build",
+            "configuring": "simulating:prepare",
+            "simulating": "simulating:wargame:simulation" if is_wargame else "simulating:running",
+            "reporting": "simulating:report",
         }
-        compat_status = phase_map.get(phase, "simulating:wargame:simulation")
-    elif sim_status == "running":
-        compat_status = f"simulating:{phase}" if phase else "simulating:running"
+        compat_status = phase_map.get(phase, "simulating:running")
     else:
         compat_status = sim_status
 
