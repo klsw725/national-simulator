@@ -2,8 +2,12 @@
 
 import type { WargamePhase, WargameState } from "@/types/simulation";
 
+type V2WargamePhase = "analyzing" | "building" | "configuring" | "simulating" | "reporting";
+type SupportedPhase = WargamePhase | V2WargamePhase;
+type PhaseBarState = Omit<WargameState, "phase"> & { phase: SupportedPhase | string };
+
 interface Props {
-  state: WargameState;
+  state: PhaseBarState;
   isMockMode: boolean;
 }
 
@@ -14,14 +18,27 @@ const PHASES: { key: WargamePhase; label: string }[] = [
   { key: "confirmation", label: "확정" },
 ];
 
-const PHASE_COLORS: Record<WargamePhase, string> = {
+const V2_PHASES: { key: V2WargamePhase; label: string }[] = [
+  { key: "analyzing", label: "분석 중" },
+  { key: "building", label: "관계 구축" },
+  { key: "configuring", label: "설정 중" },
+  { key: "simulating", label: "시뮬레이션" },
+  { key: "reporting", label: "보고서 생성" },
+];
+
+const PHASE_COLORS: Record<string, string> = {
   simulation: "var(--accent-cyan)",
+  simulating: "var(--accent-cyan)",
+  analyzing: "var(--text-muted)",
+  building: "var(--text-muted)",
+  configuring: "var(--text-muted)",
+  reporting: "var(--text-muted)",
   briefing: "var(--text-muted)",
   decision: "#f59e0b",
   confirmation: "var(--text-muted)",
 };
 
-function getRoleBadge(state: WargameState): { emoji: string; label: string } {
+function getRoleBadge(state: Omit<WargameState, "phase">): { emoji: string; label: string } {
   if (state.role === "game_master") {
     return { emoji: "🎮", label: "GAME MASTER" };
   }
@@ -31,16 +48,18 @@ function getRoleBadge(state: WargameState): { emoji: string; label: string } {
 }
 
 export default function PhaseBar({ state, isMockMode }: Props) {
-  const activeColor = PHASE_COLORS[state.phase];
+  const isV2Phase = V2_PHASES.some((p) => p.key === state.phase);
+  const phaseSequence = isV2Phase ? V2_PHASES : PHASES;
+  const activeColor = PHASE_COLORS[state.phase] ?? "var(--text-muted)";
   const role = getRoleBadge(state);
   const tensionPct = Math.round(state.tension * 100);
 
   return (
     <div className="flex items-center gap-4 px-4 h-12 shrink-0 border-b border-[var(--border-secondary)] bg-[var(--bg-secondary)]">
       <div className="flex items-center gap-1.5">
-        {PHASES.map((p, idx) => {
+        {phaseSequence.map((p, idx) => {
           const isCurrent = state.phase === p.key;
-          const phaseIdx = PHASES.findIndex((ph) => ph.key === state.phase);
+          const phaseIdx = phaseSequence.findIndex((ph) => ph.key === state.phase);
           const isDone = idx < phaseIdx;
           const color = isCurrent ? activeColor : isDone ? "var(--accent-cyan)" : "var(--border-secondary)";
 

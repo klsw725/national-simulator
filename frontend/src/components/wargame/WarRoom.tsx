@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSimulationStream } from "@/hooks/useSimulationStream";
 import { useWargame } from "@/hooks/useWargame";
 import { resolveWargameDecision, resumeWargame } from "@/lib/api/wargameApi";
 import type { LiveAction } from "@/types/simulation";
@@ -15,6 +16,11 @@ import DebriefView from "./DebriefView";
 /** Phase → CSS accent color token for color-temperature shifting */
 const PHASE_ACCENT: Record<string, string> = {
   simulation: "var(--accent-cyan)",
+  simulating: "var(--accent-cyan)",
+  analyzing: "var(--text-muted)",
+  building: "var(--text-muted)",
+  configuring: "var(--text-muted)",
+  reporting: "var(--text-muted)",
   briefing: "var(--text-muted)",
   decision: "#f59e0b",
   confirmation: "var(--text-muted)",
@@ -25,6 +31,7 @@ interface Props {
   totalRounds: number;
   actions: LiveAction[];
   onClose: () => void;
+  useV2?: boolean;
   onViewReport?: () => void;
   onCreateWhatIf?: (round: number) => void;
   onWargameOverlay?: (lens: string | null, phase: string | null) => void;
@@ -35,14 +42,27 @@ export default function WarRoom({
   totalRounds,
   actions,
   onClose,
+  useV2 = false,
   onViewReport,
   onCreateWhatIf,
   onWargameOverlay,
 }: Props) {
   const wargame = useWargame(scenarioId, totalRounds);
+  const streamState = useSimulationStream(useV2 ? scenarioId : null);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<SelectedFeedEntity | null>(null);
   const resumePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activePhase = useV2 ? streamState.phase : wargame.state.phase;
+  const activeRound = useV2 ? streamState.currentRound : wargame.state.round;
+  const activeIsConnected = useV2 ? streamState.isConnected : wargame.isConnected;
+
+  const contextPhase = useMemo(() => {
+    if (!useV2) return wargame.state.phase;
+    if (streamState.phase === "briefing" || streamState.phase === "decision" || streamState.phase === "confirmation") {
+      return streamState.phase;
+    }
+    return "simulation";
+  }, [streamState.phase, useV2, wargame.state.phase]);
 
   useEffect(() => {
     return () => {
@@ -51,21 +71,21 @@ export default function WarRoom({
   }, []);
 
   useEffect(() => {
-    if (wargame.state.phase !== "confirmation" && resumePollRef.current) {
+    if (activePhase !== "confirmation" && resumePollRef.current) {
       clearInterval(resumePollRef.current);
       resumePollRef.current = null;
     }
-  }, [wargame.state.phase]);
+  }, [activePhase]);
 
   useEffect(() => {
-    onWargameOverlay?.(wargame.activeLens, wargame.state.phase);
-  }, [wargame.activeLens, wargame.state.phase, onWargameOverlay]);
+    onWargameOverlay?.(wargame.activeLens, activePhase);
+  }, [wargame.activeLens, activePhase, onWargameOverlay]);
 
   useEffect(() => {
     return () => onWargameOverlay?.(null, null);
   }, [onWargameOverlay]);
 
-  const phaseAccent = PHASE_ACCENT[wargame.state.phase] ?? "var(--text-muted)";
+  const phaseAccent = PHASE_ACCENT[activePhase] ?? "var(--text-muted)";
 
   const handleScrub = (round: number) => {
     setSelectedRound(round === 0 ? null : round);
@@ -81,17 +101,24 @@ export default function WarRoom({
     [selectedRound, wargame],
   );
 
-  const displayState = useMemo(
-    () => displaySnapshot
+  const displayState = useMemo(() => {
+    if (useV2) {
+      return {
+        ...wargame.state,
+        phase: streamState.phase,
+        round: streamState.currentRound,
+        totalRounds: streamState.maxRounds || wargame.state.totalRounds,
+      };
+    }
+    return displaySnapshot
       ? {
           ...wargame.state,
           round: displaySnapshot.round,
           tension: displaySnapshot.tension,
           actorStates: displaySnapshot.actorStates,
         }
-      : wargame.state,
-    [displaySnapshot, wargame.state],
-  );
+      : wargame.state;
+  }, [displaySnapshot, streamState.currentRound, streamState.maxRounds, streamState.phase, useV2, wargame.state]);
 
   const handleDecisionConfirm = async (selectedOptionId: string) => {
     const dp = wargame.state.decisionPoint;
@@ -129,7 +156,7 @@ export default function WarRoom({
       void wargame.refreshState();
     }
 
-    if (!wargame.isConnected) {
+    if (!activeIsConnected) {
       resumePollRef.current = setInterval(() => {
         wargame.refreshState().catch(() => {});
       }, 3000);
@@ -168,7 +195,7 @@ export default function WarRoom({
       style={{ "--war-room-accent": phaseAccent } as React.CSSProperties}
     >
       <div className="pointer-events-auto">
-        <PhaseBar state={displayState} isMockMode={wargame.isMockMode} />
+        <PhaseBar state={displayState} isMockMode={!useV2 && wargame.isMockMode} />
       </div>
 
       <div className="flex flex-1 min-h-0">
@@ -186,7 +213,7 @@ export default function WarRoom({
         <div className="pointer-events-auto">
             <ContextPanel
               actorStates={displayState.actorStates}
-              phase={displayState.phase}
+              phase={contextPhase}
               playerActorId={displayState.actorId}
               phaseAccent={phaseAccent}
               selectedEntity={selectedEntity}
@@ -198,10 +225,11 @@ export default function WarRoom({
       <div className="pointer-events-auto">
         <FeedPanel
           actions={actions}
-          currentRound={wargame.state.round}
+          currentRound={activeRound}
           totalRounds={totalRounds}
           decisionRounds={decisionRounds}
           decisions={wargame.decisionHistory}
+          v2Actions={useV2 ? streamState.recentActions : undefined}
           selectedRound={selectedRound}
           onScrub={handleScrub}
           phaseAccent={phaseAccent}
@@ -209,7 +237,7 @@ export default function WarRoom({
         />
       </div>
 
-      {wargame.state.phase === "briefing" && wargame.state.briefing && (
+      {!useV2 && wargame.state.phase === "briefing" && wargame.state.briefing && (
         <BriefingOverlay
           briefing={wargame.state.briefing}
             round={displayState.round}
@@ -217,18 +245,31 @@ export default function WarRoom({
           />
         )}
 
-      {wargame.state.phase === "decision" && wargame.state.decisionPoint && (
+      {((!useV2 && wargame.state.phase === "decision" && wargame.state.decisionPoint) || (useV2 && streamState.decisionPoint)) && (
         <DecisionCard
-          decisionPoint={wargame.state.decisionPoint}
-          round={wargame.state.round}
+          decisionPoint={wargame.state.decisionPoint ?? {
+            id: streamState.decisionPoint?.id ?? "v2-decision",
+            scenario_id: scenarioId,
+            type: "geopolitics_actor_response",
+            options: [],
+            recommended: "",
+            allow_custom: false,
+            status: "pending",
+            selected_option_id: null,
+            custom_data: null,
+            created_at: new Date().toISOString(),
+            resolved_at: null,
+          }}
+          v2Options={useV2 ? streamState.decisionPoint?.options : undefined}
+          round={activeRound}
           onConfirm={handleDecisionConfirm}
           onWhatIf={handleWhatIf}
         />
       )}
 
-      {(wargame.state.phase === "simulation" || wargame.state.phase === "confirmation") && !wargame.isComplete && (
+      {(activePhase === "simulation" || activePhase === "simulating" || activePhase === "confirmation") && !wargame.isComplete && (
         <RoundProgressOverlay
-          round={wargame.state.round}
+          round={activeRound}
           totalRounds={totalRounds}
           tension={wargame.state.tension}
         />
@@ -245,7 +286,7 @@ export default function WarRoom({
         </div>
       )}
 
-      {wargame.showDebrief && (
+      {!useV2 && wargame.showDebrief && (
         <DebriefView
           totalRounds={totalRounds}
           tensionCurve={wargame.tensionHistory}

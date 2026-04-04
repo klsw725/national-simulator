@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import type { DecisionPoint, DecisionOption } from "@/types/simulation";
+import type { DecisionOption as V2DecisionOption } from "@/types/simulation-stream";
 
 interface DecisionCardProps {
   decisionPoint: DecisionPoint;
+  v2Options?: V2DecisionOption[];
   round: number;
   onConfirm: (selectedOptionId: string) => void;
   onWhatIf: () => void;
@@ -107,6 +109,7 @@ function getNarrative(dp: DecisionPoint): string {
 
 export default function DecisionCard({
   decisionPoint,
+  v2Options,
   round,
   onConfirm,
   onWhatIf,
@@ -136,16 +139,28 @@ export default function DecisionCard({
           </p>
 
           <div className="flex flex-col gap-2.5">
-            {decisionPoint.options.map((opt) => (
-              <OptionCard
-                key={opt.id}
-                option={opt}
-                isSelected={selectedId === opt.id}
-                isRecommended={opt.id === decisionPoint.recommended}
-                isEngineRecommended={Boolean(opt.data?.engine_recommended)}
-                onSelect={() => setSelectedId(opt.id)}
-              />
-            ))}
+            {v2Options
+              ? v2Options.map((opt, idx) => {
+                  const id = `${opt.action_type}-${opt.target}-${idx}`;
+                  return (
+                    <V2OptionCard
+                      key={id}
+                      option={opt}
+                      isSelected={selectedId === id}
+                      onSelect={() => setSelectedId(id)}
+                    />
+                  );
+                })
+              : decisionPoint.options.map((opt) => (
+                  <OptionCard
+                    key={opt.id}
+                    option={opt}
+                    isSelected={selectedId === opt.id}
+                    isRecommended={opt.id === decisionPoint.recommended}
+                    isEngineRecommended={Boolean(opt.data?.engine_recommended)}
+                    onSelect={() => setSelectedId(opt.id)}
+                  />
+                ))}
           </div>
         </div>
 
@@ -168,6 +183,79 @@ export default function DecisionCard({
             What-If 분기
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const V2_ACTION_ICON: Record<string, string> = {
+  diplomatic: "🗣️",
+  economic: "💰",
+  military: "⚔️",
+};
+
+function V2OptionCard({
+  option,
+  isSelected,
+  onSelect,
+}: {
+  option: V2DecisionOption;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const icon = V2_ACTION_ICON[option.action_type.toLowerCase()] ?? "⚪";
+  const intensityLabel = option.intensity.toUpperCase();
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`flex flex-col gap-2 p-3 rounded border border-[var(--border-secondary)] transition-all duration-150 cursor-pointer bg-[var(--bg-primary)] ${
+        isSelected
+          ? "ring-1 ring-[var(--accent-cyan)] shadow-lg"
+          : "hover:ring-1 hover:ring-[rgba(34,211,238,0.3)]"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-sm leading-none">{icon}</span>
+        <span className="text-xs font-bold text-[var(--text-primary)]">{option.action_type}</span>
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(34,211,238,0.12)] text-[var(--accent-cyan)]">
+          {intensityLabel}
+        </span>
+        <div
+          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ml-auto ${
+            isSelected
+              ? "border-[var(--accent-cyan)] bg-[rgba(34,211,238,0.15)]"
+              : "border-[var(--border-secondary)]"
+          }`}
+        >
+          {isSelected && <div className="w-2 h-2 rounded-full bg-[var(--accent-cyan)]" />}
+        </div>
+      </div>
+
+      <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pl-6">
+        대상: {option.target}
+      </p>
+
+      <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pl-6">
+        {option.description}
+      </p>
+
+      <div className="flex flex-wrap gap-1.5 pl-6">
+        <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.05)] text-[var(--text-muted)]">
+          긴장도 Δ {(option.estimated_effect.tension_delta * 100).toFixed(0)}%
+        </span>
+        <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.05)] text-[var(--text-muted)]">
+          자원 비용 {option.estimated_effect.resource_cost.toFixed(2)}
+        </span>
       </div>
     </div>
   );

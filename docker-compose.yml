@@ -23,18 +23,19 @@ services:
       - "8000:8000"
     env_file: ./external/Shadowbroker-backend/.env
 
-  mirofish:
-    build:
-      context: ./external/mirofish-backend
-    command: uv run python run.py
+  simulation-service:
+    build: ./simulation-service
     ports:
       - "5001:5001"
-    env_file: ./external/mirofish-backend/.env
+    env_file: .env
     environment:
-      - USE_LOCAL_GRAPH=true
-      - DOZERDB_URI=bolt://dozerdb:7687
+      - DATABASE_URL=postgresql://osint:osint_dev@postgres:5432/osint_simulator
+      - SHADOWBROKER_URL=http://shadowbroker:8000
     depends_on:
-      - dozerdb
+      postgres:
+        condition: service_healthy
+      dozerdb:
+        condition: service_started
 
   postgres:
     image: postgis/postgis:16-3.4
@@ -59,28 +60,11 @@ services:
     env_file: .env
     environment:
       - SHADOWBROKER_URL=http://shadowbroker:8000
-      - MIROFISH_URL=http://mirofish:5001
       - DATABASE_URL=postgresql://osint:osint_dev@postgres:5432/osint_simulator
     depends_on:
       shadowbroker:
         condition: service_started
-      mirofish:
-        condition: service_started
-  simulation-service:
-    build: ./simulation-service
-    ports:
-      - "5002:5001"
-    env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://osint:osint_dev@postgres:5432/osint_simulator
-      - SHADOWBROKER_URL=http://shadowbroker:8000
-    depends_on:
       postgres:
-        condition: service_healthy
-      dozerdb:
-        condition: service_started
-
-  postgres:
         condition: service_healthy
 
   frontend:

@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAction } from "@/types/simulation";
+import type { AgentAction } from "@/types/simulation-stream";
 import type { DecisionRecord } from "@/hooks/useWargame";
 import RoundTimeline from "./RoundTimeline";
 
@@ -20,6 +21,7 @@ interface Props {
   totalRounds: number;
   decisionRounds: number[];
   decisions?: DecisionRecord[];
+  v2Actions?: AgentAction[];
   selectedRound: number | null;
   onScrub: (round: number) => void;
   phaseAccent?: string;
@@ -35,12 +37,28 @@ const ACTION_META: Record<string, { icon: string; color: string }> = {
   FOLLOW: { icon: "👁️", color: "#f59e0b" },
 };
 
+const V2_CATEGORY_COLOR: Record<string, string> = {
+  diplomatic: "#60a5fa",
+  economic: "#4ade80",
+  military: "#ef4444",
+  intelligence: "#a78bfa",
+};
+
+function getV2Category(actionType: string): string {
+  const normalized = actionType.toLowerCase();
+  if (normalized.includes("diplomatic")) return "diplomatic";
+  if (normalized.includes("economic")) return "economic";
+  if (normalized.includes("military")) return "military";
+  if (normalized.includes("intelligence")) return "intelligence";
+  return "diplomatic";
+}
+
 function truncate(text: string, max = 80): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}…`;
 }
 
-function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisions, selectedRound, onScrub, phaseAccent, onActionClick }: Props) {
+function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisions, v2Actions, selectedRound, onScrub, phaseAccent, onActionClick }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -51,10 +69,18 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
     return actions.slice(-150);
   }, [actions, selectedRound]);
 
+  const visibleV2Actions = useMemo(() => {
+    if (!v2Actions) return [];
+    if (selectedRound !== null) {
+      return v2Actions.filter((a) => (a.round ?? currentRound) === selectedRound);
+    }
+    return v2Actions.slice(-150);
+  }, [currentRound, selectedRound, v2Actions]);
+
   useEffect(() => {
     if (!autoScroll || !containerRef.current) return;
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
-  }, [visibleActions, autoScroll]);
+  }, [visibleActions, visibleV2Actions, autoScroll]);
 
   const handleScroll = () => {
     if (!containerRef.current) return;
@@ -106,52 +132,94 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto px-2.5 py-1.5 flex flex-col gap-1"
         >
-          {visibleActions.length === 0 && (
+          {(v2Actions ? visibleV2Actions.length === 0 : visibleActions.length === 0) && (
             <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-xs">
               피드 대기 중…
             </div>
           )}
-          {visibleActions.map((action, idx) => {
-            const meta = ACTION_META[action.action_type] ?? { icon: "•", color: "var(--text-muted)" };
-            const content = typeof action.action_args?.content === "string" ? action.action_args.content : "";
-            const prevRound = idx > 0 ? visibleActions[idx - 1].round_num : -1;
-            const isNewRound = action.round_num !== prevRound;
+          {v2Actions
+            ? visibleV2Actions.map((action, idx) => {
+                const category = getV2Category(action.action_type);
+                const color = V2_CATEGORY_COLOR[category] ?? "var(--text-muted)";
+                const content = `${action.target} · ${action.reasoning}`;
+                const currentActionRound = action.round ?? currentRound;
+                const prevRound = idx > 0 ? (visibleV2Actions[idx - 1].round ?? currentRound) : -1;
+                const isNewRound = currentActionRound !== prevRound;
 
-            return (
-              <div key={`${action.timestamp}-${action.agent_id}-${idx}`}>
-                {isNewRound && (
-                  <div className="flex items-center gap-2 my-1">
-                    <div className="flex-1 h-px bg-[var(--border-secondary)]" />
-                    <span className="text-[9px] font-bold text-[var(--accent-cyan)] tracking-wider">
-                      R{action.round_num}
-                    </span>
-                    <div className="flex-1 h-px bg-[var(--border-secondary)]" />
+                return (
+                  <div key={`${action.actor}-${action.action_type}-${idx}`}>
+                    {isNewRound && (
+                      <div className="flex items-center gap-2 my-1">
+                        <div className="flex-1 h-px bg-[var(--border-secondary)]" />
+                        <span className="text-[9px] font-bold text-[var(--accent-cyan)] tracking-wider">
+                          R{currentActionRound}
+                        </span>
+                        <div className="flex-1 h-px bg-[var(--border-secondary)]" />
+                      </div>
+                    )}
+                    <div
+                      className="flex items-start gap-1.5 py-0.5 cursor-pointer rounded px-0.5 transition-colors hover:bg-[rgba(34,211,238,0.06)]"
+                      onClick={() => onActionClick?.({
+                        agentId: idx,
+                        agentName: action.actor,
+                        actionType: action.action_type,
+                        content,
+                        round: currentActionRound,
+                        platform: "wargame_v2",
+                      })}
+                    >
+                      <span className="text-xs leading-none mt-px shrink-0" style={{ color }}>•</span>
+                      <span className="text-[10px] font-semibold text-[var(--text-primary)] shrink-0">
+                        {action.actor}
+                      </span>
+                      <span className="text-[10px] leading-snug truncate" style={{ color }}>
+                        {truncate(content)}
+                      </span>
+                    </div>
                   </div>
-                )}
-                <div
-                  className="flex items-start gap-1.5 py-0.5 cursor-pointer rounded px-0.5 transition-colors hover:bg-[rgba(34,211,238,0.06)]"
-                  onClick={() => onActionClick?.({
-                    agentId: action.agent_id,
-                    agentName: action.agent_name,
-                    actionType: action.action_type,
-                    content,
-                    round: action.round_num,
-                    platform: action.platform,
-                  })}
-                >
-                  <span className="text-xs leading-none mt-px shrink-0">{meta.icon}</span>
-                  <span className="text-[10px] font-semibold text-[var(--text-primary)] shrink-0">
-                    {action.agent_name}
-                  </span>
-                  {content && (
-                    <span className="text-[10px] text-[var(--text-muted)] leading-snug truncate">
-                      {truncate(content)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                );
+              })
+            : visibleActions.map((action, idx) => {
+                const meta = ACTION_META[action.action_type] ?? { icon: "•", color: "var(--text-muted)" };
+                const content = typeof action.action_args?.content === "string" ? action.action_args.content : "";
+                const prevRound = idx > 0 ? visibleActions[idx - 1].round_num : -1;
+                const isNewRound = action.round_num !== prevRound;
+
+                return (
+                  <div key={`${action.timestamp}-${action.agent_id}-${idx}`}>
+                    {isNewRound && (
+                      <div className="flex items-center gap-2 my-1">
+                        <div className="flex-1 h-px bg-[var(--border-secondary)]" />
+                        <span className="text-[9px] font-bold text-[var(--accent-cyan)] tracking-wider">
+                          R{action.round_num}
+                        </span>
+                        <div className="flex-1 h-px bg-[var(--border-secondary)]" />
+                      </div>
+                    )}
+                    <div
+                      className="flex items-start gap-1.5 py-0.5 cursor-pointer rounded px-0.5 transition-colors hover:bg-[rgba(34,211,238,0.06)]"
+                      onClick={() => onActionClick?.({
+                        agentId: action.agent_id,
+                        agentName: action.agent_name,
+                        actionType: action.action_type,
+                        content,
+                        round: action.round_num,
+                        platform: action.platform,
+                      })}
+                    >
+                      <span className="text-xs leading-none mt-px shrink-0">{meta.icon}</span>
+                      <span className="text-[10px] font-semibold text-[var(--text-primary)] shrink-0">
+                        {action.agent_name}
+                      </span>
+                      {content && (
+                        <span className="text-[10px] text-[var(--text-muted)] leading-snug truncate">
+                          {truncate(content)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
         </div>
       </div>
 
