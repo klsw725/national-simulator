@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+CascadeRule = dict[str, Any]
+
+
+@dataclass
+class GeopoliticsEvent:
+    event_type: str
+    source_actor_id: str
+    target_actor_ids: list[str] = field(default_factory=list)
+    magnitude: float = 0.5
+    description: str = ""
+    round_number: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GeopoliticsEvent:
+        return cls(**data)
+
+
+CASCADE_RULES: dict[str, list[CascadeRule]] = {
+    "sanction_impose": [
+        {"condition_field": "resource_level", "condition_op": "<=", "condition_value": 0.4,
+         "trigger": "trade_restriction", "magnitude_factor": 0.7,
+         "description": "Sanctioned actor retaliates with trade restrictions"},
+    ],
+    "military_movement": [
+        {"condition_field": "threat_perception", "condition_op": ">=", "condition_value": 0.5,
+         "trigger": "military_exercise", "magnitude_factor": 0.6,
+         "description": "Threatened actor responds with military exercise"},
+        {"condition_field": "threat_perception", "condition_op": ">=", "condition_value": 0.8,
+         "trigger": "military_movement", "magnitude_factor": 0.5,
+         "description": "Highly threatened actor counter-deploys forces"},
+    ],
+    "military_exercise": [
+        {"condition_field": "threat_perception", "condition_op": ">=", "condition_value": 0.6,
+         "trigger": "diplomatic_statement", "magnitude_factor": 0.5,
+         "description": "Threatened actor issues diplomatic protest"},
+    ],
+    "trade_restriction": [
+        {"condition_field": "domestic_pressure", "condition_op": ">=", "condition_value": 0.6,
+         "trigger": "diplomatic_statement", "magnitude_factor": 0.4,
+         "description": "Domestic pressure triggers diplomatic response"},
+    ],
+}
+
+MAX_CASCADE_DEPTH = 3
+CASCADE_DECAY = 0.7
+
+PROPAGATION_RULES: dict[str, dict[str, float]] = {
+    "military_movement": {"threat_perception": +0.15, "domestic_pressure": +0.05},
+    "military_exercise": {"threat_perception": +0.10},
+    "sanction_impose": {"resource_level": -0.20, "domestic_pressure": +0.15},
+    "trade_restriction": {"resource_level": -0.10, "domestic_pressure": +0.10},
+    "diplomatic_statement": {"threat_perception": +0.05},
+    "treaty_sign": {"threat_perception": -0.10, "domestic_pressure": -0.05},
+    "deploy_forces": {"threat_perception": +0.20, "domestic_pressure": +0.05},
+    "impose_sanction": {"resource_level": -0.20, "domestic_pressure": +0.15},
+    "propose_negotiation": {"threat_perception": -0.05, "domestic_pressure": -0.05},
+    "naval_patrol": {"threat_perception": +0.10},
+    "conduct_exercise": {"threat_perception": +0.10},
+    "recall_ambassador": {"threat_perception": +0.10, "domestic_pressure": +0.05},
+    "condemn_action": {"threat_perception": +0.05},
+    "strengthen_alliance": {"threat_perception": -0.05},
+    "restrict_trade": {"resource_level": -0.10, "domestic_pressure": +0.10},
+    "offer_aid": {"resource_level": +0.10, "domestic_pressure": -0.05},
+    "withdraw_forces": {"threat_perception": -0.15},
+    "share_intelligence": {"threat_perception": -0.05},
+    "increase_surveillance": {"threat_perception": +0.03},
+    "cyber_operation": {"threat_perception": +0.12, "resource_level": -0.05},
+}

@@ -1,9 +1,40 @@
 from __future__ import annotations
 
+import uuid
+
 from app.graph.state import SimulationState
+
+TENSION_THRESHOLD = 0.6
 
 
 async def check_intervention_node(state: SimulationState) -> dict:
+    if state["current_round"] >= state["max_rounds"]:
+        return {"decision_point": None}
+
+    max_tension = max(state.get("tension_levels", {}).values(), default=0.0)
+
+    if max_tension >= TENSION_THRESHOLD:
+        options = []
+        for code, profile in state.get("actors", {}).items():
+            name = profile.get("country_name", code)
+            options.append({
+                "action_type": "propose_negotiation", "target": code,
+                "intensity": "high", "description": f"{name}에 협상 제안",
+                "estimated_effect": {"tension_delta": -0.1, "resource_cost": 0.02},
+            })
+            options.append({
+                "action_type": "deploy_forces", "target": code,
+                "intensity": "medium", "description": f"{name} 인근 병력 배치",
+                "estimated_effect": {"tension_delta": +0.15, "resource_cost": 0.1},
+            })
+
+        return {"decision_point": {
+            "id": f"dp_{uuid.uuid4().hex[:12]}",
+            "round": state["current_round"],
+            "trigger": f"tension_threshold_exceeded (max={max_tension:.2f})",
+            "options": options[:8],
+        }}
+
     return {"decision_point": None}
 
 
