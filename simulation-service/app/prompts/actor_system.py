@@ -33,12 +33,12 @@ ACTOR_SYSTEM_PROMPT = """\
 반드시 아래 JSON 배열 형식으로만 응답하십시오:
 ```json
 [
-  {
+  {{
     "action_type": "행동_유형",
     "target": "대상_국가_코드",
     "intensity": "low|medium|high",
     "reasoning": "행동 근거 (한국어, 1-2문장)"
-  }
+  }}
 ]
 ```
 현실적으로 행동하십시오. 과도한 에스컬레이션은 국내 정치적 비용이 발생합니다.

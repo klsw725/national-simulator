@@ -13,34 +13,33 @@ logger = logging.getLogger(__name__)
 
 
 async def _call_agent(actor_code: str, state: SimulationState, osint_text: str) -> list[dict]:
-    profile = state["actors"].get(actor_code, {})
-    actor_state = state["actor_states"].get(actor_code, {})
-
-    recent_actions = [
-        a for a in state["action_history"][-20:] if a.get("actor") != actor_code
-    ]
-    other_actions_text = "\n".join(
-        f"- {a.get('actor', '?')}: {a.get('action_type', '?')} → {a.get('target', '?')}"
-        for a in recent_actions[-10:]
-    ) or "없음"
-
-    system_prompt = ACTOR_SYSTEM_PROMPT.format(
-        country_name=profile.get("country_name", actor_code),
-        military_power=profile.get("military_power", "unknown"),
-        economic_power=profile.get("economic_power", "unknown"),
-        ideology=profile.get("ideology", "unknown"),
-        alliances=", ".join(profile.get("alliances", [])),
-        core_interests=", ".join(profile.get("core_interests", [])),
-        behavior_tendency=profile.get("behavior_tendency", "unknown"),
-        situation_summary=state["situation_summary"][:1500],
-        recent_osint=osint_text[:1000],
-        other_actions=other_actions_text,
-        tension=actor_state.get("threat_perception", 0.0),
-        resources=actor_state.get("resource_level", 1.0),
-        domestic_pressure=actor_state.get("domestic_pressure", 0.0),
-    )
-
     try:
+        profile = state["actors"].get(actor_code, {})
+        actor_state = state["actor_states"].get(actor_code, {})
+
+        recent_actions = [
+            a for a in state["action_history"][-20:] if a.get("actor") != actor_code
+        ]
+        other_actions_text = "\n".join(
+            f"- {a.get('actor', '?')}: {a.get('action_type', '?')} → {a.get('target', '?')}"
+            for a in recent_actions[-10:]
+        ) or "없음"
+
+        system_prompt = ACTOR_SYSTEM_PROMPT.format(
+            country_name=profile.get("country_name", actor_code),
+            military_power=profile.get("military_power", "unknown"),
+            economic_power=profile.get("economic_power", "unknown"),
+            ideology=profile.get("ideology", "unknown"),
+            alliances=", ".join(profile.get("alliances", [])),
+            core_interests=", ".join(profile.get("core_interests", [])),
+            behavior_tendency=profile.get("behavior_tendency", "unknown"),
+            situation_summary=state["situation_summary"][:1500],
+            recent_osint=osint_text[:1000],
+            other_actions=other_actions_text,
+            tension=actor_state.get("threat_perception", 0.0),
+            resources=actor_state.get("resource_level", 1.0),
+            domestic_pressure=actor_state.get("domestic_pressure", 0.0),
+        )
         actions = await llm_json(
             system=system_prompt,
             user=f"라운드 {state['current_round'] + 1}: 행동을 결정하십시오.",
