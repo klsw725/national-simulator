@@ -401,3 +401,15 @@ export interface RoundBriefing {
 }
 
 export type WargameLens = "info_warfare" | "diplomacy" | "military" | "economy" | "relations" | "whatif";
+
+export interface DecisionRecord {
+  round: number;
+  label: string;
+  outcome: string;
+}
+
+export interface RoundSnapshot {
+  round: number;
+  tension: number;
+  actorStates: WargameState["actorStates"];
+}

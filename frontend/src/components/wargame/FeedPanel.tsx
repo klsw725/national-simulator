@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAction } from "@/types/simulation";
 import type { AgentAction } from "@/types/simulation-stream";
-import type { DecisionRecord } from "@/hooks/useWargame";
+import type { DecisionRecord } from "@/types/simulation";
 import RoundTimeline from "./RoundTimeline";
 
 export interface SelectedFeedEntity {

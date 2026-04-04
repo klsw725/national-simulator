@@ -11,7 +11,7 @@ import {
   ReferenceLine,
   CartesianGrid,
 } from "recharts";
-import type { DecisionRecord } from "@/hooks/useWargame";
+import type { DecisionRecord } from "@/types/simulation";
 
 interface DebriefViewProps {
   totalRounds: number;

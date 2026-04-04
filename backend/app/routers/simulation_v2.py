@@ -20,6 +20,29 @@ class DecisionRequest(BaseModel):
     chosen_action: dict
 
 
+class LegacySimulateRequest(BaseModel):
+    mode: str = "auto"
+
+
+@router.post("/api/scenario/{scenario_id}/simulate", status_code=202)
+async def start_simulation_legacy(scenario_id: str, body: LegacySimulateRequest | None = None):
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        scenario = await conn.fetchrow(
+            "SELECT question FROM scenarios WHERE id = $1", scenario_id,
+        )
+    seed = scenario["question"] if scenario else ""
+    payload = json.dumps({
+        "type": "start_simulation",
+        "scenario_id": scenario_id,
+        "seed_text": seed,
+        "max_rounds": 10,
+    }, ensure_ascii=False)
+    async with pool.acquire() as conn:
+        await conn.execute("SELECT pg_notify($1, $2)", "sim_commands", payload)
+    return {"status": "started", "pipeline_mode": body.mode if body else "auto"}
+
+
 @router.post("/api/scenario/{scenario_id}/start_v2")
 async def start_simulation_v2(scenario_id: str, body: StartSimulationRequest):
     pool = get_pool()

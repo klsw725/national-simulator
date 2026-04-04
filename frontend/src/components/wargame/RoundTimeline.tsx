@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useMemo } from "react";
-import type { DecisionRecord } from "@/hooks/useWargame";
+import type { DecisionRecord } from "@/types/simulation";
 
 interface RoundTimelineProps {
   currentRound: number;
