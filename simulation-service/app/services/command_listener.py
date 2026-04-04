@@ -123,17 +123,38 @@ class SimulationCommandListener:
 
                 if result.get("status") == "completed":
                     await emitter.emit_report_ready(scenario_id, scenario_id)
+                    await self._update_scenario_status(scenario_id, "completed")
 
             except asyncio.CancelledError:
                 await emitter.emit_phase_change(scenario_id, "cancelled", 0)
+                await self._update_scenario_status(scenario_id, "cancelled")
             except Exception as exc:
                 logger.exception("Simulation %s failed", scenario_id)
                 await emitter.emit_error(scenario_id, str(exc))
+                await self._update_scenario_status(scenario_id, "failed")
             finally:
                 self._running_tasks.pop(scenario_id, None)
 
         task = asyncio.create_task(_run())
         self._running_tasks[scenario_id] = task
+
+    async def _update_scenario_status(self, scenario_id: str, status: str) -> None:
+        try:
+            import asyncpg
+            from app.config import settings
+            conn = await asyncpg.connect(settings.database_url)
+            await conn.execute(
+                "UPDATE scenarios SET simulation_status = $1 WHERE id = $2",
+                status, scenario_id,
+            )
+            if status == "completed":
+                await conn.execute(
+                    "UPDATE scenarios SET status = 'completed' WHERE id = $1",
+                    scenario_id,
+                )
+            await conn.close()
+        except Exception:
+            logger.warning("Failed to update scenario %s status to %s", scenario_id, status)
 
     async def _stop_simulation(self, scenario_id: str) -> None:
         task = self._running_tasks.pop(scenario_id, None)
