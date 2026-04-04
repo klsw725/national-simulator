@@ -7,8 +7,10 @@ import type { Scenario } from "@/types/simulation";
 const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
   created: { label: "대기", color: "var(--text-muted)", bg: "rgba(107, 114, 128, 0.15)" },
   starting: { label: "시작", color: "var(--accent-cyan)", bg: "rgba(34, 211, 238, 0.1)" },
+  running: { label: "실행 중", color: "var(--accent-cyan)", bg: "rgba(34, 211, 238, 0.1)" },
   completed: { label: "완료", color: "var(--status-connected)", bg: "rgba(34, 197, 94, 0.1)" },
   failed: { label: "실패", color: "var(--accent-red)", bg: "rgba(239, 68, 68, 0.1)" },
+  cancelled: { label: "취소", color: "var(--text-muted)", bg: "rgba(107, 114, 128, 0.15)" },
 };
 
 function getBadge(status: string) {
