@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from app.database import get_pool
-from app.services.whatif_engine import TENSION_KEYWORDS_CONTENT, TENSION_KEYWORDS_TYPE
+TENSION_KEYWORDS_TYPE = frozenset(
+    ("military", "threat", "attack", "sanction", "blockade"),
+)
+TENSION_KEYWORDS_CONTENT = (
+    "전쟁", "공격", "위협", "제재", "봉쇄",
+    "war", "attack", "threat", "sanction",
+)
 
 _ESCALATION_EVENT_TYPES = frozenset(
     ("military_movement", "military_exercise", "sanction_impose", "trade_restriction"),
