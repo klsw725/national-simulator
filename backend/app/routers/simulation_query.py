@@ -107,6 +107,29 @@ async def get_simulation_results(scenario_id: str):
 @router.get("/api/scenario/{scenario_id}/report")
 async def get_simulation_report(scenario_id: str):
     pool = get_pool()
+
+    report_text = None
+    async with pool.acquire() as conn:
+        cp_row = await conn.fetchrow(
+            """SELECT checkpoint FROM checkpoints
+               WHERE thread_id = $1
+               ORDER BY checkpoint_id DESC LIMIT 1""",
+            scenario_id,
+        )
+    if cp_row:
+        checkpoint = cp_row["checkpoint"]
+        if isinstance(checkpoint, str):
+            checkpoint = json.loads(checkpoint)
+        report_text = checkpoint.get("channel_values", {}).get("situation_summary", "")
+
+    if report_text:
+        return {
+            "scenario_id": scenario_id,
+            "status": "completed",
+            "report": report_text,
+            "report_markdown": report_text,
+        }
+
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """SELECT payload, created_at
