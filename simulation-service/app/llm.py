@@ -43,6 +43,27 @@ async def llm_chat(
     return content
 
 
+def _extract_json(raw: str) -> Any:
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+    if match:
+        return json.loads(match.group(1).strip())
+
+    for start_char, end_char in [("[", "]"), ("{", "}")]:
+        first = raw.find(start_char)
+        if first == -1:
+            continue
+        depth = 0
+        for i in range(first, len(raw)):
+            if raw[i] == start_char:
+                depth += 1
+            elif raw[i] == end_char:
+                depth -= 1
+            if depth == 0:
+                return json.loads(raw[first : i + 1])
+
+    raise ValueError(f"No JSON found in LLM response: {raw[:300]}")
+
+
 async def llm_json(
     system: str,
     user: str,
@@ -51,8 +72,4 @@ async def llm_json(
     max_tokens: int = 3000,
 ) -> Any:
     raw = await llm_chat(system, user, temperature=temperature, max_tokens=max_tokens)
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
-    text = match.group(1).strip() if match else raw.strip()
-    if text.startswith("[") or text.startswith("{"):
-        return json.loads(text)
-    raise ValueError(f"Failed to parse JSON from LLM response: {text[:200]}")
+    return _extract_json(raw)

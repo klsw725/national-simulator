@@ -81,7 +81,7 @@ async def test_create_scenario(client: httpx.AsyncClient, result: TestResult) ->
     print("\n[2] 시나리오 생성")
     try:
         resp = await client.post(
-            f"{GATEWAY}/api/scenarios",
+            f"{GATEWAY}/api/scenario",
             json={
                 "name": "E2E Test v12",
                 "region": {"bbox": [120, 0, 140, 30], "name": "South China Sea"},

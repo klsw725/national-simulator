@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.graph.state import SimulationState
+from app.services.event_emitter import get_emitter
 
 TENSION_THRESHOLD = 0.6
 
@@ -28,12 +29,17 @@ async def check_intervention_node(state: SimulationState) -> dict:
                 "estimated_effect": {"tension_delta": +0.15, "resource_cost": 0.1},
             })
 
-        return {"decision_point": {
+        dp = {
             "id": f"dp_{uuid.uuid4().hex[:12]}",
             "round": state["current_round"],
             "trigger": f"tension_threshold_exceeded (max={max_tension:.2f})",
             "options": options[:8],
-        }}
+        }
+        try:
+            await get_emitter().emit_intervention_required(state["scenario_id"], dp)
+        except Exception:
+            pass
+        return {"decision_point": dp}
 
     return {"decision_point": None}
 

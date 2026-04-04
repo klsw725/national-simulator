@@ -6,6 +6,7 @@ import logging
 from app.graph.state import SimulationState
 from app.llm import llm_chat
 from app.prompts.actor_system import REPORT_SYSTEM_PROMPT
+from app.services.event_emitter import get_emitter
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,12 @@ async def generate_report_node(state: SimulationState) -> dict:
     except Exception:
         logger.exception("Report generation failed")
         report = f"[보고서 생성 실패] {state['current_round']}라운드 완료."
+
+    try:
+        await get_emitter().emit_phase_change(state["scenario_id"], "reporting", 0.9)
+        await get_emitter().emit_report_ready(state["scenario_id"], state["scenario_id"])
+    except Exception:
+        pass
 
     return {
         "phase": "reporting",

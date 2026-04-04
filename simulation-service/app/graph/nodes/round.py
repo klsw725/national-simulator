@@ -6,6 +6,7 @@ import logging
 from app.graph.state import SimulationState
 from app.llm import llm_json
 from app.prompts.actor_system import ACTOR_SYSTEM_PROMPT
+from app.services.event_emitter import get_emitter
 from app.services.osint_injector import fetch_latest_osint, format_osint_for_prompt
 
 logger = logging.getLogger(__name__)
@@ -71,5 +72,12 @@ async def run_round_node(state: SimulationState) -> dict:
             continue
         for action in result:
             round_actions.append(action)
+
+    try:
+        emitter = get_emitter()
+        for action in round_actions:
+            await emitter.emit_agent_action(state["scenario_id"], state["current_round"] + 1, action)
+    except Exception:
+        pass
 
     return {"round_actions": round_actions}
