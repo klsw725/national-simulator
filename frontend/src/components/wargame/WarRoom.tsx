@@ -42,7 +42,7 @@ export default function WarRoom({
   totalRounds,
   actions,
   onClose,
-  useV2 = false,
+  useV2 = true,
   onViewReport,
   onCreateWhatIf,
   onWargameOverlay,

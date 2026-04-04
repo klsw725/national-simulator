@@ -131,16 +131,16 @@ export default function BriefingOverlay({
           )}
 
           <section>
-            <SectionHeader>소셜 미디어 요약</SectionHeader>
+            <SectionHeader>OSINT 정보 요약</SectionHeader>
             <div className="mt-2 flex flex-col gap-2">
               <span className="text-xs text-[var(--text-muted)]">
-                트윗{" "}
+                관측 이벤트{" "}
                 <span className="font-bold font-mono text-[var(--accent-cyan)]">
-                  {briefing.social_media_summary.total_posts}
+                  {briefing.social_media_summary?.total_posts ?? 0}
                 </span>
                 건
               </span>
-              {briefing.social_media_summary.top_topics.length > 0 && (
+              {(briefing.social_media_summary?.top_topics?.length ?? 0) > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {briefing.social_media_summary.top_topics.map((topic, i) => (
                     <span

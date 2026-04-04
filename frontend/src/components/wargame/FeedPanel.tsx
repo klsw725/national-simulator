@@ -42,15 +42,47 @@ const V2_CATEGORY_COLOR: Record<string, string> = {
   economic: "#4ade80",
   military: "#ef4444",
   intelligence: "#a78bfa",
+  meta: "var(--text-muted)",
+};
+
+const V2_CATEGORY_ICON: Record<string, string> = {
+  diplomatic: "🗣️",
+  economic: "💰",
+  military: "⚔️",
+  intelligence: "🔍",
+  meta: "⏸️",
+};
+
+const ACTION_CATEGORY_MAP: Record<string, string> = {
+  issue_statement: "diplomatic",
+  propose_negotiation: "diplomatic",
+  recall_ambassador: "diplomatic",
+  strengthen_alliance: "diplomatic",
+  condemn_action: "diplomatic",
+  request_mediation: "diplomatic",
+  sign_agreement: "diplomatic",
+  impose_sanction: "economic",
+  lift_sanction: "economic",
+  restrict_trade: "economic",
+  offer_aid: "economic",
+  currency_intervention: "economic",
+  deploy_forces: "military",
+  conduct_exercise: "military",
+  mobilize_reserves: "military",
+  withdraw_forces: "military",
+  establish_no_fly_zone: "military",
+  naval_patrol: "military",
+  cyber_operation: "military",
+  increase_surveillance: "intelligence",
+  share_intelligence: "intelligence",
+  conduct_recon: "intelligence",
+  electronic_warfare: "intelligence",
+  do_nothing: "meta",
+  internal_focus: "meta",
 };
 
 function getV2Category(actionType: string): string {
-  const normalized = actionType.toLowerCase();
-  if (normalized.includes("diplomatic")) return "diplomatic";
-  if (normalized.includes("economic")) return "economic";
-  if (normalized.includes("military")) return "military";
-  if (normalized.includes("intelligence")) return "intelligence";
-  return "diplomatic";
+  return ACTION_CATEGORY_MAP[actionType] ?? "diplomatic";
 }
 
 function truncate(text: string, max = 80): string {
@@ -97,7 +129,7 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
       <div className="flex-[7] flex flex-col min-w-0 border-r border-[var(--border-secondary)]">
         <div className="px-3 py-1.5 border-b border-[var(--border-secondary)] flex items-center justify-between">
           <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
-            소셜 미디어 피드
+            에이전트 행동 피드
             {selectedRound !== null && (
               <span className="ml-1.5 text-[var(--accent-cyan)] normal-case tracking-normal">
                 · R{selectedRound}
@@ -168,12 +200,15 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
                         platform: "wargame_v2",
                       })}
                     >
-                      <span className="text-xs leading-none mt-px shrink-0" style={{ color }}>•</span>
-                      <span className="text-[10px] font-semibold text-[var(--text-primary)] shrink-0">
+                      <span className="text-xs leading-none mt-px shrink-0">{V2_CATEGORY_ICON[category] ?? "•"}</span>
+                      <span className="text-[10px] font-semibold shrink-0" style={{ color }}>
                         {action.actor}
                       </span>
-                      <span className="text-[10px] leading-snug truncate" style={{ color }}>
-                        {truncate(content)}
+                      <span className="text-[10px] font-medium shrink-0" style={{ color, opacity: 0.7 }}>
+                        {action.action_type.replace(/_/g, " ")}
+                      </span>
+                      <span className="text-[10px] leading-snug truncate text-[var(--text-muted)]">
+                        → {action.target} · {truncate(action.reasoning ?? "", 60)}
                       </span>
                     </div>
                   </div>
