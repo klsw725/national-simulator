@@ -11,10 +11,6 @@ import type {
 } from "@/types/simulation";
 import {
   getLiveActions,
-  getLiveConfig,
-  getLiveGraphData,
-  getLiveGraphTask,
-  getLiveProfiles,
   getLiveStats,
 } from "@/lib/gatewayApi";
 
@@ -30,7 +26,8 @@ interface UseLiveSimulationResult {
 
 export function useLiveSimulation(
   scenarioId: string | null,
-  pipelineStatus: string | null
+  pipelineStatus: string | null,
+  isWargame: boolean = false,
 ): UseLiveSimulationResult {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [actions, setActions] = useState<LiveAction[]>([]);
@@ -39,31 +36,11 @@ export function useLiveSimulation(
   const [profiles, setProfiles] = useState<LiveProfiles | null>(null);
   const [config, setConfig] = useState<LiveConfig | null>(null);
 
-  const graphTaskIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const graphDataIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const profilesIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const configIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const actionsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastOffsetRef = useRef(0);
 
   const clearIntervals = useCallback(() => {
-    if (graphTaskIntervalRef.current) {
-      clearInterval(graphTaskIntervalRef.current);
-      graphTaskIntervalRef.current = null;
-    }
-    if (graphDataIntervalRef.current) {
-      clearInterval(graphDataIntervalRef.current);
-      graphDataIntervalRef.current = null;
-    }
-    if (profilesIntervalRef.current) {
-      clearInterval(profilesIntervalRef.current);
-      profilesIntervalRef.current = null;
-    }
-    if (configIntervalRef.current) {
-      clearInterval(configIntervalRef.current);
-      configIntervalRef.current = null;
-    }
     if (statsIntervalRef.current) {
       clearInterval(statsIntervalRef.current);
       statsIntervalRef.current = null;
@@ -73,38 +50,6 @@ export function useLiveSimulation(
       actionsIntervalRef.current = null;
     }
   }, []);
-
-  const pollGraphTask = useCallback(async () => {
-    if (!scenarioId) return;
-    try {
-      const data = await getLiveGraphTask(scenarioId);
-      setGraphTaskStatus(data);
-    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollGraphTask failed", e); }
-  }, [scenarioId]);
-
-  const pollGraphData = useCallback(async () => {
-    if (!scenarioId) return;
-    try {
-      const data = await getLiveGraphData(scenarioId);
-      setGraphData(data);
-    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollGraphData failed", e); }
-  }, [scenarioId]);
-
-  const pollProfiles = useCallback(async () => {
-    if (!scenarioId) return;
-    try {
-      const data = await getLiveProfiles(scenarioId);
-      setProfiles(data);
-    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollProfiles failed", e); }
-  }, [scenarioId]);
-
-  const pollConfig = useCallback(async () => {
-    if (!scenarioId) return;
-    try {
-      const data = await getLiveConfig(scenarioId);
-      setConfig(data);
-    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollConfig failed", e); }
-  }, [scenarioId]);
 
   const pollStats = useCallback(async () => {
     if (!scenarioId) return;
@@ -136,40 +81,20 @@ export function useLiveSimulation(
   useEffect(() => {
     clearIntervals();
 
-    if (!scenarioId || !pipelineStatus?.startsWith("simulating:")) {
+    const isRunningPipeline = pipelineStatus?.startsWith("simulating:") || false;
+    if (!scenarioId || (!isRunningPipeline && !isWargame)) {
       return;
     }
 
-    if (pipelineStatus === "simulating:graph_build") {
-      pollGraphTask();
-      pollGraphData();
-      graphTaskIntervalRef.current = setInterval(pollGraphTask, 2_000);
-      graphDataIntervalRef.current = setInterval(pollGraphData, 10_000);
-      return;
-    }
-
-    if (pipelineStatus === "simulating:prepare") {
-      pollProfiles();
-      pollConfig();
-      profilesIntervalRef.current = setInterval(pollProfiles, 3_000);
-      configIntervalRef.current = setInterval(pollConfig, 2_000);
-      return;
-    }
-
-    if (pipelineStatus === "simulating:running") {
-      pollStats();
-      pollActions();
-      statsIntervalRef.current = setInterval(pollStats, 2_000);
-      actionsIntervalRef.current = setInterval(pollActions, 3_000);
-    }
+    pollStats();
+    pollActions();
+    statsIntervalRef.current = setInterval(pollStats, 2_000);
+    actionsIntervalRef.current = setInterval(pollActions, 3_000);
   }, [
     scenarioId,
     pipelineStatus,
+    isWargame,
     clearIntervals,
-    pollGraphTask,
-    pollGraphData,
-    pollProfiles,
-    pollConfig,
     pollStats,
     pollActions,
   ]);
@@ -185,7 +110,7 @@ export function useLiveSimulation(
   }, [scenarioId]);
 
   useEffect(() => {
-    if (pipelineStatus !== "simulating:running") {
+    if (!pipelineStatus?.startsWith("simulating:")) {
       setActions([]);
       lastOffsetRef.current = 0;
     }
@@ -198,8 +123,8 @@ export function useLiveSimulation(
   }, [clearIntervals]);
 
   const isLive = useMemo(
-    () => Boolean(scenarioId && pipelineStatus?.startsWith("simulating:")),
-    [scenarioId, pipelineStatus]
+    () => Boolean(scenarioId && (pipelineStatus?.startsWith("simulating:") || isWargame)),
+    [scenarioId, pipelineStatus, isWargame],
   );
 
   return {

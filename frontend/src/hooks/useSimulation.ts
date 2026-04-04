@@ -58,13 +58,16 @@ export function useSimulation(): UseSimulationReturn {
       }
 
       if (resultsRes.status === "fulfilled" && resultsRes.value) {
-        const data = resultsRes.value as { results?: { actions?: SimulationAction[] } };
-        setSimulationResults(data.results?.actions ?? []);
+        const data = resultsRes.value as {
+          events?: SimulationAction[];
+          results?: { actions?: SimulationAction[] };
+        };
+        setSimulationResults(data.events ?? data.results?.actions ?? []);
       }
 
       if (reportRes.status === "fulfilled" && reportRes.value) {
-        const data = reportRes.value as { report?: string };
-        setReportMarkdown(data.report ?? "");
+        const data = reportRes.value as { content?: string; report?: string };
+        setReportMarkdown(data.content ?? data.report ?? "");
       }
     } catch (e) {
       if (process.env.NODE_ENV === "development") console.warn("loadResults failed", e);
@@ -111,8 +114,9 @@ export function useSimulation(): UseSimulationReturn {
             if (st.status === "completed") {
               await loadResults(scenarioId);
             }
-            if (st.status === "failed" && st.error_message) {
-              setError(st.error_message);
+            if (st.status === "failed") {
+              const statusWithError = st as PipelineStatus & { error_message?: string; message?: string; detail?: string };
+              setError(statusWithError.error_message ?? statusWithError.message ?? statusWithError.detail ?? "Simulation failed");
             }
           }
         } catch (e) {
@@ -139,7 +143,6 @@ export function useSimulation(): UseSimulationReturn {
       try {
         const scenario = await api.createScenario(data);
         setActiveScenario(scenario);
-        await api.generateSeed(scenario.id);
         await api.startSimulation(scenario.id, mode);
         pollStatus(scenario.id);
         await loadScenarios();
