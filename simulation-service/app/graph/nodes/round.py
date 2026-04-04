@@ -49,13 +49,23 @@ async def _call_agent(actor_code: str, state: SimulationState, osint_text: str) 
         )
         if not isinstance(actions, list):
             actions = [actions] if isinstance(actions, dict) else []
-        for action in actions:
+        validated = []
+        for action in actions[:3]:
+            if not isinstance(action, dict):
+                continue
+            action.setdefault("actor", actor_code)
+            action.setdefault("action_type", "do_nothing")
+            action.setdefault("target", "none")
+            action.setdefault("intensity", "low")
+            action.setdefault("reasoning", "")
             action["actor"] = actor_code
-        return actions[:3]
-    except Exception:
-        logger.exception("Agent %s failed", actor_code)
+            validated.append(action)
+        return validated if validated else [{"actor": actor_code, "action_type": "do_nothing",
+                                             "target": "none", "intensity": "low", "reasoning": "파싱 결과 없음"}]
+    except Exception as exc:
+        logger.warning("Agent %s JSON parse failed: %s", actor_code, str(exc)[:200])
         return [{"actor": actor_code, "action_type": "do_nothing", "target": "none",
-                 "intensity": "low", "reasoning": "LLM 호출 실패"}]
+                 "intensity": "low", "reasoning": f"LLM 파싱 실패: {str(exc)[:100]}"}]
 
 
 async def run_round_node(state: SimulationState) -> dict:
