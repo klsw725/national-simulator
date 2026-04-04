@@ -73,6 +73,10 @@ class SimulationCommandListener:
             await self._stop_simulation(scenario_id)
         elif cmd_type == "user_decision":
             await self._apply_decision(scenario_id, command)
+        elif cmd_type == "resume_simulation":
+            await self._resume_simulation(scenario_id)
+        elif cmd_type == "start_whatif":
+            await self._start_whatif(scenario_id, command)
         else:
             logger.warning("Unknown command type: %s", cmd_type)
 
@@ -149,3 +153,73 @@ class SimulationCommandListener:
             {"user_decision": command.get("chosen_action")},
         )
         await graph.ainvoke(None, config)
+
+    async def _resume_simulation(self, scenario_id: str) -> None:
+        if self._graph is None:
+            logger.error("Graph not initialized")
+            return
+
+        graph = self._graph
+        config = {"configurable": {"thread_id": scenario_id}}
+        await graph.ainvoke(None, config)
+        logger.info("Simulation %s resumed", scenario_id)
+
+    async def _start_whatif(self, scenario_id: str, command: dict) -> None:
+        if self._graph is None:
+            logger.error("Graph not initialized")
+            return
+
+        graph = self._graph
+        branch_id = command.get("branch_id", "")
+        branch_round = command.get("branch_point_round", 0)
+
+        source_config = {"configurable": {"thread_id": scenario_id}}
+        state_snapshot = await graph.aget_state(source_config)
+
+        if not state_snapshot or not state_snapshot.values:
+            logger.error("No state found for %s", scenario_id)
+            return
+
+        branch_state = dict(state_snapshot.values)
+        branch_state["scenario_id"] = branch_id
+
+        chosen = command.get("chosen_action")
+        if chosen:
+            branch_state["user_decision"] = chosen
+            branch_state["decision_point"] = None
+
+        if branch_round and branch_state.get("current_round", 0) > branch_round:
+            branch_state["current_round"] = branch_round
+            branch_state["action_history"] = [
+                a for a in branch_state.get("action_history", [])
+                if a.get("round", 999) <= branch_round
+            ]
+
+        from app.services.event_emitter import get_emitter
+        emitter = get_emitter()
+
+        branch_config = {"configurable": {"thread_id": branch_id}}
+
+        async def _run_branch() -> None:
+            try:
+                await emitter.emit_phase_change(branch_id, "simulating", 0)
+                result = await graph.ainvoke(branch_state, branch_config)
+
+                import asyncpg
+                from app.config import settings
+                pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=1)
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE whatif_branches SET status = 'completed', completed_at = NOW() WHERE id = $1",
+                        branch_id,
+                    )
+                await pool.close()
+
+                if result.get("status") == "completed":
+                    await emitter.emit_report_ready(branch_id, branch_id)
+            except Exception as exc:
+                logger.exception("What-if branch %s failed", branch_id)
+                await emitter.emit_error(branch_id, str(exc))
+
+        task = asyncio.create_task(_run_branch())
+        self._running_tasks[branch_id] = task

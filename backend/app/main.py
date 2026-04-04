@@ -21,8 +21,12 @@ from app.routers import (
     osint,
     scenario,
     seed,
+    simulation_data,
+    simulation_query,
     simulation_stream,
     simulation_v2,
+    wargame_v2,
+    whatif_v2,
 )
 
 
@@ -62,6 +66,10 @@ app.include_router(scenario.router)
 app.include_router(osint.router)
 app.include_router(simulation_stream.router)
 app.include_router(simulation_v2.router)
+app.include_router(simulation_query.router)
+app.include_router(simulation_data.router)
+app.include_router(wargame_v2.router)
+app.include_router(whatif_v2.router)
 
 
 @app.get("/api/health")
