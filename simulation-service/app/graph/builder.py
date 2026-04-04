@@ -47,10 +47,16 @@ _builder.add_edge("apply_decision", "run_round")
 _builder.add_edge("generate_report", END)
 
 
+_checkpointer_cm = None
+_checkpointer = None
+
+
 async def get_graph():
-    checkpointer = AsyncPostgresSaver.from_conn_string(settings.database_url)
-    await checkpointer.setup()
+    global _checkpointer_cm, _checkpointer
+    _checkpointer_cm = AsyncPostgresSaver.from_conn_string(settings.database_url)
+    _checkpointer = await _checkpointer_cm.__aenter__()
+    await _checkpointer.setup()
     return _builder.compile(
-        checkpointer=checkpointer,
+        checkpointer=_checkpointer,
         interrupt_before=["check_intervention"],
     )
