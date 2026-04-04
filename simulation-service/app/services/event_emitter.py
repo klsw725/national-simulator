@@ -20,21 +20,22 @@ class SimulationEventEmitter:
 
     async def _emit(self, event: dict[str, Any]) -> None:
         payload = json.dumps(event, ensure_ascii=False)
-        if len(payload.encode("utf-8")) > _PAYLOAD_LIMIT:
-            async with self._pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    """INSERT INTO simulation_events (scenario_id, event_type, payload)
-                       VALUES ($1, $2, $3)
-                       RETURNING sequence_num""",
-                    event.get("scenario_id", ""),
-                    event.get("type", "unknown"),
-                    payload,
-                )
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO simulation_events (scenario_id, event_type, payload)
+                   VALUES ($1, $2, $3)
+                   RETURNING sequence_num""",
+                event.get("scenario_id", ""),
+                event.get("type", "unknown"),
+                payload,
+            )
+            event["sequence_num"] = row["sequence_num"]
+            notify_payload = json.dumps(event, ensure_ascii=False)
+            if len(notify_payload.encode("utf-8")) > _PAYLOAD_LIMIT:
                 ref = json.dumps({"type": "event_ref", "event_id": str(row["sequence_num"])})
                 await conn.execute("SELECT pg_notify($1, $2)", _CHANNEL, ref)
-        else:
-            async with self._pool.acquire() as conn:
-                await conn.execute("SELECT pg_notify($1, $2)", _CHANNEL, payload)
+            else:
+                await conn.execute("SELECT pg_notify($1, $2)", _CHANNEL, notify_payload)
 
     async def emit_phase_change(
         self, scenario_id: str, phase: str, progress: float,
