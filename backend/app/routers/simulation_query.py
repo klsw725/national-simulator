@@ -35,10 +35,37 @@ async def get_simulation_status(scenario_id: str):
         phase = payload.get("phase", "")
         current_round = payload.get("round", 0)
 
+    sim_status = scenario["simulation_status"]
+    is_wargame = False
+    async with pool.acquire() as conn:
+        params_row = await conn.fetchrow(
+            "SELECT simulation_params FROM scenarios WHERE id = $1", scenario_id,
+        )
+        if params_row and params_row["simulation_params"]:
+            try:
+                params = json.loads(params_row["simulation_params"]) if isinstance(params_row["simulation_params"], str) else params_row["simulation_params"]
+                is_wargame = params.get("wargame_enabled", False)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    if sim_status == "running" and is_wargame:
+        phase_map = {
+            "analyzing": "simulating:wargame:analyzing",
+            "building": "simulating:wargame:building",
+            "configuring": "simulating:wargame:configuring",
+            "simulating": "simulating:wargame:simulation",
+            "reporting": "simulating:wargame:reporting",
+        }
+        compat_status = phase_map.get(phase, "simulating:wargame:simulation")
+    elif sim_status == "running":
+        compat_status = f"simulating:{phase}" if phase else "simulating:running"
+    else:
+        compat_status = sim_status
+
     return {
-        "status": scenario["status"],
+        "status": compat_status,
         "seed_status": scenario["seed_status"],
-        "simulation_status": scenario["simulation_status"],
+        "simulation_status": sim_status,
         "phase": phase,
         "current_round": current_round,
     }
