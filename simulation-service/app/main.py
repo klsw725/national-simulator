@@ -10,6 +10,7 @@ from app.config import settings
 from app.graph.builder import get_graph
 from app.services.command_listener import SimulationCommandListener
 from app.services.event_emitter import init_emitter
+from app.services.gdelt_pipeline import gdelt_poll_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
     listener = SimulationCommandListener()
     listener.set_graph(graph)
     listen_task = asyncio.create_task(listener.start())
+    gdelt_task = asyncio.create_task(gdelt_poll_loop())
 
     app.state.graph = graph
     app.state.emitter = emitter
@@ -31,10 +33,12 @@ async def lifespan(app: FastAPI):
     logger.info("Simulation Service started on port %d", settings.service_port)
     yield
     listen_task.cancel()
-    try:
-        await listen_task
-    except asyncio.CancelledError:
-        pass
+    gdelt_task.cancel()
+    for t in (listen_task, gdelt_task):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
