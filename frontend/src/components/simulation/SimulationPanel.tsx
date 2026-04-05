@@ -450,7 +450,8 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
               activeId={sim.activeScenario?.id ?? null}
               onSelect={(s) => {
                 sim.selectScenario(s);
-                setTab("progress");
+                const isComplete = s.status === "completed" || s.simulation_status === "completed";
+                setTab(isComplete ? "report" : "progress");
               }}
               onDelete={sim.deleteScenario}
             />
