@@ -33,6 +33,8 @@ function StatusView({ text }: { text: string }) {
   );
 }
 
+const FADE_IN: React.CSSProperties = { animation: "fadeSlideIn 0.35s ease-out" };
+
 function IntermediateResults({ pipelineStatus, scenarioId }: Props) {
   const { stats, actions, graphTaskStatus, graphData, profiles, config, isLive } = useLiveSimulation(
     scenarioId,
@@ -57,7 +59,7 @@ function IntermediateResults({ pipelineStatus, scenarioId }: Props) {
 
   if (pipelineStatus === "simulating:graph_build") {
     return (
-      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div key="graph_build" style={{ ...FADE_IN, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
         {graphTaskStatus && (
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
             {graphTaskStatus.message ?? "그래프 빌드 진행 중"}
@@ -70,7 +72,7 @@ function IntermediateResults({ pipelineStatus, scenarioId }: Props) {
 
   if (pipelineStatus === "simulating:prepare") {
     return (
-      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div key="prepare" style={{ ...FADE_IN, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
         <div
           style={{
             border: "1px solid var(--border-secondary)",
@@ -105,7 +107,7 @@ function IntermediateResults({ pipelineStatus, scenarioId }: Props) {
 
   if (pipelineStatus === "simulating:running") {
     return (
-      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div key="running" style={{ ...FADE_IN, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
         <LiveStats stats={stats} />
         <div style={{ flex: 1, minHeight: 0 }}>
           <LiveActionFeed actions={actions} />

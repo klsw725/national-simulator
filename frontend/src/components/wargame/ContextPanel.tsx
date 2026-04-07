@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { ActorState, WargamePhase } from "@/types/simulation";
+import type { GeopoliticalEventPayload } from "@/types/simulation-stream";
 import type { SelectedFeedEntity } from "./FeedPanel";
 
 interface Props {
@@ -10,6 +12,7 @@ interface Props {
   phaseAccent?: string;
   selectedEntity?: SelectedFeedEntity | null;
   onClearEntity?: () => void;
+  geopoliticalEvent?: GeopoliticalEventPayload | null;
 }
 
 const STATE_BARS: { key: keyof ActorState; label: string; color: string }[] = [
@@ -71,7 +74,9 @@ function ActorCard({ actor, isPlayer }: { actor: ActorState; isPlayer: boolean }
   );
 }
 
-export default function ContextPanel({ actorStates, phase, playerActorId, phaseAccent, selectedEntity, onClearEntity }: Props) {
+export default function ContextPanel({ actorStates, phase, playerActorId, phaseAccent, selectedEntity, onClearEntity, geopoliticalEvent }: Props) {
+  const [dismissedEventRound, setDismissedEventRound] = useState<number | null>(null);
+  const showGeoEvent = geopoliticalEvent && geopoliticalEvent.round !== dismissedEventRound;
   const actors = Object.values(actorStates);
   const sortedActors = [...actors].sort((a, b) => {
     if (a.actor_id === playerActorId) return -1;
@@ -145,6 +150,36 @@ export default function ContextPanel({ actorStates, phase, playerActorId, phaseA
                   : selectedEntity.content}
               </p>
             )}
+          </div>
+        )}
+
+        {showGeoEvent && (
+          <div
+            className="rounded border px-2.5 py-2"
+            style={{ background: "rgba(239, 68, 68, 0.06)", borderColor: "rgba(239, 68, 68, 0.2)" }}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#f87171" }}>
+                최근 지정학 이벤트
+              </span>
+              <button
+                onClick={() => setDismissedEventRound(geopoliticalEvent.round)}
+                className="text-[9px] bg-transparent border-none cursor-pointer leading-none p-0"
+                style={{ color: "#f87171" }}
+              >
+                ✕
+              </button>
+            </div>
+            {geopoliticalEvent.events.slice(0, 3).map((evt, i) => (
+              <div key={i} className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-[10px] font-mono shrink-0" style={{ color: "#f87171" }}>
+                  {evt.event_type}
+                </span>
+                <span className="text-[10px] text-[var(--text-muted)] truncate">
+                  {evt.source_actor_id} → {evt.target_actor_ids.join(", ")}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 

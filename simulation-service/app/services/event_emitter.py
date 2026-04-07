@@ -78,12 +78,53 @@ class SimulationEventEmitter:
             "decision_point": decision_point,
         })
 
+    async def emit_geopolitical_event(
+        self, scenario_id: str, round_num: int,
+        trigger_type: str, events: list[dict],
+    ) -> None:
+        await self._emit({
+            "type": "geopolitical_event",
+            "scenario_id": scenario_id,
+            "round": round_num,
+            "trigger_type": trigger_type,
+            "events": events[:5],
+        })
+
     async def emit_report_ready(self, scenario_id: str, report_id: str) -> None:
         await self._emit({
             "type": "report_ready",
             "scenario_id": scenario_id,
             "report_id": report_id,
         })
+
+    async def store_geopolitics_events(
+        self, scenario_id: str, events: list[dict],
+    ) -> int:
+        """Persist DecisionEngine events into geopolitics_events table."""
+        if not events:
+            return 0
+        async with self._pool.acquire() as conn:
+            for idx, evt in enumerate(events):
+                target_ids = evt.get("target_actor_ids", [])
+                target_str = (
+                    ",".join(target_ids) if isinstance(target_ids, list) else str(target_ids)
+                )
+                await conn.execute(
+                    """INSERT INTO geopolitics_events
+                       (id, scenario_id, action_type, actor_id, target_actor_ids,
+                        content, magnitude, round_number, event_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                       ON CONFLICT DO NOTHING""",
+                    f"sim_{scenario_id}_{evt.get('round_number', 0)}_{idx}",
+                    scenario_id,
+                    evt.get("event_type", "unknown"),
+                    evt.get("source_actor_id", ""),
+                    target_str,
+                    (evt.get("description", "") or "")[:4000],
+                    evt.get("magnitude", 0.5),
+                    evt.get("round_number", 0),
+                )
+        return len(events)
 
     async def emit_error(self, scenario_id: str, error: str) -> None:
         await self._emit({

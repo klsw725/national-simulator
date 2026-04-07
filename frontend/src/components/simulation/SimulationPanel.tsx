@@ -59,7 +59,9 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
   const isWargameMode = sim.activeScenario?.simulation_params?.wargame_enabled === true;
   const wargamePhaseActive =
     sim.pipelineStatus?.status?.startsWith("simulating:wargame") ||
-    sim.pipelineStatus?.status?.startsWith("wargame:");
+    sim.pipelineStatus?.status?.startsWith("wargame:") ||
+    (isWargameMode && sim.pipelineStatus?.status === "simulating:running") ||
+    (isWargameMode && sim.pipelineStatus?.status === "simulating:report");
   const wargameCompleted = isWargameMode && sim.pipelineStatus?.status === "completed";
 
   const liveStatusForActions = useMemo(() => {

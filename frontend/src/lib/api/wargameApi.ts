@@ -49,3 +49,19 @@ export function resumeWargame(
     body: JSON.stringify({}),
   });
 }
+
+export function submitWargameDecisionV2(
+  scenarioId: string,
+  chosenAction: Record<string, unknown>,
+  selectedOptionId?: string,
+): Promise<{ status: string }> {
+  return fetchJSON(`/api/scenario/${scenarioId}/decide_v2`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      decision_point_id: String(chosenAction.decision_point_id ?? ""),
+      selected_option_id: selectedOptionId ?? null,
+      chosen_action: chosenAction,
+    }),
+  });
+}

@@ -8,12 +8,31 @@ interface Props {
 }
 
 const ACTION_META: Record<string, { icon: string; color: string }> = {
-  CREATE_POST: { icon: "🗣️", color: "var(--accent-cyan)" },
-  QUOTE_POST: { icon: "💬", color: "#a78bfa" },
-  REPOST: { icon: "🔄", color: "#4ade80" },
-  LIKE_POST: { icon: "❤️", color: "#f472b6" },
-  DO_NOTHING: { icon: "⏸️", color: "var(--text-muted)" },
-  FOLLOW: { icon: "👁️", color: "#f59e0b" },
+  issue_statement: { icon: "🗣️", color: "#facc15" },
+  propose_negotiation: { icon: "🤝", color: "#facc15" },
+  recall_ambassador: { icon: "🏛️", color: "#facc15" },
+  strengthen_alliance: { icon: "🛡️", color: "#facc15" },
+  condemn_action: { icon: "📣", color: "#facc15" },
+  request_mediation: { icon: "🕊️", color: "#facc15" },
+  sign_agreement: { icon: "📝", color: "#facc15" },
+  impose_sanction: { icon: "💰", color: "#4ade80" },
+  lift_sanction: { icon: "💹", color: "#4ade80" },
+  restrict_trade: { icon: "📉", color: "#4ade80" },
+  offer_aid: { icon: "🎁", color: "#4ade80" },
+  currency_intervention: { icon: "🏦", color: "#4ade80" },
+  deploy_forces: { icon: "🚢", color: "#f87171" },
+  conduct_exercise: { icon: "🎯", color: "#f87171" },
+  mobilize_reserves: { icon: "🪖", color: "#f87171" },
+  withdraw_forces: { icon: "↩️", color: "#f87171" },
+  establish_no_fly_zone: { icon: "🚫", color: "#f87171" },
+  naval_patrol: { icon: "🌊", color: "#f87171" },
+  cyber_operation: { icon: "💻", color: "#f87171" },
+  increase_surveillance: { icon: "📡", color: "#60a5fa" },
+  share_intelligence: { icon: "🧠", color: "#60a5fa" },
+  conduct_recon: { icon: "🛰️", color: "#60a5fa" },
+  electronic_warfare: { icon: "📶", color: "#60a5fa" },
+  do_nothing: { icon: "⏸️", color: "var(--text-muted)" },
+  internal_focus: { icon: "🏠", color: "var(--text-muted)" },
 };
 
 function truncate(text: string, max = 100): string {
@@ -76,6 +95,8 @@ function LiveActionFeed({ actions }: Props) {
             color: "var(--text-muted)",
           };
           const content = typeof action.action_args?.content === "string" ? action.action_args.content : "";
+          const target = typeof action.action_args?.target === "string" ? action.action_args.target : "";
+          const intensity = typeof action.action_args?.intensity === "string" ? action.action_args.intensity : "";
           const actionLabel = (
             action as LiveAction & { geopolitics_label?: string }
           ).geopolitics_label ?? action.action_type.replace(/_/g, " ");
@@ -122,7 +143,7 @@ function LiveActionFeed({ actions }: Props) {
 
                 {content && (
                   <div className="text-[11px] text-[var(--text-muted)] leading-[1.45]">
-                    {truncate(content, 100)}
+                    {truncate(target ? `${target} · ${intensity.toUpperCase()} · ${content}` : content, 120)}
                   </div>
                 )}
               </div>

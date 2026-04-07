@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import type { DecisionPoint, DecisionOption } from "@/types/simulation";
-import type { DecisionOption as V2DecisionOption } from "@/types/simulation-stream";
+import type { DecisionOption as V2DecisionOption, TriggerDetail } from "@/types/simulation-stream";
 
 interface DecisionCardProps {
   decisionPoint: DecisionPoint;
   v2Options?: V2DecisionOption[];
+  triggerInfo?: { trigger: string; trigger_detail?: TriggerDetail | null } | null;
   round: number;
   onConfirm: (selectedOptionId: string) => void;
   onWhatIf: () => void;
@@ -39,6 +40,13 @@ const POSITIVE_IS_GOOD = new Set(["resource", "resource_level", "alliance_trust"
 const DECISION_TITLES: Record<string, string> = {
   geopolitics_actor_response: "지정학 이벤트 대응",
   geopolitics_direction: "시나리오 방향 결정",
+};
+
+const TRIGGER_LABELS: Record<string, { label: string; bg: string; border: string }> = {
+  cascade_reaction: { label: "\u{1F534} 연쇄 반응 감지", bg: "rgba(239,68,68,0.08)", border: "rgb(239,68,68)" },
+  high_intensity_military: { label: "\u{1F534} 고강도 군사 행동", bg: "rgba(239,68,68,0.08)", border: "rgb(239,68,68)" },
+  tension_threshold_exceeded: { label: "\u{1F7E1} 긴장도 임계값 초과", bg: "rgba(245,158,11,0.08)", border: "rgb(245,158,11)" },
+  direction_checkpoint: { label: "\u26AA 방향 체크포인트", bg: "rgba(107,114,128,0.08)", border: "rgb(107,114,128)" },
 };
 
 function getCategoryMeta(opt: DecisionOption) {
@@ -107,9 +115,40 @@ function getNarrative(dp: DecisionPoint): string {
   return "상황이 전개되고 있습니다. 아래 선택지 중 대응 방안을 결정하십시오.";
 }
 
+function TriggerBanner({ trigger, trigger_detail }: { trigger: string; trigger_detail?: TriggerDetail | null }) {
+  const meta = TRIGGER_LABELS[trigger] ?? TRIGGER_LABELS.direction_checkpoint;
+  const chain = trigger_detail?.cascade_chain;
+
+  return (
+    <div
+      className="shrink-0 px-5 py-2.5"
+      style={{ background: meta.bg, borderLeft: `3px solid ${meta.border}` }}
+    >
+      <div className="text-[11px] font-bold text-[var(--text-primary)]">{meta.label}</div>
+      {chain && chain.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {chain.map((entry, i) => (
+            <span key={i} className="text-[11px] font-mono text-[var(--text-muted)]">
+              {entry.from} → {entry.to}
+              <span className="text-[9px] opacity-60"> (depth {entry.depth})</span>
+              {i < chain.length - 1 && <span className="mx-0.5 opacity-40">→</span>}
+            </span>
+          ))}
+        </div>
+      )}
+      {trigger_detail?.description && (
+        <p className="mt-1 text-[11px] text-[var(--text-muted)] leading-relaxed">
+          {trigger_detail.description}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function DecisionCard({
   decisionPoint,
   v2Options,
+  triggerInfo,
   round,
   onConfirm,
   onWhatIf,
@@ -132,6 +171,10 @@ export default function DecisionCard({
             Round {round}
           </span>
         </div>
+
+        {triggerInfo?.trigger && (
+          <TriggerBanner trigger={triggerInfo.trigger} trigger_detail={triggerInfo.trigger_detail} />
+        )}
 
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
           <p className="text-xs text-[var(--text-muted)] leading-relaxed border-l-2 border-amber-500/40 pl-3 italic">

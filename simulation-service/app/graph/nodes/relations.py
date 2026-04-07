@@ -5,12 +5,17 @@ import logging
 from app.graph.state import SimulationState
 from app.llm import llm_json
 from app.prompts.actor_system import ENTITY_EXTRACTION_PROMPT
+from app.services.event_emitter import get_emitter
 from app.services.graph_store import get_graph_store
 
 logger = logging.getLogger(__name__)
 
 
 async def build_relations_node(state: SimulationState) -> dict:
+    try:
+        await get_emitter().emit_phase_change(state["scenario_id"], "building", 0.2)
+    except Exception:
+        pass
     try:
         result = await llm_json(
             system=ENTITY_EXTRACTION_PROMPT,
@@ -32,6 +37,16 @@ async def build_relations_node(state: SimulationState) -> dict:
         logger.info("DozerDB stored: %d entities, %d relations", counts["entities"], counts["relations"])
     except Exception:
         logger.exception("DozerDB store failed — continuing without graph persistence")
+
+    try:
+        await get_emitter()._emit({
+            "type": "graph_data",
+            "scenario_id": state["scenario_id"],
+            "entities": entities,
+            "relations": relations,
+        })
+    except Exception:
+        pass
 
     return {
         "graph_id": graph_id,

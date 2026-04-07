@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSimulationStream } from "@/hooks/useSimulationStream";
 import { useWargame } from "@/hooks/useWargame";
-import { resolveWargameDecision, resumeWargame } from "@/lib/api/wargameApi";
+import { resolveWargameDecision, resumeWargame, submitWargameDecisionV2 } from "@/lib/api/wargameApi";
 import type { LiveAction } from "@/types/simulation";
+import type { DecisionPoint as LegacyDecisionPoint, WargameDecisionPoint, WargameDecisionPointV2 } from "@/types/simulation";
+import type { DecisionOption as V2DecisionOption, TriggerDetail } from "@/types/simulation-stream";
 import PhaseBar from "./PhaseBar";
 import LensPanel from "./LensPanel";
 import ContextPanel from "./ContextPanel";
@@ -47,13 +49,44 @@ export default function WarRoom({
   onCreateWhatIf,
   onWargameOverlay,
 }: Props) {
+  const isV2DecisionPoint = (decisionPoint: WargameDecisionPoint | null): decisionPoint is WargameDecisionPointV2 => {
+    return Boolean(decisionPoint && "trigger" in decisionPoint);
+  };
+
+  const isLegacyDecisionPoint = (decisionPoint: WargameDecisionPoint | null): decisionPoint is LegacyDecisionPoint => {
+    return Boolean(decisionPoint && !isV2DecisionPoint(decisionPoint));
+  };
+
+  const toLegacyDecisionPoint = (decisionPoint: WargameDecisionPointV2, scenarioIdValue: string): LegacyDecisionPoint => ({
+    id: decisionPoint.id,
+    scenario_id: scenarioIdValue,
+    type: "geopolitics_actor_response",
+    options: [],
+    recommended: "",
+    allow_custom: false,
+    status: "pending",
+    selected_option_id: null,
+    custom_data: null,
+    created_at: new Date().toISOString(),
+    resolved_at: null,
+  });
+
   const wargame = useWargame(scenarioId, totalRounds);
   const streamState = useSimulationStream(useV2 ? scenarioId : null);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<SelectedFeedEntity | null>(null);
   const resumePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activePhase = useV2 ? streamState.phase : wargame.state.phase;
-  const activeRound = useV2 ? streamState.currentRound : wargame.state.round;
+  const hydratedDecisionPoint = useMemo(() => {
+    return isV2DecisionPoint(wargame.state.decisionPoint) ? wargame.state.decisionPoint : null;
+  }, [wargame.state.decisionPoint]);
+
+  const activeDecisionPoint = useV2 ? (streamState.decisionPoint ?? hydratedDecisionPoint) : null;
+  const activePhase = useV2
+    ? (activeDecisionPoint ? "decision" : (streamState.phase || wargame.state.phase))
+    : wargame.state.phase;
+  const activeRound = useV2
+    ? (streamState.currentRound || activeDecisionPoint?.round || wargame.state.round)
+    : wargame.state.round;
   const activeIsConnected = useV2 ? streamState.isConnected : wargame.isConnected;
 
   const contextPhase = useMemo(() => {
@@ -105,8 +138,8 @@ export default function WarRoom({
     if (useV2) {
       return {
         ...wargame.state,
-        phase: streamState.phase,
-        round: streamState.currentRound,
+        phase: activePhase,
+        round: activeRound,
         totalRounds: streamState.maxRounds || wargame.state.totalRounds,
       };
     }
@@ -118,11 +151,36 @@ export default function WarRoom({
           actorStates: displaySnapshot.actorStates,
         }
       : wargame.state;
-  }, [displaySnapshot, streamState.currentRound, streamState.maxRounds, streamState.phase, useV2, wargame.state]);
+  }, [activePhase, activeRound, displaySnapshot, streamState.maxRounds, useV2, wargame.state]);
 
   const handleDecisionConfirm = async (selectedOptionId: string) => {
+    if (useV2 && activeDecisionPoint) {
+      const selectedOption = activeDecisionPoint.options.find((option, index) => {
+        const optionId = `${option.action_type}-${option.target}-${index}`;
+        return optionId === selectedOptionId;
+      });
+      if (!selectedOption) return;
+
+      wargame.recordDecision({
+        round: activeRound,
+        label: selectedOption.action_type,
+        outcome: selectedOption.description,
+      });
+      wargame.setPhase("confirmation");
+
+      await submitWargameDecisionV2(scenarioId, {
+        decision_point_id: activeDecisionPoint.id,
+        actor: inferDecisionActor(selectedOption, activeDecisionPoint.options),
+        action_type: selectedOption.action_type,
+        target: selectedOption.target,
+        intensity: selectedOption.intensity,
+        reasoning: selectedOption.description,
+      }, selectedOptionId);
+      return;
+    }
+
     const dp = wargame.state.decisionPoint;
-    if (!dp) return;
+    if (!isLegacyDecisionPoint(dp)) return;
 
     const selectedOption = dp.options.find((o) => o.id === selectedOptionId);
     wargame.recordDecision({
@@ -218,6 +276,7 @@ export default function WarRoom({
               phaseAccent={phaseAccent}
               selectedEntity={selectedEntity}
               onClearEntity={() => setSelectedEntity(null)}
+              geopoliticalEvent={streamState.latestGeopoliticalEvent}
             />
         </div>
       </div>
@@ -229,7 +288,7 @@ export default function WarRoom({
           totalRounds={totalRounds}
           decisionRounds={decisionRounds}
           decisions={wargame.decisionHistory}
-          v2Actions={useV2 ? streamState.recentActions : undefined}
+          v2Actions={useV2 && streamState.recentActions.length > 0 ? streamState.recentActions : undefined}
           selectedRound={selectedRound}
           onScrub={handleScrub}
           phaseAccent={phaseAccent}
@@ -245,22 +304,18 @@ export default function WarRoom({
           />
         )}
 
-      {((!useV2 && wargame.state.phase === "decision" && wargame.state.decisionPoint) || (useV2 && streamState.decisionPoint)) && (
+      {((!useV2 && wargame.state.phase === "decision" && wargame.state.decisionPoint) || (useV2 && activeDecisionPoint)) && (
         <DecisionCard
-          decisionPoint={wargame.state.decisionPoint ?? {
-            id: streamState.decisionPoint?.id ?? "v2-decision",
-            scenario_id: scenarioId,
-            type: "geopolitics_actor_response",
-            options: [],
-            recommended: "",
-            allow_custom: false,
-            status: "pending",
-            selected_option_id: null,
-            custom_data: null,
-            created_at: new Date().toISOString(),
-            resolved_at: null,
-          }}
-          v2Options={useV2 ? streamState.decisionPoint?.options : undefined}
+          decisionPoint={useV2 && activeDecisionPoint
+            ? toLegacyDecisionPoint(activeDecisionPoint, scenarioId)
+            : (isLegacyDecisionPoint(wargame.state.decisionPoint)
+              ? wargame.state.decisionPoint
+              : toLegacyDecisionPoint(activeDecisionPoint!, scenarioId))}
+          v2Options={useV2 ? activeDecisionPoint?.options : undefined}
+          triggerInfo={useV2 && activeDecisionPoint ? {
+            trigger: activeDecisionPoint.trigger,
+            trigger_detail: (activeDecisionPoint as { trigger_detail?: TriggerDetail | null }).trigger_detail,
+          } : null}
           round={activeRound}
           onConfirm={handleDecisionConfirm}
           onWhatIf={handleWhatIf}
@@ -286,7 +341,7 @@ export default function WarRoom({
         </div>
       )}
 
-      {!useV2 && wargame.showDebrief && (
+      {wargame.showDebrief && (
         <DebriefView
           totalRounds={totalRounds}
           tensionCurve={wargame.tensionHistory}
@@ -300,6 +355,11 @@ export default function WarRoom({
       )}
     </div>
   );
+}
+
+function inferDecisionActor(option: V2DecisionOption, options: V2DecisionOption[]): string {
+  void options;
+  return option.target;
 }
 
 function RoundProgressOverlay({

@@ -15,6 +15,7 @@ const INITIAL_STATE: SimulationStreamState = {
   recentActions: [],
   tensionLevels: {},
   decisionPoint: null,
+  latestGeopoliticalEvent: null,
   reportId: null,
   error: null,
   isConnected: false,
@@ -28,12 +29,16 @@ function reducer(
 ): SimulationStreamState {
   switch (action.type) {
     case "PHASE_CHANGE":
-      return { ...state, phase: action.payload.phase, status: "running" };
+      return {
+        ...state,
+        phase: action.payload.phase,
+        status: action.payload.phase === "confirmation" ? "completed" : "running",
+      };
     case "ROUND_COMPLETE":
       return {
         ...state,
         currentRound: action.payload.round,
-        tensionLevels: { ...state.tensionLevels },
+        tensionLevels: { ...state.tensionLevels, max: action.payload.max_tension },
       };
     case "AGENT_ACTION": {
       const next = [...state.recentActions, action.payload];
@@ -45,12 +50,19 @@ function reducer(
     case "INTERVENTION":
       return {
         ...state,
+        phase: "decision",
         decisionPoint: action.payload.decision_point,
         status: "paused",
+      };
+    case "GEOPOLITICAL_EVENT":
+      return {
+        ...state,
+        latestGeopoliticalEvent: action.payload,
       };
     case "REPORT_READY":
       return {
         ...state,
+        phase: "confirmation",
         reportId: action.payload.report_id,
         status: "completed",
       };
@@ -93,6 +105,10 @@ export function useSimulationStream(scenarioId: string | null) {
 
     es.addEventListener("intervention_required", (e) => {
       dispatch({ type: "INTERVENTION", payload: JSON.parse(e.data) });
+    });
+
+    es.addEventListener("geopolitical_event", (e) => {
+      dispatch({ type: "GEOPOLITICAL_EVENT", payload: JSON.parse(e.data) });
     });
 
     es.addEventListener("report_ready", (e) => {

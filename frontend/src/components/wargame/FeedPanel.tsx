@@ -81,6 +81,13 @@ const ACTION_CATEGORY_MAP: Record<string, string> = {
   internal_focus: "meta",
 };
 
+const CASCADE_ACTION_TYPES = new Set([
+  "military_exercise",
+  "trade_restriction",
+  "diplomatic_statement",
+  "military_movement",
+]);
+
 function getV2Category(actionType: string): string {
   return ACTION_CATEGORY_MAP[actionType] ?? "diplomatic";
 }
@@ -177,6 +184,7 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
                 const currentActionRound = action.round ?? currentRound;
                 const prevRound = idx > 0 ? (visibleV2Actions[idx - 1].round ?? currentRound) : -1;
                 const isNewRound = currentActionRound !== prevRound;
+                const isCascade = CASCADE_ACTION_TYPES.has(action.action_type);
 
                 return (
                   <div key={`${action.actor}-${action.action_type}-${idx}`}>
@@ -191,6 +199,7 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
                     )}
                     <div
                       className="flex items-start gap-1.5 py-0.5 cursor-pointer rounded px-0.5 transition-colors hover:bg-[rgba(34,211,238,0.06)]"
+                      style={isCascade ? { borderLeft: "2px solid #ef4444", paddingLeft: 6 } : undefined}
                       onClick={() => onActionClick?.({
                         agentId: idx,
                         agentName: action.actor,
@@ -207,6 +216,11 @@ function FeedPanel({ actions, currentRound, totalRounds, decisionRounds, decisio
                       <span className="text-[10px] font-medium shrink-0" style={{ color, opacity: 0.7 }}>
                         {action.action_type.replace(/_/g, " ")}
                       </span>
+                      {isCascade && (
+                        <span className="text-[9px] font-bold px-1 py-px rounded shrink-0" style={{ background: "#ef4444", color: "#fff" }}>
+                          연쇄
+                        </span>
+                      )}
                       <span className="text-[10px] leading-snug truncate text-[var(--text-muted)]">
                         → {action.target} · {truncate(action.reasoning ?? "", 60)}
                       </span>

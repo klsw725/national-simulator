@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
+from langgraph.types import Command
 
 from app.config import settings
 
@@ -100,6 +102,9 @@ class SimulationCommandListener:
                 initial_state = {
                     "scenario_id": scenario_id,
                     "seed_text": command.get("seed_text", ""),
+                    "region_bbox": command.get("region_bbox", []),
+                    "region_name": command.get("region_name", ""),
+                    "question": command.get("question", ""),
                     "ontology_version": "v12.0",
                     "graph_id": "",
                     "situation_summary": "",
@@ -113,16 +118,26 @@ class SimulationCommandListener:
                     "decision_engine_state": {},
                     "decision_point": None,
                     "user_decision": None,
+                    "round_events": [],
+                    "round_cascades": [],
+                    "hit_trigger": None,
                     "phase": "analyzing",
                     "status": "running",
+                    "messages": [],
                 }
 
                 await emitter.emit_phase_change(scenario_id, "analyzing", 0)
 
                 result = await graph.ainvoke(initial_state, config)
 
+                if isinstance(result, dict) and result.get("__interrupt__"):
+                    interrupt_value = result["__interrupt__"][0].value
+                    await self._persist_intervention_decision_point(scenario_id, interrupt_value)
+                    await emitter.emit_intervention_required(scenario_id, interrupt_value)
+                    await self._update_scenario_status(scenario_id, "paused")
+                    return
+
                 if result.get("status") == "completed":
-                    await emitter.emit_report_ready(scenario_id, scenario_id)
                     await self._update_scenario_status(scenario_id, "completed")
 
             except asyncio.CancelledError:
@@ -169,11 +184,18 @@ class SimulationCommandListener:
 
         config = {"configurable": {"thread_id": scenario_id}}
         graph = self._graph
-        await graph.aupdate_state(
-            config,
-            {"user_decision": command.get("chosen_action")},
-        )
-        await graph.ainvoke(None, config)
+        await self._resolve_intervention_decision_point(scenario_id, command.get("chosen_action", {}))
+        result = await graph.ainvoke(Command(resume=command.get("chosen_action")), config)
+        if isinstance(result, dict) and result.get("__interrupt__"):
+            interrupt_value = result["__interrupt__"][0].value
+            from app.services.event_emitter import get_emitter
+            await self._persist_intervention_decision_point(scenario_id, interrupt_value)
+            await get_emitter().emit_intervention_required(scenario_id, interrupt_value)
+            await self._update_scenario_status(scenario_id, "paused")
+            return
+        await self._update_scenario_status(scenario_id, "running")
+        if isinstance(result, dict) and result.get("status") == "completed":
+            await self._update_scenario_status(scenario_id, "completed")
 
     async def _resume_simulation(self, scenario_id: str) -> None:
         if self._graph is None:
@@ -182,8 +204,122 @@ class SimulationCommandListener:
 
         graph = self._graph
         config = {"configurable": {"thread_id": scenario_id}}
-        await graph.ainvoke(None, config)
+        result = await graph.ainvoke(None, config)
+        if isinstance(result, dict) and result.get("__interrupt__"):
+            interrupt_value = result["__interrupt__"][0].value
+            from app.services.event_emitter import get_emitter
+            await self._persist_intervention_decision_point(scenario_id, interrupt_value)
+            await get_emitter().emit_intervention_required(scenario_id, interrupt_value)
+            await self._update_scenario_status(scenario_id, "paused")
+            return
+        await self._update_scenario_status(scenario_id, "running")
+        if isinstance(result, dict) and result.get("status") == "completed":
+            await self._update_scenario_status(scenario_id, "completed")
         logger.info("Simulation %s resumed", scenario_id)
+
+    @staticmethod
+    def _canonicalize_decision_options(decision_point: dict[str, Any]) -> list[dict[str, Any]]:
+        options = decision_point.get("options", [])
+        if not isinstance(options, list):
+            return []
+
+        canonical: list[dict[str, Any]] = []
+        for index, option in enumerate(options):
+            if not isinstance(option, dict):
+                continue
+            action_type = str(option.get("action_type", "action"))
+            target = str(option.get("target", ""))
+            description = str(option.get("description") or f"{target} {action_type}")
+            canonical.append({
+                "id": f"{action_type}-{target}-{index}",
+                "label": description,
+                "description": description,
+                "confidence": 1.0,
+                "reasoning": description,
+                "data": option,
+            })
+        return canonical
+
+    async def _persist_intervention_decision_point(self, scenario_id: str, decision_point: Any) -> None:
+        if not isinstance(decision_point, dict):
+            return
+
+        dp_id = decision_point.get("id")
+        if not isinstance(dp_id, str) or not dp_id:
+            return
+
+        options = self._canonicalize_decision_options(decision_point)
+        if not options:
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+        recommended = options[0]["id"]
+        dp_type = decision_point.get("type", "geopolitics_actor_response")
+
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            await conn.execute(
+                """INSERT INTO decision_points
+                   (id, scenario_id, type, options, recommended, allow_custom, status, selected_option_id, custom_data, created_at, resolved_at)
+                   VALUES ($1, $2, $3, $4, $5, FALSE, 'pending', NULL, NULL, $6, NULL)
+                   ON CONFLICT (id) DO NOTHING""",
+                dp_id,
+                scenario_id,
+                dp_type,
+                json.dumps(options, ensure_ascii=False),
+                recommended,
+                now,
+            )
+        finally:
+            await conn.close()
+
+    async def _resolve_intervention_decision_point(self, scenario_id: str, chosen_action: Any) -> None:
+        if not isinstance(chosen_action, dict):
+            return
+
+        dp_id = chosen_action.get("decision_point_id")
+        if not isinstance(dp_id, str) or not dp_id:
+            return
+
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            row = await conn.fetchrow(
+                "SELECT options, status FROM decision_points WHERE id = $1 AND scenario_id = $2",
+                dp_id,
+                scenario_id,
+            )
+            if not row or row["status"] == "resolved":
+                return
+
+            selected_option_id = chosen_action.get("selected_option_id")
+            options = json.loads(row["options"]) if isinstance(row["options"], str) else row["options"]
+            if not isinstance(selected_option_id, str) or not selected_option_id:
+                for option in options:
+                    data = option.get("data", {}) if isinstance(option, dict) else {}
+                    if not isinstance(data, dict):
+                        continue
+                    if (
+                        data.get("action_type") == chosen_action.get("action_type")
+                        and data.get("target") == chosen_action.get("target")
+                        and data.get("intensity") == chosen_action.get("intensity")
+                    ):
+                        selected_option_id = option.get("id")
+                        break
+
+            now = datetime.now(timezone.utc).isoformat()
+            custom_data = None if selected_option_id else json.dumps(chosen_action, ensure_ascii=False)
+            await conn.execute(
+                """UPDATE decision_points
+                   SET status = 'resolved', selected_option_id = $1, custom_data = $2, resolved_at = $3
+                   WHERE id = $4 AND scenario_id = $5""",
+                selected_option_id,
+                custom_data,
+                now,
+                dp_id,
+                scenario_id,
+            )
+        finally:
+            await conn.close()
 
     async def _start_whatif(self, scenario_id: str, command: dict) -> None:
         if self._graph is None:
@@ -236,8 +372,6 @@ class SimulationCommandListener:
                     )
                 await pool.close()
 
-                if result.get("status") == "completed":
-                    await emitter.emit_report_ready(branch_id, branch_id)
             except Exception as exc:
                 logger.exception("What-if branch %s failed", branch_id)
                 await emitter.emit_error(branch_id, str(exc))

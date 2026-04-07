@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSimulationStream } from "@/hooks/useSimulationStream";
+import { getLiveGraphData } from "@/lib/api/liveApi";
 import type {
   GraphData,
   GraphTaskStatus,
@@ -9,10 +11,6 @@ import type {
   LiveProfiles,
   LiveStats,
 } from "@/types/simulation";
-import {
-  getLiveActions,
-  getLiveStats,
-} from "@/lib/gatewayApi";
 
 interface UseLiveSimulationResult {
   stats: LiveStats | null;
@@ -24,116 +22,94 @@ interface UseLiveSimulationResult {
   isLive: boolean;
 }
 
+const GRAPH_POLL_MS = 3_000;
+const GRAPH_PHASES = new Set([
+  "simulating:graph_build",
+  "simulating:prepare",
+  "simulating:running",
+  "simulating:report",
+]);
+
 export function useLiveSimulation(
   scenarioId: string | null,
   pipelineStatus: string | null,
   isWargame: boolean = false,
 ): UseLiveSimulationResult {
-  const [stats, setStats] = useState<LiveStats | null>(null);
-  const [actions, setActions] = useState<LiveAction[]>([]);
-  const [graphTaskStatus, setGraphTaskStatus] = useState<GraphTaskStatus | null>(null);
+  const stream = useSimulationStream(scenarioId);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [profiles, setProfiles] = useState<LiveProfiles | null>(null);
-  const [config, setConfig] = useState<LiveConfig | null>(null);
-
-  const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const actionsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastOffsetRef = useRef(0);
-
-  const clearIntervals = useCallback(() => {
-    if (statsIntervalRef.current) {
-      clearInterval(statsIntervalRef.current);
-      statsIntervalRef.current = null;
-    }
-    if (actionsIntervalRef.current) {
-      clearInterval(actionsIntervalRef.current);
-      actionsIntervalRef.current = null;
-    }
-  }, []);
-
-  const pollStats = useCallback(async () => {
-    if (!scenarioId) return;
-    try {
-      const data = await getLiveStats(scenarioId);
-      setStats(data);
-    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollStats failed", e); }
-  }, [scenarioId]);
-
-  const pollActions = useCallback(async () => {
-    if (!scenarioId) return;
-    try {
-      const data = await getLiveActions(scenarioId, lastOffsetRef.current, 100);
-      const nextActions = Array.isArray(data.actions) ? data.actions : [];
-
-      if (nextActions.length > 0) {
-        setActions((prev) => {
-          const merged = [...prev, ...nextActions];
-          return merged.length > 1000 ? merged.slice(-1000) : merged;
-        });
-      }
-
-      if (typeof data.count === "number") {
-        lastOffsetRef.current += data.count;
-      }
-    } catch (e) { if (process.env.NODE_ENV === "development") console.warn("pollActions failed", e); }
-  }, [scenarioId]);
-
-  useEffect(() => {
-    clearIntervals();
-
-    const isRunningPipeline = pipelineStatus?.startsWith("simulating:") || false;
-    if (!scenarioId || (!isRunningPipeline && !isWargame)) {
-      return;
-    }
-
-    pollStats();
-    pollActions();
-    statsIntervalRef.current = setInterval(pollStats, 2_000);
-    actionsIntervalRef.current = setInterval(pollActions, 3_000);
-  }, [
-    scenarioId,
-    pipelineStatus,
-    isWargame,
-    clearIntervals,
-    pollStats,
-    pollActions,
-  ]);
-
-  useEffect(() => {
-    setStats(null);
-    setActions([]);
-    setGraphTaskStatus(null);
-    setGraphData(null);
-    setProfiles(null);
-    setConfig(null);
-    lastOffsetRef.current = 0;
-  }, [scenarioId]);
-
-  useEffect(() => {
-    if (!pipelineStatus?.startsWith("simulating:")) {
-      setActions([]);
-      lastOffsetRef.current = 0;
-    }
-  }, [pipelineStatus]);
-
-  useEffect(() => {
-    return () => {
-      clearIntervals();
-    };
-  }, [clearIntervals]);
 
   const isLive = useMemo(
     () => Boolean(scenarioId && (pipelineStatus?.startsWith("simulating:") || isWargame)),
     [scenarioId, pipelineStatus, isWargame],
   );
 
+  useEffect(() => {
+    if (!scenarioId || !pipelineStatus || !GRAPH_PHASES.has(pipelineStatus)) return;
+
+    let cancelled = false;
+
+    const fetch = () => {
+      getLiveGraphData(scenarioId)
+        .then((data) => {
+          if (!cancelled) setGraphData(data);
+        })
+        .catch(() => {});
+    };
+
+    fetch();
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    if (pipelineStatus === "simulating:graph_build") {
+      timer = setInterval(fetch, GRAPH_POLL_MS);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [scenarioId, pipelineStatus]);
+
+  const actions = useMemo<LiveAction[]>(() => {
+    return stream.recentActions.map((action, index) => ({
+      round_num: action.round ?? stream.currentRound,
+      timestamp: `${action.round ?? stream.currentRound}-${action.actor}-${index}`,
+      platform: "geopolitics",
+      agent_id: index,
+      agent_name: action.actor,
+      action_type: action.action_type,
+      action_args: {
+        content: action.reasoning,
+        target: action.target,
+        intensity: action.intensity,
+      },
+      success: true,
+      geopolitics_label: action.action_type.replace(/_/g, " "),
+    }));
+  }, [stream.currentRound, stream.recentActions]);
+
+  const stats = useMemo<LiveStats | null>(() => {
+    if (!isLive) {
+      return null;
+    }
+    const totalRounds = stream.maxRounds || 0;
+    const currentRound = stream.currentRound;
+    return {
+      runner_status: stream.status,
+      current_round: currentRound,
+      total_rounds: totalRounds,
+      progress_percent: totalRounds > 0 ? Math.min(100, Math.round((currentRound / totalRounds) * 100)) : 0,
+      twitter_actions_count: 0,
+      total_actions_count: actions.length,
+    };
+  }, [actions.length, isLive, stream.currentRound, stream.maxRounds, stream.status]);
+
   return {
     stats,
     actions,
-    graphTaskStatus,
+    graphTaskStatus: null,
     graphData,
-    profiles,
-    config,
+    profiles: null,
+    config: null,
     isLive,
   };
 }

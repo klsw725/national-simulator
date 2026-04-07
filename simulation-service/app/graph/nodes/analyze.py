@@ -18,9 +18,14 @@ async def analyze_situation_node(state: SimulationState) -> dict:
         await get_emitter().emit_phase_change(state["scenario_id"], "analyzing", 0)
     except Exception:
         pass
-    osint = await fetch_latest_osint()
+    osint = await fetch_latest_osint(region_bbox=state.get("region_bbox"))
     osint_text = format_osint_for_prompt(osint)
-    user_prompt = f"## 시나리오 시드\n{state['seed_text']}\n\n## 실시간 OSINT 데이터\n{osint_text}"
+    user_prompt = (
+        f"## 지역\n{state.get('region_name', '')}\n\n"
+        f"## 질문\n{state.get('question', '')}\n\n"
+        f"## 시나리오 시드\n{state['seed_text']}\n\n"
+        f"## 실시간 OSINT 데이터\n{osint_text}"
+    )
 
     response = await llm_chat(
         system=SITUATION_ANALYSIS_PROMPT,

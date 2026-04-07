@@ -11,6 +11,36 @@ from app.services.event_emitter import get_emitter
 logger = logging.getLogger(__name__)
 
 
+def _build_graph_context(state: SimulationState) -> str:
+    engine = state.get("decision_engine_state", {})
+    entities = engine.get("extracted_entities", [])
+    relations = engine.get("extracted_relations", [])
+    if not entities:
+        return ""
+
+    lines = ["## 엔티티 관계 그래프"]
+
+    by_type: dict[str, list[str]] = {}
+    for e in entities:
+        t = e.get("type", "Entity")
+        by_type.setdefault(t, []).append(e.get("name") or e.get("id", "?"))
+    for t, names in by_type.items():
+        lines.append(f"- {t}: {', '.join(names)}")
+
+    if relations:
+        lines.append("")
+        lines.append("### 주요 관계")
+        for r in relations[:30]:
+            strength = r.get("strength", "")
+            strength_str = f" (강도 {strength})" if strength else ""
+            lines.append(
+                f"- {r.get('source', '?')} —[{r.get('type', '?')}]→ "
+                f"{r.get('target', '?')}{strength_str}"
+            )
+
+    return "\n".join(lines)
+
+
 async def generate_report_node(state: SimulationState) -> dict:
     history_lines = []
     for action in state["action_history"][-50:]:
@@ -21,9 +51,11 @@ async def generate_report_node(state: SimulationState) -> dict:
         )
 
     tension_text = json.dumps(state.get("tension_levels", {}), ensure_ascii=False)
+    graph_context = _build_graph_context(state)
     user_prompt = (
         f"## 시나리오\n{state['situation_summary'][:1500]}\n\n"
-        f"## 시뮬레이션 이력 ({state['current_round']}라운드)\n"
+        + (f"{graph_context}\n\n" if graph_context else "")
+        + f"## 시뮬레이션 이력 ({state['current_round']}라운드)\n"
         + "\n".join(history_lines)
         + f"\n\n## 최종 긴장도\n{tension_text}"
     )

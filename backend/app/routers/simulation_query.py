@@ -28,12 +28,26 @@ async def get_simulation_status(scenario_id: str):
             scenario_id,
         )
 
+        latest_phase_event = await conn.fetchrow(
+            """SELECT payload
+               FROM simulation_events
+               WHERE scenario_id = $1
+                 AND payload::jsonb->>'phase' IS NOT NULL
+                 AND payload::jsonb->>'phase' != ''
+               ORDER BY sequence_num DESC LIMIT 1""",
+            scenario_id,
+        )
+
     phase = ""
     current_round = 0
     if latest_event:
         payload = json.loads(latest_event["payload"]) if isinstance(latest_event["payload"], str) else latest_event["payload"]
-        phase = payload.get("phase", "")
         current_round = payload.get("round", 0)
+    if latest_phase_event:
+        phase_payload = json.loads(latest_phase_event["payload"]) if isinstance(latest_phase_event["payload"], str) else latest_phase_event["payload"]
+        phase = phase_payload.get("phase", "")
+        if not current_round:
+            current_round = phase_payload.get("round", 0)
 
     sim_status = scenario["simulation_status"]
     is_wargame = False
@@ -48,13 +62,13 @@ async def get_simulation_status(scenario_id: str):
             except (json.JSONDecodeError, TypeError):
                 pass
 
-    if sim_status == "running":
+    if sim_status in ("running", "paused"):
         phase_map = {
             "": "starting",
             "analyzing": "simulating:ontology",
             "building": "simulating:graph_build",
             "configuring": "simulating:prepare",
-            "simulating": "simulating:wargame:simulation" if is_wargame else "simulating:running",
+            "simulating": "simulating:running",
             "reporting": "simulating:report",
         }
         compat_status = phase_map.get(phase, "simulating:running")
@@ -113,6 +127,8 @@ async def get_simulation_report(scenario_id: str):
         cp_row = await conn.fetchrow(
             """SELECT checkpoint FROM checkpoints
                WHERE thread_id = $1
+                 AND checkpoint::jsonb->'channel_values'->>'situation_summary' IS NOT NULL
+                 AND checkpoint::jsonb->'channel_values'->>'situation_summary' != ''
                ORDER BY checkpoint_id DESC LIMIT 1""",
             scenario_id,
         )

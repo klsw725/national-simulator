@@ -31,8 +31,56 @@ async def _get_latest_state(scenario_id: str) -> dict | None:
     return channel_values
 
 
+async def _get_pending_decision(scenario_id: str) -> dict | None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT payload FROM simulation_events
+               WHERE scenario_id = $1 AND event_type = 'intervention_required'
+               ORDER BY sequence_num DESC LIMIT 1""",
+            scenario_id,
+        )
+    if not row:
+        return None
+    payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else row["payload"]
+    return payload.get("decision_point")
+
+
 @router.get("/api/scenario/{scenario_id}/wargame_status")
 async def get_wargame_status(scenario_id: str):
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        scenario_row = await conn.fetchrow(
+            "SELECT simulation_status FROM scenarios WHERE id = $1", scenario_id,
+        )
+    if not scenario_row:
+        raise HTTPException(404, "Scenario not found")
+
+    if scenario_row["simulation_status"] == "completed":
+        state = await _get_latest_state(scenario_id) or {}
+        tension = state.get("tension_levels", {})
+        actor_states = state.get("actor_states", {})
+        return {
+            "phase": "completed",
+            "round": state.get("current_round", 0),
+            "totalRounds": state.get("max_rounds", 10),
+            "role": "actor_role",
+            "actorId": None,
+            "tension": max(tension.values()) if tension else 0.0,
+            "actorStates": {
+                k: {
+                    "actor_id": k,
+                    "name": v.get("name", k),
+                    "threat_perception": v.get("threat_perception", 0),
+                    "domestic_pressure": v.get("domestic_pressure", 0),
+                    "resource_level": v.get("resource_level", 1),
+                }
+                for k, v in actor_states.items()
+            },
+            "briefing": None,
+            "decisionPoint": None,
+        }
+
     state = await _get_latest_state(scenario_id)
     if not state:
         raise HTTPException(404, "No simulation state found")
@@ -41,6 +89,8 @@ async def get_wargame_status(scenario_id: str):
     actor_states = state.get("actor_states", {})
     tension = state.get("tension_levels", {})
     decision_point = state.get("decision_point")
+    if not decision_point:
+        decision_point = await _get_pending_decision(scenario_id)
 
     phase_map = {
         "analyzing": "simulation",
@@ -105,14 +155,21 @@ async def get_checkpoint(scenario_id: str):
     if not state:
         raise HTTPException(404, "No checkpoint found")
 
+    decision_point = state.get("decision_point")
+    if not decision_point:
+        decision_point = await _get_pending_decision(scenario_id)
+    status = state.get("status", "")
+    if decision_point and status == "running":
+        status = "paused"
+
     return {
         "scenario_id": scenario_id,
         "current_round": state.get("current_round", 0),
         "max_rounds": state.get("max_rounds", 10),
         "phase": state.get("phase", ""),
-        "status": state.get("status", ""),
-        "decision_point": state.get("decision_point"),
-        "has_pending_decision": state.get("decision_point") is not None,
+        "status": status,
+        "decision_point": decision_point,
+        "has_pending_decision": decision_point is not None,
     }
 
 
@@ -121,15 +178,17 @@ async def retry_simulation(scenario_id: str):
     pool = get_pool()
     async with pool.acquire() as conn:
         scenario = await conn.fetchrow(
-            "SELECT question FROM scenarios WHERE id = $1", scenario_id,
+            "SELECT question, region_bbox FROM scenarios WHERE id = $1", scenario_id,
         )
     if not scenario:
         raise HTTPException(404, "Scenario not found")
 
+    region_bbox = json.loads(scenario["region_bbox"]) if scenario["region_bbox"] else []
     command = json.dumps({
         "type": "start_simulation",
         "scenario_id": scenario_id,
         "seed_text": scenario["question"],
+        "region_bbox": region_bbox,
         "retry": True,
     }, ensure_ascii=False)
     pool = get_pool()

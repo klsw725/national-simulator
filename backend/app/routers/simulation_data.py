@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
 
 from fastapi import APIRouter
 
 from app.database import get_pool
 
 router = APIRouter()
+
+
+def _node_uuid(entity: dict) -> str:
+    raw = str(entity.get("id") or entity.get("name") or entity)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
 @router.get("/api/scenario/{scenario_id}/live/actions")
@@ -63,6 +69,101 @@ async def get_live_stats(scenario_id: str):
     }
 
 
+@router.get("/api/scenario/{scenario_id}/live/graph_data")
+async def get_live_graph_data(scenario_id: str):
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT payload
+               FROM simulation_events
+               WHERE scenario_id = $1 AND event_type = 'graph_data'
+               ORDER BY sequence_num DESC LIMIT 1""",
+            scenario_id,
+        )
+
+    if not row:
+        return {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+
+    payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else row["payload"]
+    entities = payload.get("entities", [])
+    relations = payload.get("relations", [])
+
+    nodes = []
+    node_map: dict[str, str] = {}
+    for entity in entities:
+        uuid = _node_uuid(entity)
+        name = str(entity.get("name") or entity.get("id") or uuid)
+        node_map[str(entity.get("id") or name)] = uuid
+        node_map[name] = uuid
+        nodes.append({
+            "uuid": uuid,
+            "name": name,
+            "entityType": entity.get("type", "Entity"),
+            "labels": [entity.get("type", "Entity")],
+            "attributes": entity,
+            "summary": entity.get("summary"),
+        })
+
+    edges = []
+    for rel in relations:
+        src = str(rel.get("source", ""))
+        tgt = str(rel.get("target", ""))
+        src_uuid = node_map.get(src)
+        tgt_uuid = node_map.get(tgt)
+        if not src_uuid or not tgt_uuid:
+            continue
+        edges.append({
+            "uuid": hashlib.sha1(f"{src}:{tgt}:{rel.get('type', '')}".encode("utf-8")).hexdigest()[:16],
+            "source_node_uuid": src_uuid,
+            "target_node_uuid": tgt_uuid,
+            "name": rel.get("type", "RELATES_TO"),
+            "fact": rel.get("fact"),
+            "fact_type": rel.get("type", "RELATES_TO"),
+        })
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+    }
+
+
+@router.get("/api/scenario/{scenario_id}/geopolitics")
+async def get_geopolitics_summary(scenario_id: str):
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        total = await conn.fetchrow(
+            "SELECT COUNT(*) AS cnt FROM geopolitics_events WHERE scenario_id = $1",
+            scenario_id,
+        )
+        max_round = await conn.fetchrow(
+            "SELECT COALESCE(MAX(round_number), 0) AS max_r FROM geopolitics_events WHERE scenario_id = $1",
+            scenario_id,
+        )
+        actor_rows = await conn.fetch(
+            "SELECT DISTINCT actor_id FROM geopolitics_events WHERE scenario_id = $1 AND actor_id != ''",
+            scenario_id,
+        )
+        target_rows = await conn.fetch(
+            "SELECT DISTINCT unnest(string_to_array(target_actor_ids, ',')) AS aid FROM geopolitics_events WHERE scenario_id = $1 AND target_actor_ids != ''",
+            scenario_id,
+        )
+
+    actor_set = {r["actor_id"] for r in actor_rows}
+    for r in target_rows:
+        aid = r["aid"].strip()
+        if aid:
+            actor_set.add(aid)
+
+    return {
+        "scenario_id": scenario_id,
+        "total_events": total["cnt"] if total else 0,
+        "total_rounds": max_round["max_r"] if max_round else 0,
+        "actors": sorted(actor_set),
+    }
+
+
 @router.get("/api/scenario/{scenario_id}/geopolitics/events")
 async def get_geopolitics_events(scenario_id: str, limit: int = 100):
     pool = get_pool()
@@ -95,21 +196,29 @@ async def get_geopolitics_timeline(scenario_id: str):
     pool = get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT event_type, payload, sequence_num, created_at
-               FROM simulation_events
-               WHERE scenario_id = $1 AND event_type IN ('round_complete', 'phase_change', 'intervention_required')
-               ORDER BY sequence_num""",
+            """SELECT action_type, actor_id, target_actor_ids, content, magnitude, round_number
+               FROM geopolitics_events
+               WHERE scenario_id = $1
+               ORDER BY round_number, event_at""",
             scenario_id,
         )
 
-    timeline = []
+    rounds: dict[int, list] = {}
     for row in rows:
-        payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else row["payload"]
-        timeline.append({
-            "type": row["event_type"],
-            "sequence_num": row["sequence_num"],
-            "created_at": str(row["created_at"]),
-            **payload,
+        rn = row["round_number"] or 0
+        target_str = row["target_actor_ids"] or ""
+        targets = [t.strip() for t in target_str.split(",") if t.strip()]
+        rounds.setdefault(rn, []).append({
+            "action_type": row["action_type"],
+            "actor_id": row["actor_id"],
+            "target_actor_ids": targets,
+            "content": row["content"] or "",
+            "magnitude": row["magnitude"] or 0.5,
         })
+
+    timeline = [
+        {"round": rn, "events": events}
+        for rn, events in sorted(rounds.items())
+    ]
 
     return {"scenario_id": scenario_id, "timeline": timeline}

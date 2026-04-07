@@ -1,10 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Scenario, ScenarioFormData, PipelineStatus, SimulationAction, PipelineMode, CheckpointData } from "@/types/simulation";
+import type {
+  CheckpointData,
+  PipelineMode,
+  PipelineStatus,
+  Scenario,
+  ScenarioFormData,
+  SimulationAction,
+} from "@/types/simulation";
 import * as api from "@/lib/gatewayApi";
 
-const POLL_INTERVAL = 5_000;
+const CHECKPOINT_NEXT_STATUS: Record<string, string> = {
+  "checkpoint:seed": "simulating:ontology",
+  "checkpoint:decision": "simulating:ontology",
+  "checkpoint:ontology": "simulating:graph_build",
+  "checkpoint:graph": "simulating:prepare",
+  "checkpoint:profiles": "simulating:prepare",
+  "checkpoint:config": "simulating:running",
+  "checkpoint:geopolitics": "simulating:running",
+};
 
 export interface UseSimulationReturn {
   scenarios: Scenario[];
@@ -41,7 +56,7 @@ export function useSimulation(): UseSimulationReturn {
   const [checkpointData, setCheckpointData] = useState<CheckpointData | null>(null);
   const [pipelineMode, setPipelineMode] = useState<PipelineMode>("auto");
   const [filteredScenarios, setFilteredScenarios] = useState<Scenario[] | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<EventSource | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -74,10 +89,10 @@ export function useSimulation(): UseSimulationReturn {
     }
   }, []);
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+  const stopStreaming = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
     }
   }, []);
 
@@ -90,158 +105,179 @@ export function useSimulation(): UseSimulationReturn {
     }
   }, []);
 
-  const pollStatus = useCallback(
-    (scenarioId: string) => {
-      stopPolling();
+  const attachStream = useCallback((scenarioId: string) => {
+    stopStreaming();
+    const es = new EventSource(`/api/scenario/${scenarioId}/stream`);
+    streamRef.current = es;
+    setIsRunning(true);
 
-      const poll = async () => {
-        try {
-          const st = await api.getStatus(scenarioId);
-          setPipelineStatus(st);
-
-          if (st.status.startsWith("checkpoint:")) {
-            stopPolling();
-            setIsRunning(false);
-            const cpData = await api.getCheckpoint(scenarioId);
-            setCheckpointData(cpData);
-            return;
-          }
-
-          if (st.status === "completed" || st.status === "failed") {
-            stopPolling();
-            setIsRunning(false);
-            await loadScenarios();
-            if (st.status === "completed") {
-              await loadResults(scenarioId);
-            }
-            if (st.status === "failed") {
-              const statusWithError = st as PipelineStatus & { error_message?: string; message?: string; detail?: string };
-              setError(statusWithError.error_message ?? statusWithError.message ?? statusWithError.detail ?? "Simulation failed");
-            }
-          }
-        } catch (e) {
-          if (process.env.NODE_ENV === "development") console.warn("pollStatus failed", e);
-        }
+    es.addEventListener("phase_change", (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as { phase: string };
+      const statusMap: Record<string, string> = {
+        analyzing: "simulating:ontology",
+        building: "simulating:graph_build",
+        configuring: "simulating:prepare",
+        simulating: "simulating:running",
+        reporting: "simulating:report",
+        confirmation: "completed",
       };
+      setPipelineStatus((prev) => ({
+        status: statusMap[payload.phase] ?? "simulating:running",
+        seed_status: prev?.seed_status ?? "completed",
+        simulation_status: payload.phase === "confirmation" ? "completed" : "running",
+      }));
+    });
 
-      poll();
-      pollRef.current = setInterval(poll, POLL_INTERVAL);
-    },
-    [stopPolling, loadScenarios, loadResults]
-  );
+    es.addEventListener("intervention_required", () => {
+      setPipelineStatus((prev) => ({
+        status: "simulating:wargame:decision",
+        seed_status: prev?.seed_status ?? "completed",
+        simulation_status: "paused",
+      }));
+      setIsRunning(false);
+    });
 
-  const createAndRun = useCallback(
-    async (data: ScenarioFormData) => {
-      setError(null);
-      setIsRunning(true);
-      setCheckpointData(null);
-      setPipelineStatus({ status: "starting", seed_status: "pending", simulation_status: "pending" });
+    es.addEventListener("report_ready", async () => {
+      setPipelineStatus((prev) => ({
+        status: "completed",
+        seed_status: prev?.seed_status ?? "completed",
+        simulation_status: "completed",
+      }));
+      setIsRunning(false);
+      stopStreaming();
+      await loadScenarios();
+      await loadResults(scenarioId);
+    });
 
-      const mode = data.mode ?? "auto";
-      setPipelineMode(mode);
+    es.addEventListener("error", (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as { error?: string };
+      setError(payload.error ?? "Simulation failed");
+      setPipelineStatus((prev) => ({
+        status: "failed",
+        seed_status: prev?.seed_status ?? "completed",
+        simulation_status: "failed",
+      }));
+      setIsRunning(false);
+      stopStreaming();
+    });
 
-      try {
-        const scenario = await api.createScenario(data);
-        setActiveScenario(scenario);
-        await api.startSimulation(scenario.id, mode);
-        pollStatus(scenario.id);
-        await loadScenarios();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        setError(msg);
-        setIsRunning(false);
-        setPipelineStatus(null);
-      }
-    },
-    [pollStatus, loadScenarios]
-  );
+    es.onerror = () => {
+      setIsRunning(false);
+    };
+  }, [loadResults, loadScenarios, stopStreaming]);
 
-  const continueCheckpoint = useCallback(
-    async (edits?: Record<string, unknown>) => {
-      const scenarioId = activeScenario?.id;
-      if (!scenarioId) return;
+  const createAndRun = useCallback(async (data: ScenarioFormData) => {
+    setError(null);
+    setIsRunning(true);
+    setCheckpointData(null);
+    setPipelineStatus({ status: "starting", seed_status: "pending", simulation_status: "pending" });
 
-      setError(null);
-      setCheckpointData(null);
-      setIsRunning(true);
+    const mode = data.mode ?? "auto";
+    setPipelineMode(mode);
 
-      try {
-        await api.continueSimulation(scenarioId, edits);
-        pollStatus(scenarioId);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Continue failed";
-        setError(msg);
-        setIsRunning(false);
-      }
-    },
-    [activeScenario, pollStatus]
-  );
-
-  const deleteScenario = useCallback(
-    async (id: string) => {
-      try {
-        await api.deleteScenario(id);
-        if (activeScenario?.id === id) {
-          setActiveScenario(null);
-          setPipelineStatus(null);
-          stopPolling();
-          setIsRunning(false);
-        }
-        await loadScenarios();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Delete failed";
-        setError(msg);
-      }
-    },
-    [activeScenario, stopPolling, loadScenarios]
-  );
-
-  const selectScenario = useCallback(
-    (scenario: Scenario) => {
-      stopPolling();
+    try {
+      const scenario = await api.createScenario(data);
       setActiveScenario(scenario);
-      setError(null);
-      setSimulationGeoJSON(null);
-      setSimulationResults([]);
-      setReportMarkdown("");
+      setPipelineStatus({ status: "starting", seed_status: "generating", simulation_status: "pending" });
+      await api.generateSeed(scenario.id);
+      setPipelineStatus({ status: "starting", seed_status: "completed", simulation_status: "pending" });
+      await api.startSimulation(scenario.id, mode);
+      attachStream(scenario.id);
+      await loadScenarios();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(msg);
+      setIsRunning(false);
+      setPipelineStatus(null);
+    }
+  }, [attachStream, loadScenarios]);
 
-      const isActive =
-        scenario.status !== "completed" && scenario.status !== "failed" && scenario.status !== "created";
+  const continueCheckpoint = useCallback(async (edits?: Record<string, unknown>) => {
+    const scenarioId = activeScenario?.id;
+    if (!scenarioId) return;
 
-      if (isActive) {
-        setIsRunning(true);
-        pollStatus(scenario.id);
-      } else {
+    setError(null);
+
+    const nextStatus = CHECKPOINT_NEXT_STATUS[pipelineStatus?.status ?? ""];
+    if (nextStatus) {
+      setPipelineStatus((prev) => prev ? { ...prev, status: nextStatus } : prev);
+    }
+
+    setCheckpointData(null);
+    setIsRunning(true);
+
+    try {
+      await api.continueSimulation(scenarioId, edits);
+      attachStream(scenarioId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Continue failed";
+      setError(msg);
+      setIsRunning(false);
+    }
+  }, [activeScenario, attachStream, pipelineStatus]);
+
+  const deleteScenario = useCallback(async (id: string) => {
+    try {
+      await api.deleteScenario(id);
+      if (activeScenario?.id === id) {
+        setActiveScenario(null);
+        setPipelineStatus(null);
+        stopStreaming();
         setIsRunning(false);
-        setPipelineStatus({
-          status: scenario.status,
-          seed_status: scenario.seed_status,
-          simulation_status: scenario.simulation_status,
-        });
-        if (scenario.status === "completed") {
-          loadResults(scenario.id);
-        }
-        if (scenario.status === "failed") {
-          api.getStatus(scenario.id).then((st) => {
-            if (st.error_message) setError(st.error_message);
-          }).catch((e) => {
-            if (process.env.NODE_ENV === "development") console.warn("Failed to fetch error detail:", e);
-          });
-        }
       }
-    },
-    [stopPolling, pollStatus, loadResults]
-  );
+      await loadScenarios();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Delete failed";
+      setError(msg);
+    }
+  }, [activeScenario, loadScenarios, stopStreaming]);
 
-  // Load scenarios on mount
+  const selectScenario = useCallback((scenario: Scenario) => {
+    stopStreaming();
+    setActiveScenario(scenario);
+    setError(null);
+    setSimulationGeoJSON(null);
+    setSimulationResults([]);
+    setReportMarkdown("");
+
+    const isActive = scenario.status !== "completed" && scenario.status !== "failed" && scenario.status !== "created";
+
+    if (isActive) {
+      setIsRunning(true);
+      api.getStatus(scenario.id).then((st) => {
+        setPipelineStatus(st);
+        attachStream(scenario.id);
+      }).catch((e) => {
+        if (process.env.NODE_ENV === "development") console.warn("Failed to load live status", e);
+      });
+      return;
+    }
+
+    setIsRunning(false);
+    setPipelineStatus({
+      status: scenario.status,
+      seed_status: scenario.seed_status,
+      simulation_status: scenario.simulation_status,
+    });
+    if (scenario.status === "completed") {
+      void loadResults(scenario.id);
+    }
+    if (scenario.status === "failed") {
+      api.getStatus(scenario.id).then((st) => {
+        if (st.error_message) setError(st.error_message);
+      }).catch((e) => {
+        if (process.env.NODE_ENV === "development") console.warn("Failed to fetch error detail:", e);
+      });
+    }
+  }, [attachStream, loadResults, stopStreaming]);
+
   useEffect(() => {
     loadScenarios();
   }, [loadScenarios]);
 
-  // Cleanup on unmount
   useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
+    return () => stopStreaming();
+  }, [stopStreaming]);
 
   return {
     scenarios,

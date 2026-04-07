@@ -11,7 +11,6 @@ import type {
 } from "@/types/simulation";
 import { getWargameStatus } from "@/lib/api/wargameApi";
 
-const POLL_INTERVAL = 5_000;
 const SSE_RECONNECT_DELAY = 3_000;
 const SSE_MAX_RECONNECT_ATTEMPTS = 4;
 
@@ -132,7 +131,6 @@ export function useWargame(
   }, []);
 
   const eventSourceRef = useRef<EventSource | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const isMockMode = false;
@@ -141,10 +139,6 @@ export function useWargame(
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
-    }
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
     }
     if (reconnectRef.current) {
       clearTimeout(reconnectRef.current);
@@ -174,8 +168,13 @@ export function useWargame(
   const refreshState = useCallback(async () => {
     if (!scenarioId) return;
     const data = await getWargameStatus(scenarioId);
+    if ((data.phase as string) === "completed") {
+      setIsComplete(true);
+      setShowDebrief(true);
+      return;
+    }
     applyIncomingState(data);
-  }, [scenarioId, applyIncomingState]);
+  }, [scenarioId, applyIncomingState, setIsComplete]);
 
   const handleSSEEvent = useCallback((eventType: string, payload: Record<string, unknown>) => {
     try {
@@ -194,7 +193,7 @@ export function useWargame(
           applyIncomingState({
             phase: "simulation",
             round: typeof payload.round === "number" ? payload.round : undefined,
-            tension: typeof payload.tension === "number" ? payload.tension : undefined,
+            tension: typeof payload.max_tension === "number" ? payload.max_tension : undefined,
             actorStates: toActorStates(payload) ?? undefined,
           });
           break;
@@ -245,21 +244,6 @@ export function useWargame(
     }
   }, [applyIncomingState, setIsComplete]);
 
-  const startPolling = useCallback(() => {
-    if (!scenarioId) return;
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-
-    const poll = () => {
-      void refreshState().catch(() => {});
-    };
-
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL);
-  }, [scenarioId, refreshState]);
-
   const connectSSE = useCallback(() => {
     if (!scenarioId) return;
 
@@ -304,14 +288,12 @@ export function useWargame(
         if (reconnectAttemptsRef.current <= SSE_MAX_RECONNECT_ATTEMPTS) {
           const delay = SSE_RECONNECT_DELAY * reconnectAttemptsRef.current;
           reconnectRef.current = setTimeout(() => connectSSE(), delay);
-        } else {
-          startPolling();
         }
       };
     } catch {
-      startPolling();
+      setIsConnected(false);
     }
-  }, [scenarioId, handleSSEEvent, refreshState, startPolling]);
+  }, [scenarioId, handleSSEEvent, refreshState]);
 
   const setPhase = useCallback((phase: WargamePhase) => {
     setState((prev) => ({ ...prev, phase }));
@@ -349,10 +331,10 @@ export function useWargame(
       return;
     }
 
-    startPolling();
+    void refreshState().catch(() => {});
     connectSSE();
     return cleanup;
-  }, [scenarioId, connectSSE, cleanup, startPolling]);
+  }, [scenarioId, connectSSE, cleanup, refreshState]);
 
   useEffect(() => {
     setState(createInitialState(totalRounds));

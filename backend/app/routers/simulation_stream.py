@@ -22,7 +22,9 @@ _HEARTBEAT_INTERVAL = 30
 
 
 @router.get("/api/scenario/{scenario_id}/stream")
-async def scenario_event_stream(scenario_id: str, request: Request):
+async def scenario_event_stream(
+    scenario_id: str, request: Request, last_event_id: int | None = None,
+):
     async def _generate():
         conn = await asyncpg.connect(settings.database_url)
         queue: asyncio.Queue[str] = asyncio.Queue()
@@ -40,17 +42,19 @@ async def scenario_event_stream(scenario_id: str, request: Request):
             await conn.add_listener(CHANNEL_SIM_EVENTS, _on_notification)
             listener_registered = True
 
-            last_event_id = request.headers.get("Last-Event-ID")
-            if last_event_id:
+            catch_up_after = request.headers.get("Last-Event-ID")
+            if catch_up_after is None and last_event_id is not None:
+                catch_up_after = str(last_event_id)
+            if catch_up_after is not None:
                 try:
-                    missed = await catch_up_events(scenario_id, int(last_event_id))
+                    missed = await catch_up_events(scenario_id, int(catch_up_after))
                     for evt in missed:
                         seq = evt.get("sequence_num", "")
                         evt_type = evt.get("type", "message")
                         data = json.dumps(evt, ensure_ascii=False)
                         yield f"event: {evt_type}\nid: {seq}\ndata: {data}\n\n"
                 except (ValueError, Exception):
-                    logger.warning("Failed catch-up for Last-Event-ID=%s", last_event_id)
+                    logger.warning("Failed catch-up for last_event_id=%s", catch_up_after)
 
             while True:
                 try:

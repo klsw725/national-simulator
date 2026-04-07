@@ -47,6 +47,41 @@ class DecisionEngine:
     def override_next_action(self, actor_id: str, action: str) -> None:
         self._action_overrides[actor_id] = action
 
+    def apply_direction_deltas(
+        self,
+        deltas: dict[str, float],
+        applies_to: str = "all",
+    ) -> dict[str, dict[str, float]]:
+        """Apply scenario direction deltas to actors. Returns {actor_id: {field: actual_delta}}."""
+        affected: dict[str, dict[str, float]] = {}
+
+        adversary_ids = {
+            adv for actor in self._actors.values() for adv in actor.adversaries
+        }
+        ally_ids = {
+            ally for actor in self._actors.values() for ally in actor.allies
+        }
+
+        for actor in self._actors.values():
+            if applies_to == "adversaries" and actor.actor_id not in adversary_ids:
+                continue
+            if applies_to == "allies" and actor.actor_id not in ally_ids:
+                continue
+
+            actor_deltas: dict[str, float] = {}
+            for field_name, delta in deltas.items():
+                old_val = getattr(actor, field_name, None)
+                if old_val is None:
+                    continue
+                setattr(actor, field_name, old_val + delta)
+                actor.clamp_state()
+                new_val = getattr(actor, field_name)
+                actor_deltas[field_name] = round(new_val - old_val, 4)
+
+            affected[actor.actor_id] = actor_deltas
+
+        return affected
+
     def apply_event(self, event: GeopoliticsEvent) -> dict[str, dict[str, float]]:
         deltas: dict[str, dict[str, float]] = {}
         rules = PROPAGATION_RULES.get(event.event_type, {})
@@ -162,6 +197,7 @@ class DecisionEngine:
             "actors": {aid: actor.to_dict() for aid, actor in self._actors.items()},
             "event_log": [e.to_dict() for e in self._event_log],
             "round": self._round,
+            "action_overrides": dict(self._action_overrides),
         }
 
     @classmethod
@@ -175,4 +211,5 @@ class DecisionEngine:
             GeopoliticsEvent.from_dict(e) for e in state.get("event_log", [])
         ]
         engine._round = int(state.get("round", 0))
+        engine._action_overrides = dict(state.get("action_overrides", {}))
         return engine

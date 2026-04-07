@@ -21,6 +21,85 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/scenario", tags=["decision-points"])
 
 
+def _canonicalize_event_decision_options(raw_options: list[dict]) -> list[dict]:
+    canonical: list[dict] = []
+    for index, option in enumerate(raw_options):
+        action_type = str(option.get("action_type", "action"))
+        target = str(option.get("target", ""))
+        description = str(option.get("description") or f"{target} {action_type}")
+        canonical.append({
+            "id": f"{action_type}-{target}-{index}",
+            "label": description,
+            "description": description,
+            "confidence": 1.0,
+            "reasoning": description,
+            "data": option,
+        })
+    return canonical
+
+
+async def _materialize_pending_event_decision_point(
+    conn: asyncpg.Connection,
+    scenario_id: str,
+    expected_dp_id: str | None = None,
+) -> asyncpg.Record | None:
+    scenario = await conn.fetchrow(
+        "SELECT simulation_status FROM scenarios WHERE id = $1",
+        scenario_id,
+    )
+    if not scenario or scenario["simulation_status"] != "paused":
+        return None
+
+    event_row = await conn.fetchrow(
+        """SELECT payload FROM simulation_events
+           WHERE scenario_id = $1 AND event_type = 'intervention_required'
+           ORDER BY sequence_num DESC LIMIT 1""",
+        scenario_id,
+    )
+    if not event_row:
+        return None
+
+    payload = json.loads(event_row["payload"]) if isinstance(event_row["payload"], str) else event_row["payload"]
+    decision_point = payload.get("decision_point") if isinstance(payload, dict) else None
+    if not isinstance(decision_point, dict):
+        return None
+
+    dp_id = decision_point.get("id")
+    if not isinstance(dp_id, str) or not dp_id:
+        return None
+    if expected_dp_id and dp_id != expected_dp_id:
+        return None
+
+    existing = await conn.fetchrow(
+        "SELECT * FROM decision_points WHERE id = $1 AND scenario_id = $2",
+        dp_id,
+        scenario_id,
+    )
+    if existing:
+        return existing
+
+    raw_options = decision_point.get("options")
+    if not isinstance(raw_options, list) or not raw_options:
+        return None
+
+    options = _canonicalize_event_decision_options(raw_options)
+    dp_type = decision_point.get("type", "geopolitics_actor_response")
+    now = datetime.now(timezone.utc).isoformat()
+    await conn.execute(
+        """INSERT INTO decision_points
+           (id, scenario_id, type, options, recommended, allow_custom, status, selected_option_id, custom_data, created_at, resolved_at)
+           VALUES ($1, $2, $3, $4, $5, FALSE, 'pending', NULL, NULL, $6, NULL)
+           ON CONFLICT (id) DO NOTHING""",
+        dp_id,
+        scenario_id,
+        dp_type,
+        json.dumps(options, ensure_ascii=False),
+        options[0]["id"],
+        now,
+    )
+    return await conn.fetchrow("SELECT * FROM decision_points WHERE id = $1", dp_id)
+
+
 @router.post(
     "/{scenario_id}/decision_points",
     response_model=DecisionPointResponse,
@@ -85,11 +164,17 @@ async def list_decision_points(
             scenario_id,
             status,
         )
+        if status == "pending" and not rows:
+            fallback = await _materialize_pending_event_decision_point(conn, scenario_id)
+            rows = [fallback] if fallback else []
     else:
         rows = await conn.fetch(
             "SELECT * FROM decision_points WHERE scenario_id = $1 ORDER BY created_at DESC",
             scenario_id,
         )
+        if not rows:
+            fallback = await _materialize_pending_event_decision_point(conn, scenario_id)
+            rows = [fallback] if fallback else []
 
     return {
         "scenario_id": scenario_id,
@@ -113,6 +198,8 @@ async def get_decision_point(
         scenario_id,
     )
     if not row:
+        row = await _materialize_pending_event_decision_point(conn, scenario_id, dp_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Decision point not found")
     return row_to_decision_point(row)
 
@@ -132,6 +219,8 @@ async def resolve_decision_point(
         dp_id,
         scenario_id,
     )
+    if not row:
+        row = await _materialize_pending_event_decision_point(conn, scenario_id, dp_id)
     if not row:
         raise HTTPException(status_code=404, detail="Decision point not found")
 

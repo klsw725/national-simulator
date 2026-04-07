@@ -14,11 +14,44 @@ KNOWN_ACTORS: dict[str, str] = {
     "JP": "일본", "KP": "북한", "TW": "대만", "IN": "인도",
     "PH": "필리핀", "VN": "베트남", "AU": "호주", "GB": "영국",
     "FR": "프랑스", "DE": "독일", "IR": "이란", "SA": "사우디아라비아",
+    "AE": "아랍에미리트", "OM": "오만", "IQ": "이라크",
 }
 
 POWER_TO_RESOURCE: dict[str, float] = {
     "superpower": 0.95, "major": 0.8, "regional": 0.6, "minor": 0.4,
 }
+
+REGION_DEFAULT_ACTORS: dict[str, list[str]] = {
+    "strait of hormuz": ["IR", "SA", "AE", "OM", "US"],
+    "hormuz": ["IR", "SA", "AE", "OM", "US"],
+    "south china sea": ["CN", "PH", "VN", "US", "TW"],
+    "taiwan strait": ["CN", "TW", "US", "JP"],
+    "east china sea": ["CN", "JP", "KR", "US"],
+    "korean peninsula": ["KR", "KP", "US", "JP", "CN"],
+}
+
+
+def _select_actor_codes(state: SimulationState) -> list[str]:
+    actor_codes = list(state.get("actor_states", {}).keys())
+    if actor_codes:
+        return actor_codes
+
+    extracted_entities = state.get("decision_engine_state", {}).get("extracted_entities", [])
+    for entity in extracted_entities:
+        entity_type = str(entity.get("type", "")).lower()
+        entity_id = str(entity.get("id", "")).upper()
+        if "nation" in entity_type and entity_id in KNOWN_ACTORS and entity_id not in actor_codes:
+            actor_codes.append(entity_id)
+
+    if actor_codes:
+        return actor_codes
+
+    region_name = str(state.get("region_name", "")).lower()
+    for key, defaults in REGION_DEFAULT_ACTORS.items():
+        if key in region_name:
+            return defaults
+
+    return ["US", "IR", "SA"] if region_name else ["US", "CN", "KR"]
 
 
 def _infer_relationships(
@@ -58,9 +91,12 @@ def _infer_relationships(
 
 
 async def create_actors_node(state: SimulationState) -> dict:
-    actor_codes = list(state.get("actor_states", {}).keys())
-    if not actor_codes:
-        actor_codes = ["US", "CN", "KR"]
+    try:
+        from app.services.event_emitter import get_emitter
+        await get_emitter().emit_phase_change(state["scenario_id"], "configuring", 0.4)
+    except Exception:
+        pass
+    actor_codes = _select_actor_codes(state)
 
     extracted_relations = state.get("decision_engine_state", {}).get("extracted_relations", [])
 

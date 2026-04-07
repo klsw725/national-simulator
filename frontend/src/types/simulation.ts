@@ -288,6 +288,26 @@ export interface DecisionPointResponse {
 
 export type DecisionPoint = DecisionPointResponse;
 
+export interface WargameDecisionPointV2Option {
+  action_type: string;
+  target: string;
+  intensity: "low" | "medium" | "high";
+  description: string;
+  estimated_effect: {
+    tension_delta: number;
+    resource_cost: number;
+  };
+}
+
+export interface WargameDecisionPointV2 {
+  id: string;
+  round: number;
+  trigger: string;
+  options: WargameDecisionPointV2Option[];
+}
+
+export type WargameDecisionPoint = DecisionPoint | WargameDecisionPointV2;
+
 export interface DecisionPointResolveRequest {
   selected_option_id?: string | null;
   custom_data?: Record<string, unknown> | null;
@@ -377,7 +397,7 @@ export interface WargameState {
   tension: number;
   actorStates: Record<string, ActorState>;
   briefing: RoundBriefing | null;
-  decisionPoint: DecisionPoint | null;
+  decisionPoint: WargameDecisionPoint | null;
 }
 
 export interface ActorState {

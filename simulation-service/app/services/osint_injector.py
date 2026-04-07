@@ -9,17 +9,23 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-async def fetch_latest_osint(region_bbox: str = "") -> dict:
+async def fetch_latest_osint(region_bbox: list[float] | None = None) -> dict:
     try:
+        params: dict[str, float] = {}
+        if region_bbox and len(region_bbox) >= 4:
+            params = {"w": region_bbox[0], "s": region_bbox[1], "e": region_bbox[2], "n": region_bbox[3]}
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
                 f"{settings.shadowbroker_url}/api/live-data/fast",
+                params=params or None,
             )
             resp.raise_for_status()
             fast_data = resp.json()
 
             resp_slow = await client.get(
                 f"{settings.shadowbroker_url}/api/live-data/slow",
+                params=params or None,
             )
             resp_slow.raise_for_status()
             slow_data = resp_slow.json()

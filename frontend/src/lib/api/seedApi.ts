@@ -3,7 +3,7 @@ import { fetchJSON, JSON_HEADERS } from "./fetchUtils";
 
 export function generateSeed(
   scenarioId: string
-): Promise<{ status: string }> {
+): Promise<SeedResponse> {
   return fetchJSON(`/api/scenario/${scenarioId}/seed`, {
     method: "POST",
     headers: JSON_HEADERS,
