@@ -7,6 +7,7 @@ from langgraph.graph import add_messages
 
 class SimulationState(TypedDict):
     scenario_id: str
+    pipeline_mode: str
     seed_text: str
     region_bbox: list[float]
     region_name: str
@@ -29,6 +30,10 @@ class SimulationState(TypedDict):
 
     decision_point: dict | None
     user_decision: dict | None
+
+    graph_entities: list[dict]
+    graph_relations: list[dict]
+    completed_checkpoints: list[str]
 
     round_events: list[dict]
     round_cascades: list[dict]

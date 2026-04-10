@@ -196,6 +196,7 @@ export function useWargame(
             tension: typeof payload.max_tension === "number" ? payload.max_tension : undefined,
             actorStates: toActorStates(payload) ?? undefined,
           });
+          void refreshState().catch(() => {});
           break;
         }
 
@@ -210,6 +211,7 @@ export function useWargame(
             briefing: briefing ?? undefined,
             decisionPoint: decisionPoint ?? undefined,
           });
+          void refreshState().catch(() => {});
           break;
         }
 

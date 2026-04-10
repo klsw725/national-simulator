@@ -110,6 +110,43 @@ class GraphStore:
 
         return {"entities": len(entities), "relations": edge_count}
 
+    def load_entities_and_relations(self, graph_id: str) -> dict[str, list[dict[str, Any]]]:
+        entity_rows = self._run(
+            "MATCH (n:Entity {graph_id: $gid}) "
+            "RETURN n.name AS name, n.entity_type AS entity_type, n.attributes_json AS attrs "
+            "ORDER BY n.name",
+            {"gid": graph_id},
+        )
+        relation_rows = self._run(
+            "MATCH (a:Entity {graph_id: $gid})-[r:RELATES_TO {graph_id: $gid}]->(b:Entity {graph_id: $gid}) "
+            "RETURN a.name AS source, b.name AS target, r.fact_type AS rel_type, r.strength AS strength "
+            "ORDER BY source, target, rel_type",
+            {"gid": graph_id},
+        )
+
+        entities: list[dict[str, Any]] = []
+        for row in entity_rows:
+            raw_attrs = row.get("attrs")
+            attrs = json.loads(raw_attrs) if isinstance(raw_attrs, str) and raw_attrs else {}
+            if not isinstance(attrs, dict):
+                attrs = {}
+            if "name" not in attrs and row.get("name"):
+                attrs["name"] = row["name"]
+            if "type" not in attrs and row.get("entity_type"):
+                attrs["type"] = row["entity_type"]
+            entities.append(attrs)
+
+        relations: list[dict[str, Any]] = []
+        for row in relation_rows:
+            relations.append({
+                "source": row.get("source", ""),
+                "target": row.get("target", ""),
+                "type": row.get("rel_type", "RELATES_TO"),
+                "strength": row.get("strength", 0.5),
+            })
+
+        return {"entities": entities, "relations": relations}
+
 
 _store: GraphStore | None = None
 

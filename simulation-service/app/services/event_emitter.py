@@ -90,6 +90,16 @@ class SimulationEventEmitter:
             "events": events[:5],
         })
 
+    async def emit_checkpoint_reached(
+        self, scenario_id: str, step: str, state_snapshot: dict,
+    ) -> None:
+        await self._emit({
+            "type": "checkpoint_reached",
+            "scenario_id": scenario_id,
+            "step": step,
+            "state": state_snapshot,
+        })
+
     async def emit_report_ready(self, scenario_id: str, report_id: str) -> None:
         await self._emit({
             "type": "report_ready",

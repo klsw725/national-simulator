@@ -5,7 +5,7 @@ import { Pause, Play, Eye, Edit3, Check, ChevronRight } from "lucide-react";
 import type { CheckpointData } from "@/types/simulation";
 import { getSeed } from "@/lib/gatewayApi";
 
-const STEP_ORDER = ["seed", "ontology", "graph", "profiles", "config"] as const;
+const STEP_ORDER = ["seed", "ontology", "graph", "profiles", "config", "geopolitics"] as const;
 
 const STEP_LABELS: Record<string, string> = {
   seed: "Seed",
@@ -13,6 +13,7 @@ const STEP_LABELS: Record<string, string> = {
   graph: "Graph",
   profiles: "Profiles",
   config: "Config",
+  geopolitics: "Geopolitics",
 };
 
 interface Props {
@@ -154,8 +155,8 @@ export default function CheckpointReview({ checkpointData, onContinue, onCancel 
           />
         )}
         {step === "ontology" && <OntologyReview data={data} />}
-        {step === "graph" && <SimpleMessage text="Graph build complete." />}
-        {step === "profiles" && <SimpleMessage text="Profile generation complete." />}
+        {step === "graph" && <GraphReview data={data} />}
+        {step === "profiles" && <ProfilesReview data={data} />}
         {step === "config" && (
           <ConfigReview
             maxRounds={maxRounds}
@@ -163,6 +164,7 @@ export default function CheckpointReview({ checkpointData, onContinue, onCancel 
             onChange={setMaxRounds}
           />
         )}
+        {step === "geopolitics" && <SimpleMessage text="지정학 시뮬레이션을 시작할 준비가 완료되었습니다." />}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
@@ -395,6 +397,17 @@ function SimpleMessage({ text }: { text: string }) {
       <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{text}</span>
     </div>
   );
+}
+
+function GraphReview({ data }: { data: Record<string, unknown> | null }) {
+  const entities = Array.isArray(data?.graph_entities) ? data?.graph_entities : [];
+  const relations = Array.isArray(data?.graph_relations) ? data?.graph_relations : [];
+  return <SimpleMessage text={`Graph build complete. 엔티티 ${entities.length}개, 관계 ${relations.length}개`} />;
+}
+
+function ProfilesReview({ data }: { data: Record<string, unknown> | null }) {
+  const actors = data?.actors && typeof data.actors === "object" ? Object.keys(data.actors as Record<string, unknown>) : [];
+  return <SimpleMessage text={`Profile generation complete. 행위자 ${actors.length}개`} />;
 }
 
 function ConfigReview({

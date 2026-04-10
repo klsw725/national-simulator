@@ -77,21 +77,9 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
   if (!open) return null;
 
   const analysisOrSystemTab = getGroupForTab(tab) === "analysis" || getGroupForTab(tab) === "system";
-  if (isWargameMode && sim.activeScenario && (wargamePhaseActive || (wargameCompleted && tab !== "report" && !analysisOrSystemTab))) {
-    return (
-      <WarRoom
-        scenarioId={sim.activeScenario.id}
-        totalRounds={sim.activeScenario.simulation_params?.geopolitics_rounds ?? sim.activeScenario.max_rounds}
-        actions={live.actions}
-        onClose={onClose}
-        onViewReport={() => setTab("report")}
-        onCreateWhatIf={(round) => {
-          onOpenWhatIfCompare?.(`whatif-round-${round}`);
-        }}
-        onWargameOverlay={onWargameOverlay}
-      />
-    );
-  }
+  const showWarRoomOverlay = Boolean(
+    isWargameMode && sim.activeScenario && (wargamePhaseActive || (wargameCompleted && tab !== "report" && !analysisOrSystemTab)),
+  );
 
   const isCompleted = sim.pipelineStatus?.status === "completed";
   const hasCheckpoint = sim.checkpointData !== null;
@@ -135,7 +123,21 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
   };
 
   return (
-    <div
+    <>
+      {showWarRoomOverlay && sim.activeScenario && (
+        <WarRoom
+          scenarioId={sim.activeScenario.id}
+          totalRounds={sim.activeScenario.simulation_params?.geopolitics_rounds ?? sim.activeScenario.max_rounds}
+          actions={live.actions}
+          onClose={onClose}
+          onViewReport={() => setTab("report")}
+          onCreateWhatIf={(round) => {
+            onOpenWhatIfCompare?.(`whatif-round-${round}`);
+          }}
+          onWargameOverlay={onWargameOverlay}
+        />
+      )}
+      <div
       style={{
         position: "fixed",
         top: 0,
@@ -146,7 +148,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
         borderLeft: "1px solid var(--border-secondary)",
         display: "flex",
         flexDirection: "column",
-        zIndex: 20,
+        zIndex: 30,
         transition: "transform 0.2s ease",
       }}
     >
@@ -394,7 +396,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
               onContinue={sim.continueCheckpoint}
               onCancel={() => setTab("list")}
             />
-          ) : sim.pipelineStatus?.status?.startsWith("simulating:") ? (
+          ) : (sim.pipelineStatus?.status?.startsWith("simulating:") || (isWargameMode && showWarRoomOverlay)) ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ flex: 1 }}>
@@ -403,7 +405,7 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
               </div>
               <div style={{ flex: 1, minHeight: 0, marginTop: 12 }}>
                 <IntermediateResults
-                  pipelineStatus={sim.pipelineStatus.status}
+                  pipelineStatus={liveStatusForActions ?? sim.pipelineStatus?.status ?? ""}
                   scenarioId={sim.activeScenario?.id ?? null}
                 />
               </div>
@@ -502,5 +504,6 @@ export default function SimulationPanel({ open, onClose, sim, onOpenWhatIfCompar
         {tab === "health" && <HealthDashboard />}
       </div>
     </div>
+    </>
   );
 }

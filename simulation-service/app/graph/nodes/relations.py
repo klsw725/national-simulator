@@ -50,6 +50,8 @@ async def build_relations_node(state: SimulationState) -> dict:
 
     return {
         "graph_id": graph_id,
+        "graph_entities": entities,
+        "graph_relations": relations,
         "phase": "building",
         "decision_engine_state": {
             "actors": {},

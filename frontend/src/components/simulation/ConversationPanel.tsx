@@ -38,8 +38,14 @@ export default function ConversationPanel({ scenarioId }: Props) {
     try {
       const status = await api.getEnvStatus(scenarioId);
       setEnvStatus(status);
-    } catch {
-      setEnvStatus(null);
+    } catch (e) {
+      setEnvStatus({
+        simulation_id: scenarioId,
+        env_alive: false,
+        reddit_available: false,
+        twitter_available: false,
+        message: e instanceof Error ? e.message : "에이전트 대화 상태를 확인할 수 없습니다.",
+      });
     }
   }, [scenarioId]);
 
@@ -50,6 +56,7 @@ export default function ConversationPanel({ scenarioId }: Props) {
   }, [pollEnvStatus]);
 
   const envAlive = envStatus?.env_alive ?? false;
+  const envMessage = envStatus?.message ?? "에이전트 대화 상태를 확인하는 중입니다.";
   const isInterview = mode !== "copilot";
 
   const handleSend = useCallback(
@@ -269,6 +276,22 @@ export default function ConversationPanel({ scenarioId }: Props) {
             )}
           </div>
         )}
+
+        {isInterview && (
+          <div
+            style={{
+              padding: "8px 10px",
+              borderRadius: 6,
+              background: envAlive ? "rgba(74, 222, 128, 0.08)" : "rgba(245, 158, 11, 0.08)",
+              border: envAlive ? "1px solid rgba(74, 222, 128, 0.18)" : "1px solid rgba(245, 158, 11, 0.18)",
+              color: envAlive ? "rgb(187, 247, 208)" : "rgb(252, 211, 77)",
+              fontSize: 11,
+              lineHeight: 1.5,
+            }}
+          >
+            {envMessage}
+          </div>
+        )}
       </div>
 
 
@@ -295,9 +318,9 @@ export default function ConversationPanel({ scenarioId }: Props) {
                 </>
               ) : (
                 <>
-                  에이전트에게 질문하여
+                  {envAlive ? "에이전트에게 질문하여" : "현재 에이전트 대화 ENV가 비활성 상태입니다."}
                   <br />
-                  인터뷰 결과를 확인하세요
+                  {envAlive ? "인터뷰 결과를 확인하세요" : "코파일럿 모드를 사용하거나 ENV 연결 후 다시 시도하세요"}
                 </>
               )}
             </div>
@@ -519,7 +542,7 @@ export default function ConversationPanel({ scenarioId }: Props) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isInterview ? "에이전트에게 질문하세요..." : "질문을 입력하세요..."}
+          placeholder={isInterview ? (envAlive ? "에이전트에게 질문하세요..." : "에이전트 대화 ENV가 비활성입니다") : "질문을 입력하세요..."}
           disabled={loading || (isInterview && !envAlive)}
           style={{
             flex: 1,

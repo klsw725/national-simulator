@@ -35,6 +35,16 @@ class InterviewAllRequest(BaseModel):
     platform: str | None = None
 
 
+async def _scenario_exists(scenario_id: str) -> bool:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM scenarios WHERE id = $1",
+            scenario_id,
+        )
+    return bool(row)
+
+
 @router.post("/chat")
 async def copilot_chat(
     body: CopilotChatRequest,
@@ -50,39 +60,37 @@ async def copilot_chat(
         "response": f"[Copilot] 시나리오 {body.scenario_id}에 대한 분석을 준비 중입니다.",
         "scenario_id": body.scenario_id,
         "conversation_id": body.conversation_id,
+        "tools_used": [],
+        "suggestions": [],
     }
 
 
 @router.post("/env-status")
 async def get_env_status(body: EnvRequest):
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        latest = await conn.fetchrow(
-            """SELECT event_type, payload FROM simulation_events
-               WHERE scenario_id = $1 ORDER BY sequence_num DESC LIMIT 1""",
-            body.scenario_id,
-        )
-    if not latest:
-        raise HTTPException(status_code=404, detail="Simulation environment not found")
+    if not await _scenario_exists(body.scenario_id):
+        raise HTTPException(status_code=404, detail="Scenario not found")
 
-    payload = json.loads(latest["payload"]) if isinstance(latest["payload"], str) else (latest["payload"] or {})
-    return {"status": "active", "phase": payload.get("phase", "unknown"), "scenario_id": body.scenario_id}
+    return {
+        "simulation_id": body.scenario_id,
+        "env_alive": False,
+        "reddit_available": False,
+        "twitter_available": False,
+        "message": "에이전트 대화 ENV는 아직 연결되지 않았습니다. 현재는 코파일럿만 사용할 수 있습니다.",
+    }
 
 
 @router.post("/interview")
 async def interview_agent(body: InterviewAgentRequest):
-    return {
-        "agent_id": body.agent_id,
-        "response": f"[v2 stub] 에이전트 {body.agent_id} 인터뷰 기능은 Simulation Service에서 직접 제공 예정입니다.",
-    }
+    if not await _scenario_exists(body.scenario_id):
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    raise HTTPException(status_code=503, detail="에이전트 인터뷰 ENV가 아직 연결되지 않았습니다. 코파일럿 모드를 사용하세요.")
 
 
 @router.post("/interview/all")
 async def interview_all_agents(body: InterviewAllRequest):
-    return {
-        "responses": [],
-        "message": "[v2 stub] 전체 에이전트 인터뷰 기능은 Simulation Service에서 직접 제공 예정입니다.",
-    }
+    if not await _scenario_exists(body.scenario_id):
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    raise HTTPException(status_code=503, detail="전체 에이전트 인터뷰 ENV가 아직 연결되지 않았습니다. 코파일럿 모드를 사용하세요.")
 
 
 @router.post("/close-env")

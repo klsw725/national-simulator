@@ -245,8 +245,9 @@ function GraphViewer({ graphData, taskStatus, standalone, selectedNodeId, onNode
       {graphReady ? (
         <svg ref={svgRef} width="100%" viewBox={viewBox} style={{ display: "block", background: "var(--bg-secondary)", borderRadius: 4 }} />
       ) : (
-        <div style={{ height: standalone ? 240 : 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
-          그래프 데이터 대기 중...
+        <div style={{ height: standalone ? 240 : 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: 16, lineHeight: 1.5 }}>
+          그래프 데이터 대기 중...<br />
+          실시간 이벤트가 없으면 체크포인트 기준 그래프를 표시합니다.
         </div>
       )}
     </div>

@@ -15,6 +15,52 @@ def _node_uuid(entity: dict) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def _empty_graph() -> dict:
+    return {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+
+
+def _build_graph_response(entities: list[dict], relations: list[dict]) -> dict:
+    nodes = []
+    node_map: dict[str, str] = {}
+    for entity in entities:
+        uuid = _node_uuid(entity)
+        name = str(entity.get("name") or entity.get("id") or uuid)
+        node_map[str(entity.get("id") or name)] = uuid
+        node_map[name] = uuid
+        nodes.append({
+            "uuid": uuid,
+            "name": name,
+            "entityType": entity.get("type", "Entity"),
+            "labels": [entity.get("type", "Entity")],
+            "attributes": entity,
+            "summary": entity.get("summary"),
+        })
+
+    edges = []
+    for rel in relations:
+        src = str(rel.get("source", ""))
+        tgt = str(rel.get("target", ""))
+        src_uuid = node_map.get(src)
+        tgt_uuid = node_map.get(tgt)
+        if not src_uuid or not tgt_uuid:
+            continue
+        edges.append({
+            "uuid": hashlib.sha1(f"{src}:{tgt}:{rel.get('type', '')}".encode("utf-8")).hexdigest()[:16],
+            "source_node_uuid": src_uuid,
+            "target_node_uuid": tgt_uuid,
+            "name": rel.get("type", "RELATES_TO"),
+            "fact": rel.get("fact"),
+            "fact_type": rel.get("type", "RELATES_TO"),
+        })
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+    }
+
+
 @router.get("/api/scenario/{scenario_id}/live/actions")
 async def get_live_actions(scenario_id: str, offset: int = 0, limit: int = 100):
     pool = get_pool()
@@ -81,52 +127,38 @@ async def get_live_graph_data(scenario_id: str):
             scenario_id,
         )
 
-    if not row:
-        return {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+        checkpoint_row = None
+        if not row:
+            checkpoint_row = await conn.fetchrow(
+                """SELECT checkpoint
+                   FROM checkpoints
+                   WHERE thread_id = $1
+                   ORDER BY checkpoint_id DESC LIMIT 1""",
+                scenario_id,
+            )
 
-    payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else row["payload"]
-    entities = payload.get("entities", [])
-    relations = payload.get("relations", [])
+    if row:
+        payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else row["payload"]
+        entities = payload.get("entities", [])
+        relations = payload.get("relations", [])
+        return _build_graph_response(entities, relations)
 
-    nodes = []
-    node_map: dict[str, str] = {}
-    for entity in entities:
-        uuid = _node_uuid(entity)
-        name = str(entity.get("name") or entity.get("id") or uuid)
-        node_map[str(entity.get("id") or name)] = uuid
-        node_map[name] = uuid
-        nodes.append({
-            "uuid": uuid,
-            "name": name,
-            "entityType": entity.get("type", "Entity"),
-            "labels": [entity.get("type", "Entity")],
-            "attributes": entity,
-            "summary": entity.get("summary"),
-        })
+    if not checkpoint_row:
+        return _empty_graph()
 
-    edges = []
-    for rel in relations:
-        src = str(rel.get("source", ""))
-        tgt = str(rel.get("target", ""))
-        src_uuid = node_map.get(src)
-        tgt_uuid = node_map.get(tgt)
-        if not src_uuid or not tgt_uuid:
-            continue
-        edges.append({
-            "uuid": hashlib.sha1(f"{src}:{tgt}:{rel.get('type', '')}".encode("utf-8")).hexdigest()[:16],
-            "source_node_uuid": src_uuid,
-            "target_node_uuid": tgt_uuid,
-            "name": rel.get("type", "RELATES_TO"),
-            "fact": rel.get("fact"),
-            "fact_type": rel.get("type", "RELATES_TO"),
-        })
+    checkpoint = checkpoint_row["checkpoint"]
+    if isinstance(checkpoint, str):
+        checkpoint = json.loads(checkpoint)
+    channel_values = checkpoint.get("channel_values", {})
+    entities = channel_values.get("graph_entities")
+    relations = channel_values.get("graph_relations")
 
-    return {
-        "nodes": nodes,
-        "edges": edges,
-        "node_count": len(nodes),
-        "edge_count": len(edges),
-    }
+    if entities is None or relations is None:
+        engine_state = channel_values.get("decision_engine_state", {})
+        entities = engine_state.get("extracted_entities", [])
+        relations = engine_state.get("extracted_relations", [])
+
+    return _build_graph_response(entities or [], relations or [])
 
 
 @router.get("/api/scenario/{scenario_id}/geopolitics")

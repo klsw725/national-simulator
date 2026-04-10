@@ -7,15 +7,10 @@ import { resolveWargameDecision, resumeWargame, submitWargameDecisionV2 } from "
 import type { LiveAction } from "@/types/simulation";
 import type { DecisionPoint as LegacyDecisionPoint, WargameDecisionPoint, WargameDecisionPointV2 } from "@/types/simulation";
 import type { DecisionOption as V2DecisionOption, TriggerDetail } from "@/types/simulation-stream";
-import PhaseBar from "./PhaseBar";
-import LensPanel from "./LensPanel";
-import ContextPanel from "./ContextPanel";
-import FeedPanel, { type SelectedFeedEntity } from "./FeedPanel";
 import BriefingOverlay from "./BriefingOverlay";
 import DecisionCard from "./DecisionCard";
 import DebriefView from "./DebriefView";
 
-/** Phase → CSS accent color token for color-temperature shifting */
 const PHASE_ACCENT: Record<string, string> = {
   simulation: "var(--accent-cyan)",
   simulating: "var(--accent-cyan)",
@@ -75,12 +70,13 @@ export default function WarRoom({
   const streamState = useSimulationStream(useV2 ? scenarioId : null);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<SelectedFeedEntity | null>(null);
+  const [dismissedDpId, setDismissedDpId] = useState<string | null>(null);
   const resumePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hydratedDecisionPoint = useMemo(() => {
-    return isV2DecisionPoint(wargame.state.decisionPoint) ? wargame.state.decisionPoint : null;
-  }, [wargame.state.decisionPoint]);
 
-  const activeDecisionPoint = useV2 ? (streamState.decisionPoint ?? hydratedDecisionPoint) : null;
+  const wargameDp = wargame.state.decisionPoint;
+  const activeDecisionPoint = (wargameDp && isV2DecisionPoint(wargameDp) && wargameDp.id !== dismissedDpId)
+    ? wargameDp
+    : null;
   const activePhase = useV2
     ? (activeDecisionPoint ? "decision" : (streamState.phase || wargame.state.phase))
     : wargame.state.phase;
@@ -166,6 +162,7 @@ export default function WarRoom({
         label: selectedOption.action_type,
         outcome: selectedOption.description,
       });
+      setDismissedDpId(activeDecisionPoint.id);
       wargame.setPhase("confirmation");
 
       await submitWargameDecisionV2(scenarioId, {
@@ -249,53 +246,9 @@ export default function WarRoom({
 
   return (
     <div
-      className="fixed inset-0 z-20 flex flex-col pointer-events-none transition-colors duration-500"
-      style={{ "--war-room-accent": phaseAccent } as React.CSSProperties}
+      className="fixed inset-y-0 left-0 z-20 pointer-events-none transition-colors duration-500"
+      style={{ "--war-room-accent": phaseAccent, right: 400 } as React.CSSProperties}
     >
-      <div className="pointer-events-auto">
-        <PhaseBar state={displayState} isMockMode={!useV2 && wargame.isMockMode} />
-      </div>
-
-      <div className="flex flex-1 min-h-0">
-        <div className="pointer-events-auto">
-          <LensPanel
-            activeLens={wargame.activeLens}
-            onLensChange={wargame.setActiveLens}
-          />
-        </div>
-
-        <div className="flex-1 min-w-0 relative">
-          <CloseButton onClick={onClose} />
-        </div>
-
-        <div className="pointer-events-auto">
-            <ContextPanel
-              actorStates={displayState.actorStates}
-              phase={contextPhase}
-              playerActorId={displayState.actorId}
-              phaseAccent={phaseAccent}
-              selectedEntity={selectedEntity}
-              onClearEntity={() => setSelectedEntity(null)}
-              geopoliticalEvent={streamState.latestGeopoliticalEvent}
-            />
-        </div>
-      </div>
-
-      <div className="pointer-events-auto">
-        <FeedPanel
-          actions={actions}
-          currentRound={activeRound}
-          totalRounds={totalRounds}
-          decisionRounds={decisionRounds}
-          decisions={wargame.decisionHistory}
-          v2Actions={useV2 && streamState.recentActions.length > 0 ? streamState.recentActions : undefined}
-          selectedRound={selectedRound}
-          onScrub={handleScrub}
-          phaseAccent={phaseAccent}
-          onActionClick={setSelectedEntity}
-        />
-      </div>
-
       {!useV2 && wargame.state.phase === "briefing" && wargame.state.briefing && (
         <BriefingOverlay
           briefing={wargame.state.briefing}

@@ -10,19 +10,35 @@ import asyncpg
 from langgraph.types import Command
 
 from app.config import settings
+from app.graph.builder import get_graph
 
 logger = logging.getLogger(__name__)
 
 _CHANNEL = "sim_commands"
 
-
 class SimulationCommandListener:
     def __init__(self) -> None:
         self._graph = None
         self._running_tasks: dict[str, asyncio.Task] = {}
+        self._scenario_modes: dict[str, str] = {}
 
     def set_graph(self, graph: Any) -> None:
         self._graph = graph
+
+    async def _graph_for_mode(self, mode: str) -> Any:
+        return await get_graph(mode)
+
+    async def _graph_for_scenario(self, scenario_id: str) -> Any:
+        mode = self._scenario_modes.get(scenario_id, "auto")
+        return await get_graph(mode)
+
+    async def _check_interrupt(self, graph: Any, config: dict) -> Any | None:
+        snapshot = await graph.aget_state(config)
+        if snapshot and snapshot.tasks:
+            for task in snapshot.tasks:
+                if hasattr(task, "interrupts") and task.interrupts:
+                    return task.interrupts[0].value
+        return None
 
     async def start(self) -> None:
         delay = 1.0
@@ -87,11 +103,12 @@ class SimulationCommandListener:
             logger.warning("Simulation %s already running", scenario_id)
             return
 
-        if self._graph is None:
-            logger.error("Graph not initialized")
-            return
+        mode = command.get("mode", "auto")
+        if mode not in ("auto", "checkpoint"):
+            mode = "auto"
+        self._scenario_modes[scenario_id] = mode
+        graph = await self._graph_for_mode(mode)
 
-        graph = self._graph
         from app.services.event_emitter import get_emitter
 
         emitter = get_emitter()
@@ -101,6 +118,7 @@ class SimulationCommandListener:
                 config = {"configurable": {"thread_id": scenario_id}}
                 initial_state = {
                     "scenario_id": scenario_id,
+                    "pipeline_mode": mode,
                     "seed_text": command.get("seed_text", ""),
                     "region_bbox": command.get("region_bbox", []),
                     "region_name": command.get("region_name", ""),
@@ -118,6 +136,9 @@ class SimulationCommandListener:
                     "decision_engine_state": {},
                     "decision_point": None,
                     "user_decision": None,
+                    "graph_entities": [],
+                    "graph_relations": [],
+                    "completed_checkpoints": [],
                     "round_events": [],
                     "round_cascades": [],
                     "hit_trigger": None,
@@ -130,14 +151,22 @@ class SimulationCommandListener:
 
                 result = await graph.ainvoke(initial_state, config)
 
-                if isinstance(result, dict) and result.get("__interrupt__"):
-                    interrupt_value = result["__interrupt__"][0].value
+                interrupt_value = await self._check_interrupt(graph, config)
+                if interrupt_value is not None:
+                    if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
+                        await emitter.emit_checkpoint_reached(
+                            scenario_id,
+                            interrupt_value.get("step", "unknown"),
+                            interrupt_value.get("state", {}),
+                        )
+                        await self._update_scenario_status(scenario_id, "paused")
+                        return
                     await self._persist_intervention_decision_point(scenario_id, interrupt_value)
                     await emitter.emit_intervention_required(scenario_id, interrupt_value)
                     await self._update_scenario_status(scenario_id, "paused")
                     return
 
-                if result.get("status") == "completed":
+                if isinstance(result, dict) and result.get("status") == "completed":
                     await self._update_scenario_status(scenario_id, "completed")
 
             except asyncio.CancelledError:
@@ -178,40 +207,56 @@ class SimulationCommandListener:
             logger.info("Simulation %s cancelled", scenario_id)
 
     async def _apply_decision(self, scenario_id: str, command: dict) -> None:
-        if self._graph is None:
-            logger.error("Graph not initialized")
-            return
-
+        graph = await self._graph_for_scenario(scenario_id)
         config = {"configurable": {"thread_id": scenario_id}}
-        graph = self._graph
         await self._resolve_intervention_decision_point(scenario_id, command.get("chosen_action", {}))
         result = await graph.ainvoke(Command(resume=command.get("chosen_action")), config)
-        if isinstance(result, dict) and result.get("__interrupt__"):
-            interrupt_value = result["__interrupt__"][0].value
-            from app.services.event_emitter import get_emitter
+
+        from app.services.event_emitter import get_emitter
+        emitter = get_emitter()
+
+        interrupt_value = await self._check_interrupt(graph, config)
+        if interrupt_value is not None:
+            if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
+                await emitter.emit_checkpoint_reached(
+                    scenario_id,
+                    interrupt_value.get("step", "unknown"),
+                    interrupt_value.get("state", {}),
+                )
+                await self._update_scenario_status(scenario_id, "paused")
+                return
             await self._persist_intervention_decision_point(scenario_id, interrupt_value)
-            await get_emitter().emit_intervention_required(scenario_id, interrupt_value)
+            await emitter.emit_intervention_required(scenario_id, interrupt_value)
             await self._update_scenario_status(scenario_id, "paused")
             return
+
         await self._update_scenario_status(scenario_id, "running")
         if isinstance(result, dict) and result.get("status") == "completed":
             await self._update_scenario_status(scenario_id, "completed")
 
     async def _resume_simulation(self, scenario_id: str) -> None:
-        if self._graph is None:
-            logger.error("Graph not initialized")
-            return
-
-        graph = self._graph
+        graph = await self._graph_for_scenario(scenario_id)
         config = {"configurable": {"thread_id": scenario_id}}
-        result = await graph.ainvoke(None, config)
-        if isinstance(result, dict) and result.get("__interrupt__"):
-            interrupt_value = result["__interrupt__"][0].value
-            from app.services.event_emitter import get_emitter
+        result = await graph.ainvoke(Command(resume={"continue": True}), config)
+
+        from app.services.event_emitter import get_emitter
+        emitter = get_emitter()
+
+        interrupt_value = await self._check_interrupt(graph, config)
+        if interrupt_value is not None:
+            if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
+                await emitter.emit_checkpoint_reached(
+                    scenario_id,
+                    interrupt_value.get("step", "unknown"),
+                    interrupt_value.get("state", {}),
+                )
+                await self._update_scenario_status(scenario_id, "paused")
+                return
             await self._persist_intervention_decision_point(scenario_id, interrupt_value)
-            await get_emitter().emit_intervention_required(scenario_id, interrupt_value)
+            await emitter.emit_intervention_required(scenario_id, interrupt_value)
             await self._update_scenario_status(scenario_id, "paused")
             return
+
         await self._update_scenario_status(scenario_id, "running")
         if isinstance(result, dict) and result.get("status") == "completed":
             await self._update_scenario_status(scenario_id, "completed")

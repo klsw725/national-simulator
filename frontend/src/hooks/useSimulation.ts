@@ -21,6 +21,14 @@ const CHECKPOINT_NEXT_STATUS: Record<string, string> = {
   "checkpoint:geopolitics": "simulating:running",
 };
 
+const CHECKPOINT_STEP_STATUS: Record<string, string> = {
+  seed: "checkpoint:seed",
+  graph: "checkpoint:graph",
+  profiles: "checkpoint:profiles",
+  config: "checkpoint:config",
+  geopolitics: "checkpoint:geopolitics",
+};
+
 export interface UseSimulationReturn {
   scenarios: Scenario[];
   activeScenario: Scenario | null;
@@ -131,6 +139,29 @@ export function useSimulation(): UseSimulationReturn {
     es.addEventListener("intervention_required", () => {
       setPipelineStatus((prev) => ({
         status: "simulating:wargame:decision",
+        seed_status: prev?.seed_status ?? "completed",
+        simulation_status: "paused",
+      }));
+      setIsRunning(false);
+    });
+
+    es.addEventListener("checkpoint_reached", (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as {
+        step: string;
+        state?: Record<string, unknown>;
+      };
+      const step = payload.step;
+      setCheckpointData({
+        scenario_id: scenarioId,
+        result_id: scenarioId,
+        status: "paused",
+        step,
+        editable: false,
+        data: payload.state ?? null,
+        pipeline_mode: "checkpoint",
+      });
+      setPipelineStatus((prev) => ({
+        status: CHECKPOINT_STEP_STATUS[step] ?? "checkpoint:config",
         seed_status: prev?.seed_status ?? "completed",
         simulation_status: "paused",
       }));

@@ -35,6 +35,7 @@ async def _load_seed_context(conn, scenario_id: str):
 class StartSimulationRequest(BaseModel):
     seed_text: str = ""
     max_rounds: int = 10
+    mode: str = "auto"
 
 
 class DecisionRequest(BaseModel):
@@ -64,6 +65,7 @@ async def start_simulation_legacy(scenario_id: str, body: LegacySimulateRequest 
         "scenario_id": scenario_id,
         "seed_text": seed_text,
         "max_rounds": 10,
+        "mode": body.mode if body else "auto",
         "region_bbox": region_bbox,
         "region_name": region_name,
         "question": question,
@@ -91,13 +93,14 @@ async def start_simulation_v2(scenario_id: str, body: StartSimulationRequest):
         "scenario_id": scenario_id,
         "seed_text": seed_text,
         "max_rounds": body.max_rounds,
+        "mode": body.mode,
         "region_bbox": region_bbox,
         "region_name": region_name,
         "question": question,
     }, ensure_ascii=False)
     async with pool.acquire() as conn:
         await conn.execute("SELECT pg_notify($1, $2)", "sim_commands", payload)
-    return {"status": "started", "scenario_id": scenario_id}
+    return {"status": "started", "scenario_id": scenario_id, "pipeline_mode": body.mode}
 
 
 @router.post("/api/scenario/{scenario_id}/decide_v2")
