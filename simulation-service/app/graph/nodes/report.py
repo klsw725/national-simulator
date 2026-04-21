@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -9,6 +10,9 @@ from app.prompts.actor_system import REPORT_SYSTEM_PROMPT
 from app.services.event_emitter import get_emitter
 
 logger = logging.getLogger(__name__)
+
+_REPORT_RETRY = 3
+_REPORT_DELAY = 2.0
 
 
 def _build_graph_context(state: SimulationState) -> str:
@@ -60,16 +64,41 @@ async def generate_report_node(state: SimulationState) -> dict:
         + f"\n\n## 최종 긴장도\n{tension_text}"
     )
 
-    try:
-        report = await llm_chat(
-            system=REPORT_SYSTEM_PROMPT,
-            user=user_prompt,
-            temperature=0.5,
-            max_tokens=4000,
+    last_exc: Exception | None = None
+    report: str | None = None
+    delay = _REPORT_DELAY
+
+    for attempt in range(_REPORT_RETRY):
+        try:
+            report = await llm_chat(
+                system=REPORT_SYSTEM_PROMPT,
+                user=user_prompt,
+                temperature=0.5,
+                max_tokens=4000,
+            )
+            if report:
+                break
+            last_exc = RuntimeError("LLM returned empty report")
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "Report generation failed (attempt %d/%d): %s",
+                attempt + 1,
+                _REPORT_RETRY,
+                str(exc)[:200],
+            )
+        if attempt < _REPORT_RETRY - 1:
+            await asyncio.sleep(delay)
+            delay *= 2
+
+    if not report:
+        try:
+            await get_emitter().emit_phase_change(state["scenario_id"], "failed", 0.9)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Report generation failed after {_REPORT_RETRY} attempts: {last_exc}"
         )
-    except Exception:
-        logger.exception("Report generation failed")
-        report = f"[보고서 생성 실패] {state['current_round']}라운드 완료."
 
     try:
         await get_emitter().emit_phase_change(state["scenario_id"], "reporting", 0.9)

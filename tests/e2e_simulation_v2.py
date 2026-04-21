@@ -125,7 +125,7 @@ async def test_start_v2(client: httpx.AsyncClient, result: TestResult) -> bool:
         return False
 
 
-async def test_sse_stream(result: TestResult) -> dict:
+async def test_sse_stream(result: TestResult, expect_failure: bool = False) -> dict:
     print(f"\n[4] SSE 스트림 수신 (최대 {SSE_COLLECT_TIMEOUT}초)")
     collected: dict[str, list] = {
         "phase_change": [],
@@ -191,17 +191,30 @@ async def test_sse_stream(result: TestResult) -> dict:
     else:
         result.fail("phase_change", "이벤트 수신 없음")
 
-    if collected["agent_action"]:
-        result.ok(f"agent_action 이벤트 {len(collected['agent_action'])}건 수신")
-    else:
-        result.fail("agent_action", "이벤트 수신 없음 — LLM 호출 실패 가능")
+    if expect_failure:
+        if collected["error"]:
+            err = collected["error"][0]
+            msg = err.get("error", "") if isinstance(err, dict) else str(err)
+            result.ok(f"error 이벤트 수신 (fail-fast 검증) — {msg[:80]}")
+        else:
+            result.fail("error 예상", "LLM 실패 주입 시나리오인데 error 이벤트 미수신")
 
-    if collected["report_ready"]:
-        result.ok("report_ready 수신 — 시뮬레이션 완료")
-    elif collected["error"]:
-        result.fail("simulation", f"에러: {collected['error'][0]}")
+        if collected["report_ready"]:
+            result.fail("fail-fast 위반", "LLM 실패 상황인데 report_ready가 발행됨 (완료로 위장)")
+        else:
+            result.ok("report_ready 미발행 — 완료 위장 없음")
     else:
-        result.fail("report_ready", "타임아웃 — 시뮬레이션 미완료")
+        if collected["agent_action"]:
+            result.ok(f"agent_action 이벤트 {len(collected['agent_action'])}건 수신")
+        else:
+            result.fail("agent_action", "이벤트 수신 없음 — LLM 호출 실패 가능")
+
+        if collected["report_ready"]:
+            result.ok("report_ready 수신 — 시뮬레이션 완료")
+        elif collected["error"]:
+            result.fail("simulation", f"에러: {collected['error'][0]}")
+        else:
+            result.fail("report_ready", "타임아웃 — 시뮬레이션 미완료")
 
     return collected
 
@@ -234,13 +247,16 @@ async def test_decide_v2(client: httpx.AsyncClient, result: TestResult, collecte
         result.fail("decide_v2", str(e))
 
 
-async def main(gateway: str) -> int:
+async def main(gateway: str, expect_failure: bool = False) -> int:
     global GATEWAY
     GATEWAY = gateway
 
-    print(f"v12 E2E 통합 테스트")
+    print(f"v12 E2E 통합 테스트{' (fail-fast 모드)' if expect_failure else ''}")
     print(f"Gateway: {GATEWAY}")
     print(f"Scenario: {SCENARIO_ID}")
+    if expect_failure:
+        print("⚠️  이 모드는 simulation-service의 LLM이 실패하도록 설정된 상태를 전제로 합니다.")
+        print("    예: OPENAI_API_KEY=sk-invalid 또는 OPENAI_BASE_URL=http://invalid:9999 후 서비스 재시작")
     print("=" * 50)
 
     result = TestResult()
@@ -253,10 +269,11 @@ async def main(gateway: str) -> int:
         if not await test_start_v2(client, result):
             return result.summary()
 
-    collected = await test_sse_stream(result)
+    collected = await test_sse_stream(result, expect_failure=expect_failure)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        await test_decide_v2(client, result, collected)
+    if not expect_failure:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            await test_decide_v2(client, result, collected)
 
     return result.summary()
 
@@ -264,5 +281,10 @@ async def main(gateway: str) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="v12 E2E Integration Test")
     parser.add_argument("--gateway", default="http://localhost:4000")
+    parser.add_argument(
+        "--expect-failure",
+        action="store_true",
+        help="LLM이 실패하도록 설정된 환경에서 fail-fast 동작을 검증한다.",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.gateway)))
+    sys.exit(asyncio.run(main(args.gateway, expect_failure=args.expect_failure)))

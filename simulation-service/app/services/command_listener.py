@@ -207,60 +207,68 @@ class SimulationCommandListener:
             logger.info("Simulation %s cancelled", scenario_id)
 
     async def _apply_decision(self, scenario_id: str, command: dict) -> None:
-        graph = await self._graph_for_scenario(scenario_id)
-        config = {"configurable": {"thread_id": scenario_id}}
-        await self._resolve_intervention_decision_point(scenario_id, command.get("chosen_action", {}))
-        result = await graph.ainvoke(Command(resume=command.get("chosen_action")), config)
-
         from app.services.event_emitter import get_emitter
         emitter = get_emitter()
+        try:
+            graph = await self._graph_for_scenario(scenario_id)
+            config = {"configurable": {"thread_id": scenario_id}}
+            await self._resolve_intervention_decision_point(scenario_id, command.get("chosen_action", {}))
+            result = await graph.ainvoke(Command(resume=command.get("chosen_action")), config)
 
-        interrupt_value = await self._check_interrupt(graph, config)
-        if interrupt_value is not None:
-            if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
-                await emitter.emit_checkpoint_reached(
-                    scenario_id,
-                    interrupt_value.get("step", "unknown"),
-                    interrupt_value.get("state", {}),
-                )
+            interrupt_value = await self._check_interrupt(graph, config)
+            if interrupt_value is not None:
+                if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
+                    await emitter.emit_checkpoint_reached(
+                        scenario_id,
+                        interrupt_value.get("step", "unknown"),
+                        interrupt_value.get("state", {}),
+                    )
+                    await self._update_scenario_status(scenario_id, "paused")
+                    return
+                await self._persist_intervention_decision_point(scenario_id, interrupt_value)
+                await emitter.emit_intervention_required(scenario_id, interrupt_value)
                 await self._update_scenario_status(scenario_id, "paused")
                 return
-            await self._persist_intervention_decision_point(scenario_id, interrupt_value)
-            await emitter.emit_intervention_required(scenario_id, interrupt_value)
-            await self._update_scenario_status(scenario_id, "paused")
-            return
 
-        await self._update_scenario_status(scenario_id, "running")
-        if isinstance(result, dict) and result.get("status") == "completed":
-            await self._update_scenario_status(scenario_id, "completed")
+            await self._update_scenario_status(scenario_id, "running")
+            if isinstance(result, dict) and result.get("status") == "completed":
+                await self._update_scenario_status(scenario_id, "completed")
+        except Exception as exc:
+            logger.exception("apply_decision %s failed", scenario_id)
+            await emitter.emit_error(scenario_id, str(exc))
+            await self._update_scenario_status(scenario_id, "failed")
 
     async def _resume_simulation(self, scenario_id: str) -> None:
-        graph = await self._graph_for_scenario(scenario_id)
-        config = {"configurable": {"thread_id": scenario_id}}
-        result = await graph.ainvoke(Command(resume={"continue": True}), config)
-
         from app.services.event_emitter import get_emitter
         emitter = get_emitter()
+        try:
+            graph = await self._graph_for_scenario(scenario_id)
+            config = {"configurable": {"thread_id": scenario_id}}
+            result = await graph.ainvoke(Command(resume={"continue": True}), config)
 
-        interrupt_value = await self._check_interrupt(graph, config)
-        if interrupt_value is not None:
-            if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
-                await emitter.emit_checkpoint_reached(
-                    scenario_id,
-                    interrupt_value.get("step", "unknown"),
-                    interrupt_value.get("state", {}),
-                )
+            interrupt_value = await self._check_interrupt(graph, config)
+            if interrupt_value is not None:
+                if isinstance(interrupt_value, dict) and interrupt_value.get("type") == "pipeline_checkpoint":
+                    await emitter.emit_checkpoint_reached(
+                        scenario_id,
+                        interrupt_value.get("step", "unknown"),
+                        interrupt_value.get("state", {}),
+                    )
+                    await self._update_scenario_status(scenario_id, "paused")
+                    return
+                await self._persist_intervention_decision_point(scenario_id, interrupt_value)
+                await emitter.emit_intervention_required(scenario_id, interrupt_value)
                 await self._update_scenario_status(scenario_id, "paused")
                 return
-            await self._persist_intervention_decision_point(scenario_id, interrupt_value)
-            await emitter.emit_intervention_required(scenario_id, interrupt_value)
-            await self._update_scenario_status(scenario_id, "paused")
-            return
 
-        await self._update_scenario_status(scenario_id, "running")
-        if isinstance(result, dict) and result.get("status") == "completed":
-            await self._update_scenario_status(scenario_id, "completed")
-        logger.info("Simulation %s resumed", scenario_id)
+            await self._update_scenario_status(scenario_id, "running")
+            if isinstance(result, dict) and result.get("status") == "completed":
+                await self._update_scenario_status(scenario_id, "completed")
+            logger.info("Simulation %s resumed", scenario_id)
+        except Exception as exc:
+            logger.exception("resume_simulation %s failed", scenario_id)
+            await emitter.emit_error(scenario_id, str(exc))
+            await self._update_scenario_status(scenario_id, "failed")
 
     @staticmethod
     def _canonicalize_decision_options(decision_point: dict[str, Any]) -> list[dict[str, Any]]:

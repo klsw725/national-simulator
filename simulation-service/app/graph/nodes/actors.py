@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from app.engine.actors import GeopoliticalActorState
 from app.graph.state import SimulationState
 from app.llm import llm_json
 from app.prompts.actor_system import ACTOR_PROFILE_PROMPT
+from app.services.event_emitter import get_emitter
 
 logger = logging.getLogger(__name__)
+
+_PROFILE_RETRY = 3
+_PROFILE_DELAY = 2.0
 
 KNOWN_ACTORS: dict[str, str] = {
     "US": "미국", "CN": "중국", "RU": "러시아", "KR": "한국",
@@ -92,7 +97,6 @@ def _infer_relationships(
 
 async def create_actors_node(state: SimulationState) -> dict:
     try:
-        from app.services.event_emitter import get_emitter
         await get_emitter().emit_phase_change(state["scenario_id"], "configuring", 0.4)
     except Exception:
         pass
@@ -106,23 +110,45 @@ async def create_actors_node(state: SimulationState) -> dict:
 
     for code in actor_codes[:10]:
         actor_name = KNOWN_ACTORS.get(code, code)
-        try:
-            prompt = ACTOR_PROFILE_PROMPT.format(actor_code=code, actor_name=actor_name)
-            profile = await llm_json(
-                system="당신은 지정학 전문가입니다.",
-                user=f"{prompt}\n\n정세 요약:\n{state['situation_summary'][:1500]}",
-                temperature=0.4,
+        prompt = ACTOR_PROFILE_PROMPT.format(actor_code=code, actor_name=actor_name)
+        last_exc: Exception | None = None
+        profile: dict | None = None
+        delay = _PROFILE_DELAY
+
+        for attempt in range(_PROFILE_RETRY):
+            try:
+                result = await llm_json(
+                    system="당신은 지정학 전문가입니다.",
+                    user=f"{prompt}\n\n정세 요약:\n{state['situation_summary'][:1500]}",
+                    temperature=0.4,
+                )
+                if isinstance(result, dict) and result:
+                    profile = result
+                    break
+                last_exc = RuntimeError("LLM returned empty/invalid profile")
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "Profile generation failed for %s (attempt %d/%d): %s",
+                    code,
+                    attempt + 1,
+                    _PROFILE_RETRY,
+                    str(exc)[:200],
+                )
+            if attempt < _PROFILE_RETRY - 1:
+                await asyncio.sleep(delay)
+                delay *= 2
+
+        if profile is None:
+            try:
+                await get_emitter().emit_phase_change(state["scenario_id"], "failed", 0.4)
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"Actor profile generation failed for {code} after {_PROFILE_RETRY} attempts: {last_exc}"
             )
-            if isinstance(profile, dict):
-                actors[code] = profile
-        except Exception:
-            logger.warning("Profile generation failed for %s, using defaults", code)
-            actors[code] = {
-                "nation_code": code, "country_name": actor_name,
-                "military_power": "regional", "economic_power": "regional",
-                "ideology": "unknown", "alliances": [], "core_interests": [],
-                "behavior_tendency": "defensive",
-            }
+
+        actors[code] = profile
 
     for code in actor_codes[:10]:
         actor_name = KNOWN_ACTORS.get(code, code)

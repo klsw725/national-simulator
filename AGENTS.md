@@ -19,6 +19,7 @@
 
 - **ShadowBroker 좌표 필드명이 데이터 소스마다 다르다.** Ships/flights/satellites는 `lng`, CCTV/KiwiSDR은 `lon`. SB API 응답을 파싱할 때 데이터 소스별로 좌표 필드명이 다름을 감안할 것. 통일 금지 — SB 내부 뷰포트 필터링이 깨진다.
 - **API 경로는 `snake_case`.** 일반적인 REST의 `kebab-case`가 아니라 MiroFish 관례를 따른다.
+- **Simulation 그래프 노드는 fail-fast.** `simulation-service/app/graph/nodes/` 하위의 `build_relations`, `create_actors`, `generate_report`에서 LLM/DB 예외를 `except Exception: pass` 또는 fallback 기본값으로 삼키지 말 것. 3회 재시도 후에도 실패하면 `RuntimeError`를 raise하여 `command_listener`의 상위 핸들러가 `emit_error` + `status=failed`로 UI에 전파하도록 한다. "완료"로 포장된 빈 그래프/플레이스홀더 리포트는 은폐된 장애다. E2E 검증: `uv run python tests/e2e_simulation_v2.py --expect-failure`.
 
 ## 코딩 행동 지침
 
